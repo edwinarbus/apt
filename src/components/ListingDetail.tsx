@@ -255,6 +255,63 @@ export function ListingDetail({
                   </div>
                 )}
 
+                {/* AI notes (optional enrichment) */}
+                {data.enrichment && (
+                  <div className="rounded-xl border border-accent/20 bg-accent-soft/40 px-4 py-3.5">
+                    <div className="mb-1.5 flex items-center justify-between">
+                      <SectionTitle>✦ AI notes</SectionTitle>
+                      <span className="text-[10.5px] text-faint">
+                        {data.enrichment.model} · {relativeTime(data.enrichment.enrichedAt)}
+                      </span>
+                    </div>
+                    {data.enrichment.summary && (
+                      <p className="text-[13.5px] leading-relaxed text-ink/90">
+                        {data.enrichment.summary}
+                      </p>
+                    )}
+                    {data.enrichment.verifyBeforeContacting.length > 0 && (
+                      <div className="mt-2.5">
+                        <p className="text-[11px] font-semibold tracking-wide text-faint uppercase">
+                          Verify before contacting
+                        </p>
+                        <ul className="mt-0.5 list-disc pl-5 text-[12.5px] text-muted">
+                          {data.enrichment.verifyBeforeContacting.map((v) => (
+                            <li key={v}>{v}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {data.enrichment.questionsForLandlord.length > 0 && (
+                      <div className="mt-2.5">
+                        <p className="text-[11px] font-semibold tracking-wide text-faint uppercase">
+                          Questions to ask
+                        </p>
+                        <ul className="mt-0.5 list-disc pl-5 text-[12.5px] text-muted">
+                          {data.enrichment.questionsForLandlord.map((q) => (
+                            <li key={q}>{q}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {data.enrichment.riskReasons.length > 0 && (
+                      <div className="mt-2.5">
+                        <p className="text-[11px] font-semibold tracking-wide text-warn uppercase">
+                          AI risk signals ({data.enrichment.aiRiskLevel ?? "unknown"})
+                        </p>
+                        <ul className="mt-0.5 list-disc pl-5 text-[12.5px] text-muted">
+                          {data.enrichment.riskReasons.map((r) => (
+                            <li key={r}>{r}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    <p className="mt-2.5 text-[11px] text-faint">
+                      AI-generated from the listing text — may be wrong or incomplete. Not a
+                      substitute for verifying with the original listing.
+                    </p>
+                  </div>
+                )}
+
                 {/* Facts */}
                 <div className="grid grid-cols-2 gap-x-6 gap-y-2.5 sm:grid-cols-3">
                   <Fact label="Beds" value={fmtBeds(l.bedrooms)} raw={l.bedroomsRaw} />

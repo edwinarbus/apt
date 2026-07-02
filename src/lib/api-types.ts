@@ -116,6 +116,21 @@ export interface PriceHistoryEntry {
   concessionsRaw: string | null;
 }
 
+/** Optional AI-generated enrichment (Claude). Clearly labeled and never authoritative. */
+export interface EnrichmentPayload {
+  model: string;
+  enrichedAt: string;
+  summary: string | null;
+  aiRiskLevel: "none" | "low" | "medium" | "high" | null;
+  amenities: string[];
+  laundry: string | null;
+  parking: string | null;
+  utilitiesIncluded: string[];
+  verifyBeforeContacting: string[];
+  questionsForLandlord: string[];
+  riskReasons: string[];
+}
+
 export interface ListingDetailResponse {
   listing: ListingSummary & {
     description: string | null;
@@ -158,6 +173,7 @@ export interface ListingDetailResponse {
   duplicates: DuplicatePeer[];
   duplicateGroup: DuplicateGroupInfo | null;
   priceHistory: PriceHistoryEntry[];
+  enrichment: EnrichmentPayload | null;
 }
 
 export interface SourceRunPayload {

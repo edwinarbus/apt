@@ -361,6 +361,38 @@ export const digestRuns = sqliteTable("digest_runs", {
   reportPath: text("report_path"),
 });
 
+/**
+ * Optional AI enrichment layer (Claude API). Kept entirely separate from the
+ * deterministic pipeline: ingestion never reads or writes this table, so the
+ * core app stays free and offline. One row per listing, refreshed only when
+ * the listing's contentHash changes (so re-running enrich is cheap). The raw
+ * scraped fields on `listings` remain the source of truth — enrichment is
+ * additive and clearly labeled AI-generated in the UI.
+ */
+export const listingEnrichment = sqliteTable("listing_enrichment", {
+  listingId: text("listing_id")
+    .primaryKey()
+    .references(() => listings.id),
+  model: text("model").notNull(),
+  schemaVersion: integer("schema_version").notNull(),
+  /** the listing.contentHash at enrichment time — re-enrich when it differs */
+  contentHashAtEnrichment: text("content_hash_at_enrichment").notNull(),
+  enrichedAt: text("enriched_at").notNull(),
+
+  /** promoted for cards/filters; full structured result lives in `data` */
+  summary: text("summary"),
+  aiRiskLevel: text("ai_risk_level"), // none | low | medium | high
+  /** the validated structured enrichment (amenities, laundry, pets, verify notes, questions, risk reasons, …) */
+  data: text("data", { mode: "json" }),
+
+  inputTokens: integer("input_tokens").notNull().default(0),
+  outputTokens: integer("output_tokens").notNull().default(0),
+  costUsd: real("cost_usd").notNull().default(0),
+  error: text("error"),
+});
+
+export type ListingEnrichmentRow = typeof listingEnrichment.$inferSelect;
+
 export type SavedSearchMatchRow = typeof savedSearchMatches.$inferSelect;
 export type DigestRunRow = typeof digestRuns.$inferSelect;
 

@@ -15,11 +15,15 @@ for one person's apartment hunt — nothing more.
 > the scheduled daily loop with a deterministic saved-search digest and
 > Playwright rendering infrastructure for JS-only sources. The app now runs on
 > **real data only** (mock removed) across **four working SF adapters**
-> (Craigslist, RentSFNow, Brick + Timber, Mosser Living). A future phase may
-> add Claude-based enrichment (daily summaries, match explanations, scam
-> analysis); the schema and runner were designed so an agent can operate on top
-> of them, but **nothing AI-related is built or wired up yet** — the digest and
-> matching are entirely deterministic.
+> (Craigslist, RentSFNow, Brick + Timber, Mosser Living). The latest phase adds
+> an **optional Claude enrichment layer** (`npm run enrich`) that extracts
+> structured amenity/pet/laundry facts, "verify before contacting" notes, and
+> questions to ask the landlord, plus an AI second opinion on listing risk. It
+> is off by default, kept entirely separate from the deterministic pipeline,
+> requires your own `ANTHROPIC_API_KEY`, and never overrides the original
+> listing (still the source of truth). The core pipeline — ingestion, dedupe,
+> scam heuristics, matching, and the digest — remains **fully deterministic**
+> and works with no API key at all.
 
 ---
 
@@ -29,10 +33,12 @@ for one person's apartment hunt — nothing more.
 - **SQLite** via better-sqlite3 + **Drizzle ORM** (single-file DB in `data/apt.db`;
   schema is flat/portable so a later move to Postgres/PostGIS is mechanical)
 - **MapLibre GL** with OpenFreeMap tiles (no API key)
-- **cheerio** for HTML parsing; plain `fetch` with politeness controls
-- **vitest** for tests; **tsx** for CLI scripts
-- No Playwright yet — both phase-one adapters work against server-rendered
-  HTML. The AppFolio sources seeded as disabled will need it later.
+- **cheerio** for HTML parsing; **PoliteFetcher** (HTTP) + **PlaywrightFetcher**
+  (headless Chromium) behind one `TextFetcher` interface
+- **@anthropic-ai/sdk** + **zod** for the optional Claude enrichment layer only —
+  never imported by the deterministic pipeline, and lazy-loaded so the app runs
+  without an API key
+- **vitest** for tests (all offline); **tsx** for CLI scripts
 
 ## Quick start
 
@@ -68,6 +74,7 @@ first use. `data/` is gitignored.
 | `npm run digest` | compute the saved-search digest, write a report, mark matches notified; flags: `--dry-run` (repeatable preview), `--json` |
 | `npm run daily` | the scheduled loop: ingest all enabled sources, then compute the digest |
 | `npm run schedule:install` | write a macOS launchd plist (and print the cron line) to run `npm run daily` on a schedule; flags: `--hour`, `--minute` |
+| `npm run enrich -- --dry-run` | **optional AI layer** — preview which listings would be enriched (no API key or spend); drop `--dry-run` to actually call Claude. Flags: `--limit <n>` (default 25), `--all`, `--source-listing <id>`, `--cost-cap <usd>`, `--force`, `--include-inactive`. Needs `ANTHROPIC_API_KEY`. See [AI enrichment](#ai-enrichment-optional). |
 | `npm test` / `npm run test:adapters` | full vitest suite / just the adapter fixture tests (all offline) |
 | `npm run typecheck` / `npm run lint` | strict TS + ESLint |
 | `npm run db:generate` | regenerate SQL migrations after editing `src/db/schema.ts` |
@@ -159,6 +166,73 @@ inventory. Note: Brick + Timber's JS browse page turned out to be backed by a
 clean JSON feed, so its adapter uses that directly instead of rendering — always
 prefer a real API to driving a browser.
 
+## AI enrichment (optional)
+
+Everything above is deterministic and needs no API key. On top of it sits an
+**optional** enrichment pass that calls the Claude API to add a thin layer of
+practical help per listing. It is a separate command you run yourself
+(`npm run enrich`), off by default, and it **never** changes a deterministic
+field or the original listing — the source listing stays the source of truth.
+
+What it produces per listing (validated against a Zod schema, `src/enrich/schema.ts`):
+
+- a 1–2 sentence neutral **summary** drawn only from the listing text
+- structured **amenities / laundry / parking / pet policy / utilities / lease
+  term**, extracted from messy free-text descriptions (`unknown`/`null` when the
+  text doesn't say — never guessed)
+- **verify before contacting** — concrete things to confirm with the source
+  before you reach out or pay anything
+- **questions for the landlord** — specific to this unit, not boilerplate
+- an AI **risk second opinion** (`none`/`low`/`medium`/`high` + neutral reasons)
+  that *complements* the deterministic scam heuristics rather than replacing them
+
+### Running it
+
+```bash
+npm run enrich -- --dry-run        # what would be enriched — no key, no spend
+export ANTHROPIC_API_KEY=sk-ant-…  # your own key (or `ant auth login`)
+npm run enrich -- --limit 10       # enrich up to 10 new/changed listings
+npm run enrich -- --all            # every eligible listing (watch the cost)
+npm run enrich -- --source-listing lst_… --force   # re-enrich one listing
+npm run enrich -- --cost-cap 2.00  # stop before ~$2.00 of estimated spend
+```
+
+- **Model:** `$APT_ENRICH_MODEL` (default `claude-opus-4-8`). For this bounded,
+  high-volume extraction, `APT_ENRICH_MODEL=claude-haiku-4-5` is ~5× cheaper and
+  usually plenty; Opus is the default because it's the most careful with the
+  "don't guess / don't accuse" rules.
+- **No key, no problem:** the app and every deterministic command run without
+  `ANTHROPIC_API_KEY`. Only `npm run enrich` (without `--dry-run`) needs one; it
+  errors out with instructions rather than prompting for a key, and the SDK is
+  lazy-loaded so nothing else imports it.
+- **Cheap to re-run:** a listing is (re)enriched only when it has no enrichment,
+  its content hash changed, its stored `schemaVersion` is stale, or its last
+  attempt errored. Unchanged listings are skipped, so the daily case is nearly
+  free. Each run reports tokens and an estimated USD cost and can stop at a
+  `--cost-cap`. Enrichment is **not** part of `npm run daily` — you opt in.
+
+### How it's kept safe and honest
+
+- **Untrusted input:** every listing is wrapped in `<listing>…</listing>` and the
+  system prompt states that content is *data to analyze, never instructions* — a
+  description that says "ignore previous instructions" gets flagged as a risk
+  signal, not obeyed (there's a test for exactly this).
+- **The project's rules are in the prompt:** use only what's in the text; `null`
+  when unknown; **never** infer protected-class or demographic characteristics;
+  **never** assert fraud/scam/illegality as fact — risk fields are neutral,
+  observable flags for a human to verify.
+- **Clearly labeled in the UI:** enrichment shows in the detail modal under a
+  "✦ AI notes" heading with the model name and a disclaimer ("AI-generated from
+  the listing text — may be wrong or incomplete. Not a substitute for verifying
+  with the original listing."). It's visually distinct from the deterministic
+  facts grid.
+- **Isolated storage:** results live in their own `listing_enrichment` table
+  (one row per listing, keyed by content hash + schema version + model), so the
+  entire layer can be ignored, re-run, or dropped without touching listing data.
+- **Testable without the network:** the enricher talks to Claude through an
+  `EnrichmentClient` interface; all 15 enrichment tests inject a fake client, so
+  the suite stays 100% offline.
+
 ## Architecture
 
 ```
@@ -192,11 +266,15 @@ src/
                    scam -> geocode -> SourceRun record
     verify.ts      adapter verification (fixture/live) -> PASS/PARTIAL/FAIL/SKIPPED
     digest.ts      deterministic saved-search digest (new / price-drop / dropped)
+  enrich/       OPTIONAL Claude layer (imported by nothing in the pipeline)
+    schema.ts      Zod enrichment schema + prompt schema description + versioning
+    client.ts      EnrichmentClient interface, prompt (injection-guarded), pricing
+    enricher.ts    candidate selection (hash/version-aware) + write orchestration
   config/sources.ts  the seed registry (URLs, politeness params, status notes)
   db/            drizzle schema + client (WAL, auto-migrate)
   app/           Next.js pages + JSON API routes
   components/    map, panel, cards, detail modal, source dashboard
-scripts/         seed / ingest / verify / backfill / digest / daily / schedule CLIs
+scripts/         seed / ingest / verify / backfill / digest / daily / schedule / enrich CLIs
 tests/           vitest suites + tests/helpers.ts (in-memory DB + stub adapter)
 fixtures/        recorded HTML/JSON from real sources (tests never hit the network)
 ```
@@ -244,6 +322,10 @@ fixtures/        recorded HTML/JSON from real sources (tests never hit the netwo
 - **geocode_cache** — permanent per-address cache (negative results included) so
   no address is ever geocoded twice.
 - **duplicate_groups** — group id, confidence, reasons, members, primary.
+- **listing_enrichment** — optional AI layer, one row per listing: `model`,
+  `schemaVersion`, `contentHashAtEnrichment` (drives cheap re-runs), `summary`,
+  `aiRiskLevel`, the full validated `data` JSON, token counts + `costUsd`, and
+  `error`. Entirely separate from the deterministic tables; safe to drop.
 
 ## Sources
 
@@ -405,10 +487,13 @@ protected-class proxies.
   range, beds, laundry, neighborhoods, dogs/cats, suspicious-only, show-hidden,
   show-gone. Click a card or marker for the detail modal: gallery, badge row,
   user-status actions (saved/maybe/contacted/toured/applied/not-a-fit/hidden/
-  suspicious), a **verify-before-acting callout**, suspicious-signal list,
-  facts grid with raw values on hover, description, amenities, duplicate
-  peers, full event history, source & contact block (source-level contact
-  inherited unless the listing overrides), and the original-listing button.
+  suspicious), a **verify-before-acting callout**, suspicious-signal list, an
+  optional **✦ AI notes** block (summary, verify-before-contacting, questions
+  for the landlord, AI risk second opinion + a "may be wrong" disclaimer — only
+  shown when the listing has been enriched), facts grid with raw values on
+  hover, description, amenities, duplicate peers, full event history, source &
+  contact block (source-level contact inherited unless the listing overrides),
+  and the original-listing button.
 - **Sources** (`/sources`) — per-source health: an overall status chip
   (PASS / PARTIAL / FAIL / SKIPPED / DISABLED / REFERENCE_ONLY / NEEDS_REVIEW,
   derived from the registry classification, the last verification verdict, and
@@ -441,7 +526,7 @@ parser without re-fetching anything.
 
 ## Tests
 
-`npm test` — 160+ tests, all offline (recorded fixtures in `fixtures/`):
+`npm test` — 177 tests, all offline (recorded fixtures in `fixtures/`):
 parsers, hashing, URL canonicalization, neighborhoods (including the
 South-San-Francisco trap), stale lifecycle + the failed/partial-run guard +
 the `--no-stale-updates` flag, dedupe signals with confidence tiers and
@@ -452,8 +537,11 @@ heuristics, saved-search matching, the digest (idempotent new-match reporting,
 price-drop and dropped-out detection, user-exclusion), geocode caching +
 fallback precision, price-history recording (baseline, changes, no redundant
 rows, unparseable prices), backfill idempotency (repeat runs: no duplicates,
-firstSeenAt and history preserved), and the Playwright renderer (against a
-local data: URL — auto-skips if Chromium isn't installed). `npm run
+firstSeenAt and history preserved), the Playwright renderer (against a local
+data: URL — auto-skips if Chromium isn't installed), and the AI enrichment layer
+(schema parsing/validation, cost estimation, untrusted-input wrapping, and the
+hash/version-aware candidate selection + idempotent re-runs + cost-cap +
+failure-recording — all via an injected fake client, so no network). `npm run
 test:adapters` runs just the adapter fixture suites.
 
 ## Known limitations
@@ -507,9 +595,12 @@ test:adapters` runs just the adapter fixture suites.
    infrastructure is built and wired to `needsJavaScript`; only the parser
    (classic snowfolio for Structure, v2 for Gaetani) remains, to be written
    against live markup.
-3. **Claude enrichment layer** — the long-term direction, still deliberately
-   unbuilt: match explanations, amenity extraction from messy descriptions,
-   scam-signal reasoning, dedupe adjudication of medium/low-confidence groups,
-   and "questions to ask the landlord", operating on `rawPayload` / events /
-   price history via a Managed Agent or scheduled workflow. This introduces the
-   Claude API (keys + per-call cost), so it needs an explicit go-ahead.
+3. **Claude enrichment layer** — ✅ built (see [AI enrichment](#ai-enrichment-optional)):
+   per-listing summary, amenity/pet/laundry extraction from messy descriptions,
+   "verify before contacting" + "questions for the landlord", and an AI risk
+   second opinion, all opt-in via `npm run enrich`. Natural follow-ons, still
+   unbuilt: match explanations in the digest ("matches except pet policy is
+   unknown"), AI adjudication of medium/low-confidence dedupe groups, and
+   surfacing enrichment in the card/list view (it's currently detail-only). Each
+   would reuse the same `EnrichmentClient` seam and stay clearly labeled and
+   non-authoritative.

@@ -3,6 +3,7 @@ import { and, desc, eq, ne } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import {
   duplicateGroups,
+  listingEnrichment,
   listingEvents,
   listings,
   priceHistory,
@@ -12,9 +13,11 @@ import {
 } from "@/db/schema";
 import { computeBadges } from "@/lib/badges";
 import { resolveContact } from "@/core/contact";
+import type { Enrichment } from "@/enrich/schema";
 import type {
   DuplicateGroupInfo,
   DuplicatePeer,
+  EnrichmentPayload,
   ListingDetailResponse,
   PriceChangeInfo,
 } from "@/lib/api-types";
@@ -101,6 +104,29 @@ export async function GET(
     .where(eq(priceHistory.listingId, id))
     .orderBy(desc(priceHistory.observedAt))
     .all();
+
+  const enrichRow = db
+    .select()
+    .from(listingEnrichment)
+    .where(eq(listingEnrichment.listingId, id))
+    .get();
+  let enrichment: EnrichmentPayload | null = null;
+  if (enrichRow && enrichRow.data) {
+    const d = enrichRow.data as Enrichment;
+    enrichment = {
+      model: enrichRow.model,
+      enrichedAt: enrichRow.enrichedAt,
+      summary: enrichRow.summary,
+      aiRiskLevel: (enrichRow.aiRiskLevel as EnrichmentPayload["aiRiskLevel"]) ?? null,
+      amenities: d.amenities ?? [],
+      laundry: d.laundry ?? null,
+      parking: d.parking ?? null,
+      utilitiesIncluded: d.utilitiesIncluded ?? [],
+      verifyBeforeContacting: d.verifyBeforeContacting ?? [],
+      questionsForLandlord: d.questionsForLandlord ?? [],
+      riskReasons: d.riskReasons ?? [],
+    };
+  }
 
   const priceEvent = events.find(
     (e) => e.eventType === "price_change" && e.oldValue && e.newValue,
@@ -236,6 +262,7 @@ export async function GET(
       priceEffectiveMonthly: h.priceEffectiveMonthly,
       concessionsRaw: h.concessionsRaw,
     })),
+    enrichment,
   };
   return NextResponse.json(body);
 }
