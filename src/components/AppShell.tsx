@@ -300,9 +300,9 @@ export function AppShell() {
         />
       </div>
 
-      {/* Floating command bar */}
-      <div className="pointer-events-none absolute top-3 right-[404px] left-3 z-20 flex justify-center max-lg:right-3">
-        <div className="pointer-events-auto w-full max-w-[820px]">
+      {/* Floating command module — compact, pinned top-left, never covers map center */}
+      <div className="pointer-events-none absolute top-3 left-3 z-20 w-[min(560px,calc(100%-1.5rem))]">
+        <div className="pointer-events-auto">
           <SearchBar
             query={query}
             onQueryChange={setQuery}

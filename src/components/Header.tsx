@@ -10,36 +10,48 @@ export function Header() {
     return (
       <Link
         href={href}
-        className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${
-          active
-            ? "bg-ink text-paper"
-            : "text-muted hover:bg-line/60 hover:text-ink"
+        aria-current={active ? "page" : undefined}
+        className={`relative px-2.5 py-1 text-[12px] font-medium tracking-tight transition-colors ${
+          active ? "text-ink" : "text-faint hover:text-muted"
         }`}
       >
         {label}
+        {active && (
+          <span className="absolute inset-x-1.5 -bottom-[7px] h-px bg-accent" />
+        )}
       </Link>
     );
   };
 
   return (
-    <header className="z-30 flex h-12 shrink-0 items-center gap-5 border-b border-line/60 bg-paper/85 px-4 backdrop-blur-md">
-      <div className="flex items-center gap-2.5">
-        <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-accent to-accent-deep font-display text-[15px] font-bold text-white shadow-sm">
-          A
+    <header
+      className="z-30 flex h-11 shrink-0 items-center gap-4 border-b border-line bg-paper px-3.5"
+      style={{ paddingTop: "max(0px, env(safe-area-inset-top))" }}
+    >
+      <div className="flex items-center gap-2">
+        {/* Logo mark: a precise radar tick, not a gradient blob. */}
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+          <circle cx="12" cy="12" r="9.2" stroke="var(--color-line-strong)" strokeWidth="1.4" />
+          <circle cx="12" cy="12" r="4.4" stroke="var(--color-line-strong)" strokeWidth="1.4" />
+          <path d="M12 12 L12 3.2" stroke="var(--color-accent)" strokeWidth="1.6" strokeLinecap="round" />
+          <circle cx="12" cy="12" r="1.5" fill="var(--color-accent)" />
+        </svg>
+        <span className="text-[13px] font-semibold tracking-[-0.01em] text-ink">
+          Apt Scout
         </span>
-        <span className="font-display text-[22px] font-semibold tracking-tight text-ink">
-          Apt
-        </span>
-        <span className="hidden self-center text-[13px] text-muted sm:block">
-          San Francisco apartment scout
+        <span className="hidden font-mono text-[10px] tracking-[0.14em] text-faint uppercase sm:inline">
+          SF rental radar
         </span>
       </div>
-      <nav className="flex items-center gap-1.5">
+
+      <nav className="flex items-center gap-1">
         {tab("/", "Map")}
         {tab("/sources", "Sources")}
       </nav>
-      <div className="ml-auto hidden text-[12px] text-faint md:block">
-        Personal research tool — always verify details with the original listing.
+
+      <div className="ml-auto hidden items-center gap-1.5 font-mono text-[10px] tracking-[0.12em] text-faint uppercase md:flex">
+        <span className="h-1.5 w-1.5 rounded-full bg-good/80" />
+        Verify with source · personal use
       </div>
     </header>
   );

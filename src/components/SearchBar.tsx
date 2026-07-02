@@ -3,31 +3,15 @@
 import { useEffect, useRef, useState } from "react";
 import type { SearchResponse } from "@/lib/api-types";
 
-/**
- * Minimal Web Speech API typings (not in lib.dom by default). Chrome exposes
- * webkitSpeechRecognition; Safari 14.1+ also uses the webkit-prefixed
- * constructor (behind Siri/Dictation being enabled), so the same path covers
- * both. Everything is feature-detected — no mic, no button.
- */
-interface SpeechAlternative {
-  transcript: string;
-}
-interface SpeechResult {
-  0: SpeechAlternative;
-  isFinal: boolean;
-}
-interface SpeechEvent {
-  results: ArrayLike<SpeechResult>;
-}
+/** Web Speech API typings (webkit-prefixed; feature-detected). */
+interface SpeechAlt { transcript: string }
+interface SpeechResult { 0: SpeechAlt; isFinal: boolean }
+interface SpeechEvent { results: ArrayLike<SpeechResult> }
 interface SpeechRecognitionLike {
-  lang: string;
-  interimResults: boolean;
-  continuous: boolean;
+  lang: string; interimResults: boolean; continuous: boolean;
   onresult: ((e: SpeechEvent) => void) | null;
-  onend: (() => void) | null;
-  onerror: (() => void) | null;
-  start(): void;
-  stop(): void;
+  onend: (() => void) | null; onerror: (() => void) | null;
+  start(): void; stop(): void;
 }
 type SpeechRecognitionCtor = new () => SpeechRecognitionLike;
 
@@ -43,9 +27,16 @@ function getSpeechCtor(): SpeechRecognitionCtor | null {
 export type LocationStatus = "idle" | "prompting" | "granted" | "denied" | "unavailable";
 
 const RADII = [1, 2, 5, 10, 25];
+const PLACEHOLDER = "1BR under $3,200 · dog-friendly · in-unit laundry · Lower Haight";
 
-const PLACEHOLDER =
-  "Describe your ideal place — “studio with sunny bay windows within a 5-min walk to a park, in the Marina, in-unit laundry and hardwood floors”";
+function Crosshair({ className = "" }: { className?: string }) {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" className={className} aria-hidden>
+      <circle cx="12" cy="12" r="6.5" stroke="currentColor" strokeWidth="2" />
+      <path d="M12 1v4M12 19v4M1 12h4M19 12h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
 
 export function SearchBar({
   query,
@@ -88,32 +79,20 @@ export function SearchBar({
   const baseRef = useRef("");
 
   useEffect(() => {
-    // Feature-detect after mount so the mic button doesn't cause an SSR/client
-    // hydration mismatch (window is absent during server render).
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setMicSupported(getSpeechCtor() !== null);
     return () => {
-      try {
-        recRef.current?.stop();
-      } catch {
-        /* Safari can throw if recognition never started */
-      }
+      try { recRef.current?.stop(); } catch { /* Safari may throw if never started */ }
     };
   }, []);
 
   const toggleMic = () => {
     if (listening) {
-      try {
-        recRef.current?.stop();
-      } catch {
-        setListening(false);
-      }
+      try { recRef.current?.stop(); } catch { setListening(false); }
       return;
     }
     const Ctor = getSpeechCtor();
     if (!Ctor) return;
-    // Safari is stricter than Chrome here: construction or start() can throw
-    // (e.g. dictation disabled), and must happen inside this user gesture.
     try {
       const rec = new Ctor();
       rec.lang = "en-US";
@@ -144,170 +123,162 @@ export function SearchBar({
   };
 
   const hasSearch = search != null;
+  const locGranted = locationStatus === "granted" && location != null;
 
   return (
-    <div className="flex flex-col gap-2.5 rounded-[26px] border border-white/10 bg-surface/75 px-3.5 pt-3 pb-2.5 shadow-2xl ring-1 ring-black/40 backdrop-blur-xl">
-      {/* The one big box */}
+    <div className="flex flex-col overflow-hidden rounded-md border border-line bg-surface/95 shadow-[0_8px_28px_rgba(0,0,0,0.45)] backdrop-blur-sm">
+      {/* Command line */}
       <div
-        className={`relative rounded-[22px] p-[1.5px] transition-shadow duration-300 ${
-          searching
-            ? "animate-glow bg-gradient-to-r from-accent/50 via-warn/40 to-accent/50"
-            : "bg-gradient-to-r from-line via-line to-line focus-within:from-accent/45 focus-within:via-accent/25 focus-within:to-accent/45"
+        className={`flex items-start gap-2 border-b px-2.5 py-2 transition-colors ${
+          searching ? "border-accent/40" : "border-transparent focus-within:border-line"
         }`}
       >
-        <div className="relative rounded-[21px] bg-surface">
-          <textarea
-            value={query}
-            onChange={(e) => onQueryChange(e.target.value)}
-            onKeyDown={onKeyDown}
-            placeholder={PLACEHOLDER}
-            rows={2}
-            className="w-full resize-none rounded-[21px] bg-transparent px-5 py-3.5 pr-32 text-[15px] leading-relaxed outline-none placeholder:text-faint/90"
-          />
-          <div className="absolute top-1/2 right-3 flex -translate-y-1/2 items-center gap-1.5">
-            {micSupported && (
-              <button
-                type="button"
-                onClick={toggleMic}
-                title={listening ? "Stop listening" : "Speak your search"}
-                aria-label="Voice search"
-                aria-pressed={listening}
-                className={`flex h-10 w-10 items-center justify-center rounded-full border transition-all ${
-                  listening
-                    ? "animate-glow border-accent bg-accent text-white"
-                    : "border-line bg-surface text-muted hover:border-accent/50 hover:text-accent"
-                }`}
-              >
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                  <rect x="9" y="2" width="6" height="12" rx="3" />
-                  <path d="M5 10a7 7 0 0 0 14 0M12 17v5" />
-                </svg>
-              </button>
-            )}
+        <span
+          aria-hidden
+          className={`mt-[7px] font-mono text-[13px] leading-none ${searching ? "scan-text" : "text-accent"}`}
+        >
+          ›
+        </span>
+        <textarea
+          value={query}
+          onChange={(e) => onQueryChange(e.target.value)}
+          onKeyDown={onKeyDown}
+          placeholder={PLACEHOLDER}
+          rows={1}
+          spellCheck={false}
+          className="max-h-24 min-h-[22px] flex-1 resize-none bg-transparent py-1 text-[13.5px] leading-snug text-ink outline-none placeholder:text-faint"
+        />
+        <div className="flex shrink-0 items-center gap-1.5">
+          {micSupported && (
             <button
               type="button"
-              onClick={onSearch}
-              disabled={searching || !query.trim()}
-              className="flex h-10 items-center gap-1.5 rounded-full bg-gradient-to-b from-accent to-accent-deep px-5 text-[13.5px] font-semibold text-white shadow-sm transition-all hover:shadow-md active:scale-[0.98] disabled:opacity-40 disabled:shadow-none"
+              onClick={toggleMic}
+              title={listening ? "Stop dictation" : "Dictate search"}
+              aria-label="Voice search"
+              aria-pressed={listening}
+              className={`flex h-7 w-7 items-center justify-center rounded border transition-colors ${
+                listening
+                  ? "soft-pulse border-accent bg-accent/12 text-accent"
+                  : "border-line text-faint hover:border-line-strong hover:text-muted"
+              }`}
             >
-              {searching ? (
-                <>
-                  <span className="flex items-end gap-[3px]" aria-hidden>
-                    <span className="thinking-dot h-1 w-1 rounded-full bg-white" />
-                    <span className="thinking-dot h-1 w-1 rounded-full bg-white" style={{ animationDelay: "0.15s" }} />
-                    <span className="thinking-dot h-1 w-1 rounded-full bg-white" style={{ animationDelay: "0.3s" }} />
-                  </span>
-                  Matching
-                </>
-              ) : (
-                <>
-                  <span aria-hidden>✦</span> Search
-                </>
-              )}
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <rect x="9" y="2" width="6" height="12" rx="3" />
+                <path d="M5 10a7 7 0 0 0 14 0M12 17v5" />
+              </svg>
             </button>
-          </div>
+          )}
+          <button
+            type="button"
+            onClick={onSearch}
+            disabled={searching || !query.trim()}
+            className="flex h-7 items-center gap-1.5 rounded bg-accent px-3 font-mono text-[11px] font-semibold tracking-[0.08em] text-paper uppercase transition-colors hover:bg-accent-deep disabled:cursor-not-allowed disabled:bg-line disabled:text-faint"
+          >
+            {searching ? (
+              <span className="flex items-end gap-[2px]" aria-hidden>
+                <span className="thinking-dot h-[3px] w-[3px] rounded-full bg-paper" />
+                <span className="thinking-dot h-[3px] w-[3px] rounded-full bg-paper" style={{ animationDelay: "0.15s" }} />
+                <span className="thinking-dot h-[3px] w-[3px] rounded-full bg-paper" style={{ animationDelay: "0.3s" }} />
+              </span>
+            ) : (
+              "Search"
+            )}
+          </button>
         </div>
       </div>
 
-      {/* Controls row */}
-      <div className="flex flex-wrap items-center gap-2 text-[12px]">
+      {/* Status / controls line — mono, tactical */}
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 px-2.5 py-1.5 font-mono text-[10.5px] tracking-[0.04em]">
         {selectedHood && (
           <button
             type="button"
             onClick={onClearHood}
-            className="animate-pop-in inline-flex items-center gap-1.5 rounded-full border border-[#3fd0ff]/40 bg-[#3fd0ff]/10 px-2.5 py-1 font-mono text-[11px] font-semibold tracking-[0.12em] text-[#7ce4ff] uppercase transition-colors hover:bg-[#3fd0ff]/20"
-            title="Isolated neighborhood — click to release"
+            className="inline-flex items-center gap-1 rounded-sm border border-accent/40 bg-accent/10 px-1.5 py-0.5 font-semibold tracking-[0.1em] text-accent uppercase transition-colors hover:bg-accent/20"
+            title="Isolated neighborhood — clear"
           >
-            ▣ {selectedHood} <span aria-hidden>✕</span>
+            ▣ {selectedHood} <span aria-hidden className="text-accent/70">✕</span>
           </button>
         )}
-        {locationStatus === "granted" && location ? (
-          <span
-            className="inline-flex items-center gap-1 rounded-full border border-good/30 bg-good/10 px-2.5 py-1 text-good"
-            title="Using your location as the search center"
-          >
-            📍 Near you
+        {locGranted ? (
+          <span className="inline-flex items-center gap-1.5 text-good" title="Search anchored to your location">
+            <Crosshair /> LOCK
           </span>
         ) : (
           <button
             type="button"
             onClick={onRequestLocation}
             disabled={locationStatus === "prompting"}
-            className="inline-flex items-center gap-1 rounded-full border border-line bg-surface px-2.5 py-1 text-muted transition-colors hover:border-faint hover:text-ink"
-            title={
-              locationStatus === "denied"
-                ? "Location was blocked — enable it in your browser to search by distance"
-                : "Use your location to search within a radius"
-            }
+            className="inline-flex items-center gap-1.5 text-faint transition-colors hover:text-muted"
+            title={locationStatus === "denied" ? "Location blocked — using SF centerpoint" : "Anchor search to your location"}
           >
-            📍 {locationStatus === "prompting" ? "Locating…" : locationStatus === "denied" ? "Location blocked" : "Use my location"}
+            <Crosshair />
+            {locationStatus === "prompting" ? "LOCATING" : locationStatus === "denied" ? "SF CENTER" : "SET LOCATION"}
           </button>
         )}
         <label className="inline-flex items-center gap-1 text-faint">
-          within
+          <span>R</span>
           <select
             value={radiusMi}
             onChange={(e) => onRadiusChange(Number(e.target.value))}
-            disabled={locationStatus !== "granted"}
-            className="rounded-full border border-line bg-surface px-2 py-1 text-[12px] text-muted outline-none focus:border-faint disabled:opacity-50"
+            disabled={!locGranted}
+            className="rounded-sm border border-line bg-elevated px-1 py-0.5 text-muted outline-none focus:border-line-strong disabled:opacity-40"
           >
             {RADII.map((r) => (
-              <option key={r} value={r}>
-                {r} mi
-              </option>
+              <option key={r} value={r}>{r}mi</option>
             ))}
           </select>
         </label>
         <button
           type="button"
           onClick={onToggleHiddenGone}
-          className={`rounded-full border px-2.5 py-1 transition-colors ${
+          aria-pressed={showHiddenGone}
+          className={`rounded-sm border px-1.5 py-0.5 tracking-[0.08em] uppercase transition-colors ${
             showHiddenGone
-              ? "border-ink bg-ink text-paper"
-              : "border-line bg-surface text-muted hover:border-faint hover:text-ink"
+              ? "border-line-strong bg-elevated text-ink"
+              : "border-line text-faint hover:text-muted"
           }`}
-          title="Include hidden / not-a-fit / likely-unavailable listings"
+          title="Include hidden / not-a-fit / likely-unavailable"
         >
-          Show hidden &amp; gone
+          Hidden+Gone
         </button>
         {(hasSearch || query) && (
           <button
             type="button"
             onClick={onClear}
-            className="font-medium text-accent transition-colors hover:text-accent-deep"
+            className="tracking-[0.06em] text-accent uppercase transition-colors hover:text-accent-deep"
           >
             Clear
           </button>
         )}
+        <span className="ml-auto hidden text-faint/70 sm:inline">↵ run · ⇧↵ line</span>
       </div>
 
       {searchError && (
-        <p className="animate-fade-up rounded-xl border border-alert/25 bg-alert/8 px-3.5 py-2 text-[12.5px] text-alert">
+        <p className="animate-fade-up border-t border-alert/25 bg-alert/8 px-2.5 py-1.5 text-[11.5px] text-alert">
           {searchError}
         </p>
       )}
 
       {hasSearch && !searchError && (
-        <div className="animate-fade-up flex flex-col gap-1.5">
+        <div className="animate-fade-up flex flex-col gap-1.5 border-t border-line px-2.5 py-2">
           {search!.interpretation && (
-            <p className="text-[12.5px] leading-relaxed text-muted">
-              <span className="font-medium text-faint">Understood as</span>{" "}
+            <p className="text-[11.5px] leading-relaxed text-muted">
+              <span className="font-mono text-[9.5px] tracking-[0.14em] text-faint uppercase">Parsed</span>{" "}
               {search!.interpretation}
             </p>
           )}
           {search!.intentChips.length > 0 && (
-            <div className="flex flex-wrap items-center gap-1.5">
-              {search!.intentChips.map((chip, i) => (
+            <div className="flex flex-wrap items-center gap-1">
+              {search!.intentChips.map((chip) => (
                 <span
                   key={chip}
-                  className="animate-pop-in rounded-full border border-accent/25 bg-accent-soft/50 px-2.5 py-0.5 text-[11.5px] font-medium text-accent-deep"
-                  style={{ animationDelay: `${i * 55}ms` }}
+                  className="rounded-sm border border-line-strong bg-elevated px-1.5 py-0.5 font-mono text-[10px] tracking-[0.02em] text-muted"
                 >
                   {chip}
                 </span>
               ))}
-              <span className="self-center pl-1 text-[10.5px] text-faint">
-                via {search!.model}
+              <span className="pl-1 font-mono text-[9.5px] tracking-[0.08em] text-faint/70">
+                {search!.model}
               </span>
             </div>
           )}
