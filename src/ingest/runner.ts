@@ -14,6 +14,8 @@ import {
 import { getAdapter } from "@/adapters/registry";
 import type { KnownListing } from "@/adapters/types";
 import { PoliteFetcher } from "@/core/fetcher";
+import { validateAdapterResult } from "@/core/contract";
+import { parsePrice } from "@/core/normalize";
 import { checkRobots } from "@/core/robots";
 import { advanceStaleStatus, shouldProcessStaleUpdates } from "@/core/stale";
 import { detectDuplicates, type DupeCandidate } from "@/core/dedupe";
@@ -44,6 +46,10 @@ export interface RunOptions {
   log?: (message: string) => void;
   /** skip the live robots.txt check (tests) */
   skipRobotsCheck?: boolean;
+  /** raise/lower the per-run detail-page cap (backfill uses a higher budget) */
+  detailBudgetOverride?: number;
+  /** false disables missing/stale updates entirely for this run (backfill safety flag) */
+  staleUpdates?: boolean;
 }
 
 export interface RunSummary {
@@ -55,9 +61,12 @@ export interface RunSummary {
   listingsFound: number;
   newListings: number;
   changedListings: number;
+  unchangedListings: number;
   priceChangedListings: number;
+  priceHistoryEntries: number;
   missingListings: number;
   suspectedDuplicates: number;
+  duplicateGroupsTouched: number;
   suspectedScams: number;
   pagesVisited: number;
   detailPagesVisited: number;
@@ -85,9 +94,12 @@ function skippedSummary(
     listingsFound: 0,
     newListings: 0,
     changedListings: 0,
+    unchangedListings: 0,
     priceChangedListings: 0,
+    priceHistoryEntries: 0,
     missingListings: 0,
     suspectedDuplicates: 0,
+    duplicateGroupsTouched: 0,
     suspectedScams: 0,
     pagesVisited: 0,
     detailPagesVisited: 0,
@@ -206,9 +218,19 @@ export async function runSource(
   };
 
   // --- adapter ---
+  const effectiveSource =
+    opts.detailBudgetOverride != null
+      ? { ...source, maxDetailPagesPerRun: opts.detailBudgetOverride }
+      : source;
   let result;
   try {
-    result = await adapter.run({ source, fetcher, knownListings, log, saveDebug });
+    result = await adapter.run({
+      source: effectiveSource,
+      fetcher,
+      knownListings,
+      log,
+      saveDebug,
+    });
   } catch (err) {
     result = {
       listings: [],
@@ -226,6 +248,12 @@ export async function runSource(
   }
   const warnings = [...result.warnings];
 
+  // --- adapter contract validation (structural guarantees) ---
+  const contract = validateAdapterResult(result);
+  for (const issue of contract.issues) {
+    warnings.push(`contract ${issue.level} [${issue.code}]: ${issue.message}`);
+  }
+
   // --- decide run status BEFORE any stale processing ---
   let status: RunStatus;
   if (result.fatalError) {
@@ -237,6 +265,11 @@ export async function runSource(
     );
   } else if (result.paginationCompleted === false) {
     status = "partial";
+  } else if (!contract.ok) {
+    status = "partial";
+    warnings.push(
+      "adapter contract errors present — run treated as partial; missing-listing processing skipped",
+    );
   } else if (
     result.detailPagesVisited >= 5 &&
     result.detailFetchFailures / result.detailPagesVisited > 0.3
@@ -252,7 +285,9 @@ export async function runSource(
   // --- upserts ---
   let newCount = 0;
   let changedCount = 0;
+  let unchangedCount = 0;
   let priceChangedCount = 0;
+  let priceHistoryCount = 0;
   const runListingIds: string[] = [];
   if (status !== "failed") {
     const now = nowIso();
@@ -262,7 +297,9 @@ export async function runSource(
         runListingIds.push(outcome.listingId);
         if (outcome.kind === "new") newCount++;
         else if (outcome.kind === "changed") changedCount++;
+        else unchangedCount++;
         if (outcome.priceChanged) priceChangedCount++;
+        if (outcome.priceHistoryRecorded) priceHistoryCount++;
       }
     });
   }
@@ -297,7 +334,12 @@ export async function runSource(
 
   // --- missing/stale processing (gated) ---
   let missingCount = 0;
-  const staleOk = shouldProcessStaleUpdates(status, result.paginationCompleted);
+  const staleAllowed = opts.staleUpdates !== false;
+  const staleOk =
+    staleAllowed && shouldProcessStaleUpdates(status, result.paginationCompleted);
+  if (!staleAllowed) {
+    warnings.push("missing-listing (stale) processing disabled by flag for this run");
+  }
   if (staleOk) {
     const now = nowIso();
     const missingRows = db
@@ -339,11 +381,11 @@ export async function runSource(
         missingCount++;
       }
     });
-  } else if (status !== "success") {
+  } else if (staleAllowed && status !== "success") {
     warnings.push(
       "missing-listing (stale) processing skipped: run was not fully successful",
     );
-  } else if (result.paginationCompleted !== true) {
+  } else if (staleAllowed && result.paginationCompleted !== true) {
     warnings.push(
       "missing-listing (stale) processing skipped: pagination completeness could not be verified",
     );
@@ -351,20 +393,30 @@ export async function runSource(
 
   // --- duplicate detection across all live listings (db-wide) ---
   let suspectedDuplicates = 0;
+  let duplicateGroupsTouched = 0;
   let crossNeighborhoodIds = new Set<string>();
   if (status !== "failed") {
     const candidates: DupeCandidate[] = db
       .select({
         id: listings.id,
         sourceId: listings.sourceId,
+        sourceListingId: listings.sourceListingId,
+        originalUrl: listings.originalUrl,
         title: listings.title,
         priceMonthly: listings.priceMonthly,
+        bedrooms: listings.bedrooms,
+        bathrooms: listings.bathrooms,
         neighborhood: listings.neighborhood,
         addressRaw: listings.addressRaw,
         addressNormalized: listings.addressNormalized,
         unitNumberPublic: listings.unitNumberPublic,
         photos: listings.photos,
         descriptionHash: listings.descriptionHash,
+        lastSeenAt: listings.lastSeenAt,
+        firstSeenAt: listings.firstSeenAt,
+        detailFetchedAt: listings.detailFetchedAt,
+        staleStatus: listings.staleStatus,
+        listingStatus: listings.listingStatus,
       })
       .from(listings)
       .where(
@@ -379,13 +431,29 @@ export async function runSource(
 
     const now = nowIso();
     const groupedIds = new Set<string>();
+    const currentGroupIds = new Set<string>();
     db.transaction((tx) => {
       for (const group of dedupe.groups) {
+        currentGroupIds.add(group.id);
         tx.insert(duplicateGroups)
-          .values({ id: group.id, reasons: group.reasons, createdAt: now, updatedAt: now })
+          .values({
+            id: group.id,
+            primaryListingId: group.primaryListingId,
+            confidence: group.confidence,
+            reasons: group.reasons,
+            listingIds: group.memberIds,
+            createdAt: now,
+            updatedAt: now,
+          })
           .onConflictDoUpdate({
             target: duplicateGroups.id,
-            set: { reasons: group.reasons, updatedAt: now },
+            set: {
+              primaryListingId: group.primaryListingId,
+              confidence: group.confidence,
+              reasons: group.reasons,
+              listingIds: group.memberIds,
+              updatedAt: now,
+            },
           })
           .run();
         for (const memberId of group.memberIds) groupedIds.add(memberId);
@@ -394,7 +462,7 @@ export async function runSource(
           .where(inArray(listings.id, group.memberIds))
           .run();
       }
-      // Clear group ids that no longer apply.
+      // Clear group ids that no longer apply and prune orphaned groups.
       const stillMarked = tx
         .select({ id: listings.id })
         .from(listings)
@@ -407,8 +475,17 @@ export async function runSource(
           .where(inArray(listings.id, toClear))
           .run();
       }
+      const existingGroups = tx.select({ id: duplicateGroups.id }).from(duplicateGroups).all();
+      const orphaned = existingGroups.map((g) => g.id).filter((id) => !currentGroupIds.has(id));
+      if (orphaned.length > 0) {
+        tx.delete(duplicateGroups).where(inArray(duplicateGroups.id, orphaned)).run();
+      }
     });
     suspectedDuplicates = runListingIds.filter((id) => groupedIds.has(id)).length;
+    const runIdSet = new Set(runListingIds);
+    duplicateGroupsTouched = dedupe.groups.filter((g) =>
+      g.memberIds.some((id) => runIdSet.has(id)),
+    ).length;
   }
 
   // --- scam / verify-carefully assessment for listings touched this run ---
@@ -432,6 +509,20 @@ export async function runSource(
     const now = nowIso();
     db.transaction((tx) => {
       for (const row of rows) {
+        // Card-vs-detail price disagreement: the raw card payload retains the
+        // search-result price; a large gap from the detail price is a
+        // data-inconsistency signal worth a second look.
+        let cardDetailPriceMismatch = false;
+        const payload = row.rawPayload as { card?: { priceRaw?: string | null } } | null;
+        const cardPrice = parsePrice(payload?.card?.priceRaw ?? null);
+        if (
+          cardPrice != null &&
+          row.priceMonthly != null &&
+          row.detailFetchedAt != null &&
+          Math.abs(cardPrice - row.priceMonthly) / Math.max(cardPrice, row.priceMonthly) > 0.25
+        ) {
+          cardDetailPriceMismatch = true;
+        }
         const assessment = assessListing(
           {
             title: row.title,
@@ -445,6 +536,7 @@ export async function runSource(
             longitude: row.longitude,
             photoCount: row.photos?.length ?? 0,
             descriptionSharedAcrossNeighborhoods: crossNeighborhoodIds.has(row.id),
+            cardDetailPriceMismatch,
           },
           baselines,
         );
@@ -517,6 +609,19 @@ export async function runSource(
     }
   }
 
+  // --- raw debug artifacts for failed/partial runs ---
+  if (status === "failed" || status === "partial") {
+    saveDebug("fetch-trace.json", JSON.stringify(fetcher.trace, null, 2));
+    saveDebug(
+      "normalized-listings.json",
+      JSON.stringify(
+        { warnings, contract: contract.issues, listings: result.listings },
+        null,
+        2,
+      ),
+    );
+  }
+
   // --- record the run ---
   const finishedAt = nowIso();
   db.insert(sourceRuns)
@@ -561,9 +666,12 @@ export async function runSource(
     listingsFound: result.listings.length,
     newListings: newCount,
     changedListings: changedCount,
+    unchangedListings: unchangedCount,
     priceChangedListings: priceChangedCount,
+    priceHistoryEntries: priceHistoryCount,
     missingListings: missingCount,
     suspectedDuplicates,
+    duplicateGroupsTouched,
     suspectedScams,
     pagesVisited: result.pagesVisited,
     detailPagesVisited: result.detailPagesVisited,
@@ -601,10 +709,13 @@ export function formatSummaryLine(s: RunSummary): string {
     `${s.listingsFound} listings found`,
     `${s.newListings} new`,
     `${s.changedListings} changed`,
+    `${s.unchangedListings} unchanged`,
   ];
   if (s.priceChangedListings > 0) parts.push(`${s.priceChangedListings} price changes`);
+  if (s.priceHistoryEntries > 0) parts.push(`${s.priceHistoryEntries} price-history entries`);
   if (s.missingListings > 0) parts.push(`${s.missingListings} newly missing`);
   if (s.suspectedDuplicates > 0) parts.push(`${s.suspectedDuplicates} suspected duplicates`);
+  if (s.duplicateGroupsTouched > 0) parts.push(`${s.duplicateGroupsTouched} dupe groups`);
   if (s.suspectedScams > 0) parts.push(`${s.suspectedScams} verify-carefully`);
   parts.push(
     `${s.pagesVisited}p/${s.detailPagesVisited}d`,

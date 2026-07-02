@@ -22,14 +22,38 @@ export interface FetchResult {
   error: string | null;
 }
 
+export interface FetchTraceEntry {
+  url: string;
+  method: string;
+  status: number | null;
+  elapsedMs: number;
+  bytes: number;
+  error: string | null;
+  at: string;
+}
+
+/**
+ * What adapters actually depend on. PoliteFetcher is the live implementation;
+ * verification uses a fixture-backed implementation to run adapters offline.
+ */
+export interface TextFetcher {
+  requestsMade: number;
+  trace: FetchTraceEntry[];
+  fetchText(
+    url: string,
+    init?: { method?: string; body?: string; headers?: Record<string, string> },
+  ): Promise<FetchResult>;
+}
+
 export const DEFAULT_USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-export class PoliteFetcher {
+export class PoliteFetcher implements TextFetcher {
   private lastRequestAt = 0;
   requestsMade = 0;
+  trace: FetchTraceEntry[] = [];
 
   constructor(private opts: FetcherOptions) {}
 
@@ -43,6 +67,15 @@ export class PoliteFetcher {
       await this.respectDelay(attempt);
       last = await this.attempt(url, init);
       this.requestsMade++;
+      this.trace.push({
+        url,
+        method: init?.method ?? "GET",
+        status: last.status,
+        elapsedMs: last.elapsedMs,
+        bytes: last.text.length,
+        error: last.error,
+        at: new Date().toISOString(),
+      });
       if (last.ok) return last;
       // Retry only transient failures; 4xx (except 429) will not improve.
       const retryable =

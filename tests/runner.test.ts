@@ -271,6 +271,167 @@ describe("ingestion runner", () => {
   });
 });
 
+describe("price history", () => {
+  let db: Db;
+  beforeEach(() => {
+    db = testDb();
+    seedStubSource(db);
+  });
+
+  it("records a baseline row on first sight and one row per change — never redundant rows", async () => {
+    const { priceHistory } = await import("@/db/schema");
+    stubSuccess([makeListing({ sourceListingId: "a1", priceMonthly: 3000, priceRaw: "$3,000" })]);
+    await runSource(db, "stub_src", OPTS);
+    expect(db.select().from(priceHistory).all()).toHaveLength(1);
+
+    // Unchanged re-run: no new rows.
+    stubSuccess([makeListing({ sourceListingId: "a1", priceMonthly: 3000, priceRaw: "$3,000" })]);
+    await runSource(db, "stub_src", OPTS);
+    expect(db.select().from(priceHistory).all()).toHaveLength(1);
+
+    // Price change: exactly one new row with raw text preserved.
+    stubSuccess([makeListing({ sourceListingId: "a1", priceMonthly: 2800, priceRaw: "$2,800/mo" })]);
+    const s = await runSource(db, "stub_src", OPTS);
+    expect(s.priceHistoryEntries).toBe(1);
+    const rows = db.select().from(priceHistory).all();
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => r.priceMonthly).sort()).toEqual([2800, 3000]);
+    expect(rows.find((r) => r.priceMonthly === 2800)?.priceRaw).toBe("$2,800/mo");
+  });
+
+  it("handles unparseable prices without fabricating values", async () => {
+    const { priceHistory } = await import("@/db/schema");
+    const callForPrice = makeListing({ sourceListingId: "a1" });
+    callForPrice.priceMonthly = null;
+    callForPrice.priceRaw = "Call for price";
+    stubSuccess([callForPrice]);
+    await runSource(db, "stub_src", OPTS);
+    const rows = db.select().from(priceHistory).all();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].priceMonthly).toBeNull();
+    expect(rows[0].priceRaw).toBe("Call for price");
+  });
+
+  it("records effective-price changes when concessions appear", async () => {
+    const { priceHistory } = await import("@/db/schema");
+    stubSuccess([makeListing({ sourceListingId: "a1", priceMonthly: 3600 })]);
+    await runSource(db, "stub_src", OPTS);
+    stubSuccess([
+      makeListing({
+        sourceListingId: "a1",
+        priceMonthly: 3600,
+        priceEffectiveMonthly: 3300,
+        concessionsRaw: "1 month free on 12-month lease",
+      }),
+    ]);
+    await runSource(db, "stub_src", OPTS);
+    const rows = db.select().from(priceHistory).all();
+    expect(rows).toHaveLength(2);
+    const latest = rows.find((r) => r.priceEffectiveMonthly === 3300);
+    expect(latest?.concessionsRaw).toContain("1 month free");
+  });
+});
+
+describe("backfill idempotency", () => {
+  it("re-running identical data changes nothing: no dupes, firstSeenAt and history preserved", async () => {
+    const db = testDb();
+    seedStubSource(db);
+    const { priceHistory, listingEvents: events } = await import("@/db/schema");
+
+    const data = () => [
+      makeListing({ sourceListingId: "a1", priceMonthly: 3000 }),
+      makeListing({ sourceListingId: "a2", priceMonthly: 2500 }),
+    ];
+    stubSuccess(data());
+    await runSource(db, "stub_src", OPTS);
+    const firstPass = db.select().from(listings).all();
+    const firstSeenById = new Map(firstPass.map((l) => [l.sourceListingId, l.firstSeenAt]));
+
+    for (let i = 0; i < 3; i++) {
+      stubSuccess(data());
+      const s = await runSource(db, "stub_src", OPTS);
+      expect(s.newListings).toBe(0);
+      expect(s.changedListings).toBe(0);
+      expect(s.unchangedListings).toBe(2);
+      expect(s.missingListings).toBe(0);
+    }
+
+    const rows = db.select().from(listings).all();
+    expect(rows).toHaveLength(2); // no duplicates created
+    for (const row of rows) {
+      expect(row.firstSeenAt).toBe(firstSeenById.get(row.sourceListingId));
+      expect(row.staleStatus).toBe("active");
+    }
+    expect(db.select().from(priceHistory).all()).toHaveLength(2); // baselines only
+    expect(
+      db.select().from(events).all().filter((e) => e.eventType === "price_change"),
+    ).toHaveLength(0);
+  });
+
+  it("staleUpdates:false blocks missing-marking even on a complete successful run", async () => {
+    const db = testDb();
+    seedStubSource(db);
+    stubSuccess([makeListing({ sourceListingId: "a1" }), makeListing({ sourceListingId: "a2" })]);
+    await runSource(db, "stub_src", OPTS);
+
+    stubSuccess([makeListing({ sourceListingId: "a1" })]); // a2 absent
+    const s = await runSource(db, "stub_src", { ...OPTS, staleUpdates: false });
+    expect(s.staleProcessed).toBe(false);
+    expect(s.warnings.join(" ")).toContain("disabled by flag");
+    const a2 = db.select().from(listings).where(eq(listings.sourceListingId, "a2")).get();
+    expect(a2?.staleStatus).toBe("active");
+  });
+});
+
+describe("duplicate group persistence", () => {
+  it("stores confidence, members, and primary; prunes groups that dissolve", async () => {
+    const db = testDb();
+    seedStubSource(db);
+    seedStubSource(db, "stub_src_b");
+    const { duplicateGroups } = await import("@/db/schema");
+
+    stubSuccess([
+      makeListing({ sourceListingId: "a1", addressRaw: "1301 18th St", unitNumberPublic: "2" }),
+    ]);
+    await runSource(db, "stub_src", OPTS);
+    stubSuccess([
+      makeListing({
+        sourceListingId: "b1",
+        addressRaw: "1301 18th Street",
+        unitNumberPublic: "2",
+        title: "Different words entirely",
+        priceMonthly: 3100,
+        description: "Utterly different description text for the same physical apartment unit.",
+        photos: ["https://elsewhere.com/photo.jpg"],
+      }),
+    ]);
+    const s = await runSource(db, "stub_src_b", OPTS);
+    expect(s.duplicateGroupsTouched).toBe(1);
+
+    const groups = db.select().from(duplicateGroups).all();
+    expect(groups).toHaveLength(1);
+    expect(groups[0].confidence).toBe("high");
+    expect(groups[0].reasons).toContain("same_address_unit");
+    expect(groups[0].listingIds).toHaveLength(2);
+    expect(groups[0].primaryListingId).toBeTruthy();
+
+    // The duplicate disappears from source B -> after B's next complete run,
+    // dedupe re-evaluates db-wide. Marking b1 unavailable dissolves the group.
+    const { listings: listingsTable } = await import("@/db/schema");
+    db.update(listingsTable)
+      .set({ staleStatus: "likely_unavailable" })
+      .where(eq(listingsTable.sourceListingId, "b1"))
+      .run();
+    stubSuccess([
+      makeListing({ sourceListingId: "a1", addressRaw: "1301 18th St", unitNumberPublic: "2" }),
+    ]);
+    await runSource(db, "stub_src", OPTS);
+    expect(db.select().from(duplicateGroups).all()).toHaveLength(0);
+    const a1 = db.select().from(listingsTable).where(eq(listingsTable.sourceListingId, "a1")).get();
+    expect(a1?.duplicateGroupId).toBeNull();
+  });
+});
+
 describe("contact inheritance", () => {
   it("inherits source contact info unless the listing overrides it", () => {
     const source = {

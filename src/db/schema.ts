@@ -58,6 +58,17 @@ export const sources = sqliteTable("sources", {
   notes: text("notes"),
   parserVersion: integer("parser_version").notNull().default(1),
 
+  /**
+   * Registry classification from the phase-two audit:
+   * enabled_working | enabled_partial | disabled_reference_only |
+   * disabled_needs_adapter | disabled_blocked_or_not_practical |
+   * disabled_needs_review
+   */
+  registryStatus: text("registry_status").notNull().default("disabled_needs_review"),
+  lastVerificationStatus: text("last_verification_status"), // PASS | PARTIAL | FAIL | SKIPPED
+  lastVerificationAt: text("last_verification_at"),
+  lastVerificationSummary: text("last_verification_summary", { mode: "json" }),
+
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
@@ -114,6 +125,8 @@ export const listings = sqliteTable(
     sourceSystem: text("source_system").notNull(),
     sourceListingId: text("source_listing_id").notNull(),
     originalUrl: text("original_url").notNull(),
+    /** originalUrl with tracking params stripped and format normalized (dedupe key) */
+    canonicalUrl: text("canonical_url"),
 
     title: text("title").notNull(),
     description: text("description"),
@@ -266,10 +279,40 @@ export const geocodeCache = sqliteTable("geocode_cache", {
 
 export const duplicateGroups = sqliteTable("duplicate_groups", {
   id: text("id").primaryKey(),
+  /** the best record to represent the group (active, freshest, richest) */
+  primaryListingId: text("primary_listing_id"),
+  /** exact | high | medium | low — strongest signal in the group */
+  confidence: text("confidence").notNull().default("low"),
   reasons: text("reasons", { mode: "json" }).$type<string[]>(),
+  listingIds: text("listing_ids", { mode: "json" }).$type<string[]>(),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
+
+/**
+ * Structured price history: one row when a listing is first seen and one per
+ * observed change of price / effective price. listing_events stays the
+ * audit log; this table is the query-friendly history.
+ */
+export const priceHistory = sqliteTable(
+  "price_history",
+  {
+    id: text("id").primaryKey(),
+    listingId: text("listing_id")
+      .notNull()
+      .references(() => listings.id),
+    sourceRunId: text("source_run_id"),
+    observedAt: text("observed_at").notNull(),
+    priceRaw: text("price_raw"),
+    priceMonthly: real("price_monthly"),
+    priceEffectiveMonthly: real("price_effective_monthly"),
+    concessionsRaw: text("concessions_raw"),
+    depositRaw: text("deposit_raw"),
+  },
+  (t) => [index("price_history_listing_idx").on(t.listingId, t.observedAt)],
+);
+
+export type PriceHistoryRow = typeof priceHistory.$inferSelect;
 
 export type SourceRow = typeof sources.$inferSelect;
 export type NewSourceRow = typeof sources.$inferInsert;

@@ -9,10 +9,13 @@ everywhere, never republishes data publicly, never contacts anyone on your
 behalf, and fetches politely at low frequency. It is a research/alerting tool
 for one person's apartment hunt — nothing more.
 
-> Phase one is the data pipeline + map UI. A future phase may add Claude-based
-> enrichment (daily summaries, match explanations, scam analysis); the schema
-> and runner were designed so an agent can operate on top of them, but nothing
-> AI-related is built or wired up yet.
+> Phase one built the data pipeline + map UI. Phase two hardened it: adapter
+> verification commands, an idempotent backfill, confidence-scored dedupe,
+> canonical URLs, structured price history, and a source-health dashboard that
+> makes reliability obvious. A future phase may add Claude-based enrichment
+> (daily summaries, match explanations, scam analysis); the schema and runner
+> were designed so an agent can operate on top of them, but nothing AI-related
+> is built or wired up yet.
 
 ---
 
@@ -50,10 +53,52 @@ first use. `data/` is gitignored.
 | `npm run ingest -- --all` | run all enabled sources, print a per-source summary |
 | `npm run ingest -- --source craigslist_sf` | run one source (explicit id runs even if disabled) |
 | `npm run ingest -- --all --no-geocode` | skip network geocoding (neighborhood-centroid fallback still applies) |
-| `npm test` / `npm run test:watch` | vitest suite (~100 tests, fixture-based, no network) |
+| `npm run sources:verify` | verify every source **offline** against recorded fixtures (PASS/PARTIAL/FAIL/SKIPPED); flags: `--source <id>`, `--enabled-only`, `--json`, `--dry-run` (don't persist the verdict), `--live` |
+| `npm run sources:verify:live` | live verification of enabled sources — fetches the real sites (capped at 8 detail pages), never writes listings |
+| `npm run listings:backfill` | fetch ALL currently available listings from enabled sources with a raised detail budget (400/source); flags: `--source <id>`, `--no-stale-updates`, `--dry-run` (runs against a throwaway DB copy), `--max-detail <n>`, `--no-geocode` |
+| `npm run fixtures:refresh -- --source <id>` | re-record fixtures from the live source when its structure changes |
+| `npm test` / `npm run test:adapters` | full vitest suite / just the adapter fixture tests (all offline) |
 | `npm run typecheck` / `npm run lint` | strict TS + ESLint |
 | `npm run db:generate` | regenerate SQL migrations after editing `src/db/schema.ts` |
 | `npm run db:studio` | Drizzle Studio DB browser |
+
+## Verifying the pipeline
+
+`sources:verify` runs each adapter and judges the result against the **adapter
+contract** (`src/core/contract.ts`): every listing must have an original URL, a
+stable source listing id, and a title; no duplicate URLs/ids within a run;
+coverage of price/location/photos is measured and low coverage becomes a
+warning. Verdicts:
+
+- **PASS** — no errors, no quality warnings (by-design caveats like
+  Craigslist's static-page cap are listed as notes, not demotions)
+- **PARTIAL** — pagination incomplete, detail failures, or quality warnings
+- **FAIL** — fatal error, zero listings, contract violations, or robots.txt
+  disallowing the listing path
+- **SKIPPED** — disabled/reference-only/no adapter (with the registry reason)
+
+Verification **never writes listings**. Its only persistence is the verdict on
+the source row (shown on the dashboard) — suppress even that with `--dry-run`.
+Each report ends with a stale-safety line stating whether a real ingest that
+looked like this would be allowed to mark listings missing. The default mode is
+offline (fixtures); `--live` fetches the real sources with a hard cap of 8
+detail pages, reusing known-listing state so unchanged listings aren't
+re-fetched.
+
+## Backfill
+
+`listings:backfill` is the "get everything currently available" command: same
+pipeline as `ingest`, but with a raised detail-page budget (default 400) so
+detail backlogs converge in one run. It is **idempotent and safe to re-run**:
+
+- upserts key on (source, sourceListingId) — re-runs never create duplicates
+- `firstSeenAt` is set once and never reset; `lastSeenAt` refreshes
+- price history only gains rows when the observed price actually changed
+- nothing is ever deleted; failed/partial runs never mark listings missing
+- `--no-stale-updates` disables missing-marking entirely for extra safety
+- `--dry-run` copies the SQLite file, runs the complete pipeline against the
+  copy (so the printed numbers are exactly what a real run would do), then
+  deletes it — the real database provably untouched
 
 ## Architecture
 
@@ -113,9 +158,15 @@ fixtures/        recorded HTML from real sources (tests never hit the network)
   `detailExtractionCompleted`, `staleProcessed`, `warnings[]`, a full
   `paginationTrace` (per-page URL/status/count), `htmlHash`, and the raw-debug
   directory path.
-- **listing_events** — history: `first_seen`, `price_change` (old/new),
+- **listing_events** — audit log: `first_seen`, `price_change` (old/new),
   `content_change`, `stale_change`, `listing_status_change`, `reappeared`.
-  Price history is the sequence of `price_change` events.
+- **price_history** — structured history: one row at first sight (baseline,
+  even when the price is unparseable — the raw text is the observation) and
+  one per observed change of price or effective price, with `priceRaw`,
+  `priceMonthly`, `priceEffectiveMonthly`, `concessionsRaw`, `depositRaw`,
+  `observedAt`, and the `sourceRunId` that saw it. Unchanged re-runs add
+  nothing. The detail view renders it (current, previous, first-seen price);
+  cards badge recent drops/increases.
 - **user_listing_states** — your status per listing: `saved | hidden |
   contacted | not_a_fit | maybe | toured | applied | rented_elsewhere |
   suspicious` + note.
@@ -127,6 +178,23 @@ fixtures/        recorded HTML from real sources (tests never hit the network)
 
 ## Sources
 
+Every registry entry carries a `registryStatus` classification and a
+last-verification verdict (persisted by `sources:verify`, shown on the
+dashboard). Current state, verified live 2026-07-02:
+
+| Source | Registry status | Verification |
+| --- | --- | --- |
+| `craigslist_sf` | enabled_working | **PASS** (live + fixtures) |
+| `rentsfnow` | enabled_working | **PASS** (live + fixtures) |
+| `mock_sf` | disabled_reference_only (dev data) | runs via `seed:mock` |
+| `zillow_sf`, `apartments_com_sf` | disabled_reference_only | SKIPPED by design |
+| `structure_properties`, `gaetani_real_estate` | disabled_needs_adapter (AppFolio, JS-rendered; JSON endpoint 401s) | SKIPPED |
+| `mosser_living` | disabled_needs_adapter (WordPress, listings render client-side) | SKIPPED |
+| `brick_and_timber` | disabled_needs_adapter (rentbt.com — WordPress + RentCafe, JS browse page) | SKIPPED |
+| `trinity_sf` | disabled_needs_review (availability page not located; own SF link 404s) | SKIPPED |
+| `lapham_company` | disabled_blocked_or_not_practical (inventory is East Bay, not SF) | SKIPPED |
+| `ballast_investments` | disabled_needs_review (no public listing page identified) | SKIPPED |
+
 ### Working adapters
 
 | Source | Status | How it works |
@@ -135,22 +203,29 @@ fixtures/        recorded HTML from real sources (tests never hit the network)
 | **RentSFNow** (`rentsfnow`) | ✅ working, enabled | WordPress site whose own search UI POSTs to `/wp-admin/admin-ajax.php` (`action=wpas_ajax_load`); we send the same request filtered to San Francisco and get server-rendered cards with explicit `current_page`/`last_page` markers (trustworthy pagination) plus building-level coordinates from the embedded map-markers array. Unit detail pages add sqft, description, amenities, photo gallery. Detail fetches use the same only-new-or-changed rule. |
 | **Mock SF** (`mock_sf`) | ✅ dev-only, disabled | 28 realistic listings exercising every edge case (missing fields, broken photo URLs, no-coordinate listings, concessions, duplicates, a scam-pattern listing, pet/laundry/parking variety). `seed:mock` runs it through the real pipeline in two phases so price-drop events, the missing chain, and "new today" states are produced by real machinery, not fixtures. |
 
-### Seeded but disabled (investigate later)
+### Seeded but disabled (audited 2026-07-02)
 
 - **Zillow / Apartments.com** — reference-only by design (`permissionStatus:
   reference_only_do_not_fetch`). Heavy anti-automation; not a sane foundation
   for a polite personal scraper. Use manually in a browser to cross-check.
-- **Structure Properties / Gaetani** (AppFolio) — listing pages verified
-  reachable 2026-07-01, but cards render client-side and the widget JSON
-  endpoint returns 401 without the widget's session. Needs a Playwright-based
+- **Structure Properties / Gaetani** (AppFolio) — pages reachable, cards
+  render client-side, widget JSON endpoint 401s. Needs a Playwright-based
   `appfolio_js` adapter; one adapter would cover every AppFolio PM.
-- **Trinity SF / Mosser / Brick+Timber / Lapham / Ballast** — recorded with
-  best-known URLs and `needs_review`; not yet investigated. Notes say exactly
-  what is unverified.
+- **Mosser** — WordPress; SF page renders listings client-side only.
+- **Brick + Timber** — actually lives at rentbt.com (WordPress + RentCafe);
+  browse page is JS-rendered, listings CPT not exposed via wp-json. Real
+  per-listing pages exist at `/listing/<id>` — a future adapter candidate.
+- **Trinity SF** — homepage's own SF-apartments link 404s; availability page
+  not located yet.
+- **Lapham** — reachable and even server-rendered, but current inventory is
+  Oakland/Berkeley/Danville, not SF. Not practical for this tool.
+- **Ballast** — no public listing page identified.
 
 Every source records robots.txt status (re-checked weekly at run time),
 permission notes, JS requirements, and whether it looks safe for personal
 low-frequency fetching. These are **operational notes, not legal conclusions**.
+No new source was added in phase two: the policy is one addition only if it's
+straightforward, and every candidate needs JS work.
 
 ## How the pipeline behaves
 
@@ -184,15 +259,37 @@ count, notes), `totalListingsReportedBySource` when the source states one,
 sharp drops vs. the previous successful run, photo-extraction collapse, early
 stops, detail budget exhaustion). The sources dashboard shows all of it.
 
-### Duplicate detection
-Union-find grouping on four signals: same normalized address + unit; same
-title + price + neighborhood; shared photo identity **with matching unit
-numbers** (units in one building share building photos — that's a building, not
-a duplicate); same description hash unless unit numbers explicitly differ (PM
-sites reuse per-building boilerplate). Photo identity only works within a
-source (different sites host different copies) — cross-source photo matching
-would need perceptual hashing later. Groups are recomputed db-wide after each
-run; the detail view lists a listing's duplicate peers.
+### Duplicate detection (with confidence)
+Union-find grouping across sources on six signals, each carrying a
+confidence; a group's confidence is its strongest signal:
+
+| Signal | Confidence |
+| --- | --- |
+| same canonical original URL | exact |
+| same normalized address + unit number | high |
+| same address + price + beds + baths (units must not conflict) | high |
+| shared photo identity, matching units (same-source only) | medium |
+| same description hash (units must not conflict) | medium |
+| same title + price + neighborhood | low |
+
+Guards learned from live data: units in one building share building/amenity
+photos and per-building boilerplate descriptions, so photo links require
+matching unit numbers and description links are skipped when units explicitly
+differ. Same-source photo/description matches across *different* source
+listing ids are additionally tagged `repost_candidate` (the delete-and-repost
+pattern). Listings are grouped, **never merged** — each `duplicate_groups` row
+stores confidence, reasons, member ids, and a `primaryListingId` (the active,
+freshest, richest record). Groups are recomputed db-wide after every run and
+pruned when they dissolve. The detail view shows the confidence chip, the
+matching reasons, "also seen on <source>", and links to every peer.
+
+### Canonical URLs
+`src/core/urls.ts` canonicalizes original URLs for the exact-dupe signal:
+known tracking params (`utm_*`, `fbclid`, `gclid`, …) and fragments are
+stripped; scheme/host casing, default ports, duplicate slashes, and trailing
+slashes are normalized; identifying query params are **preserved** (sorted)
+so distinct listings addressed by query string never collapse together.
+Stored on each listing as `canonicalUrl`.
 
 ### Suspicious-listing flags
 Deterministic signals only, and deliberately non-accusatory ("verify
@@ -239,10 +336,23 @@ protected-class proxies.
   facts grid with raw values on hover, description, amenities, duplicate
   peers, full event history, source & contact block (source-level contact
   inherited unless the listing overrides), and the original-listing button.
-- **Sources** (`/sources`) — per-source health: enabled state, robots/permission
-  status, adapter type, JS/automation flags, listing counts, last-run summary
-  (status, counts, pages, pagination ✓/✗/?, missing-tracking ran or not,
-  warnings, errors) and run history.
+- **Sources** (`/sources`) — per-source health: an overall status chip
+  (PASS / PARTIAL / FAIL / SKIPPED / DISABLED / REFERENCE_ONLY / NEEDS_REVIEW,
+  derived from the registry classification, the last verification verdict, and
+  the last run), adapter-verification line with timestamp, last successful
+  run, listing counts with a trend arrow vs the previous run, robots/permission
+  status, JS/automation flags, last-run summary (counts incl. duplicates and
+  price changes, pages, pagination ✓/✗/?, missing-tracking ran or not,
+  warnings, errors), notes, and run history.
+
+### Raw debug artifacts
+
+Every run saves its first results page under `data/raw/<source>/<runId>/`.
+Failed and partial runs additionally save `fetch-trace.json` (every request
+with status/latency/bytes) and `normalized-listings.json` (the extracted
+listings plus contract issues and warnings), and the run row stores the
+pagination trace and the debug directory path — enough to diagnose a broken
+parser without re-fetching anything.
 
 ## Politeness & constraints
 
@@ -258,14 +368,17 @@ protected-class proxies.
 
 ## Tests
 
-`npm test` — ~100 tests, all offline (recorded fixtures in `fixtures/`):
-parsers, hashing, neighborhoods (including the South-San-Francisco trap),
-stale lifecycle + the failed/partial-run guard, dedupe signals + unit-number
-guards, scam heuristics, saved-search matching, geocode caching + fallback
-precision, both real adapters against recorded HTML, and end-to-end runner
-tests on an in-memory DB (insert / price change / missing chain / reappear /
-card-depth merge / cross-source duplicate / user statuses / contact
-inheritance).
+`npm test` — 130+ tests, all offline (recorded fixtures in `fixtures/`):
+parsers, hashing, URL canonicalization, neighborhoods (including the
+South-San-Francisco trap), stale lifecycle + the failed/partial-run guard +
+the `--no-stale-updates` flag, dedupe signals with confidence tiers and
+unit-number guards, repost tagging, primary-listing selection, the adapter
+contract, verification reports (PASS/PARTIAL/FAIL/SKIPPED, including
+fixture-mode verification of both real adapters end to end), scam heuristics,
+saved-search matching, geocode caching + fallback precision, price-history
+recording (baseline, changes, no redundant rows, unparseable prices), and
+backfill idempotency (repeat runs: no duplicates, firstSeenAt and history
+preserved). `npm run test:adapters` runs just the adapter fixture suites.
 
 ## Known limitations
 
@@ -273,15 +386,17 @@ inheritance).
   live postings beyond the cap are invisible, so CL missing-tracking is
   intentionally conservative (see lifecycle section). The JS search API could
   lift this later if an acceptable approach is verified.
-- **Detail backlog**: a first Craigslist run finds ~330 listings but fetches
-  only `maxDetailPagesPerRun` (50) detail pages; the rest are card-depth
-  (title/price/hood, neighborhood-level coords) until later runs catch up.
-  Raise the cap in `src/config/sources.ts` if you want faster convergence.
-- Cross-source duplicate detection relies on address/title/description —
+- **Daily-run detail backlog**: normal `ingest` runs cap Craigslist at 50
+  detail pages per run; `listings:backfill` (budget 400) converges the backlog
+  in one pass. Card-depth listings have title/price/hood with
+  neighborhood-level coordinates until their details are fetched.
+- Cross-source duplicate detection relies on URL/address/title/description —
   photo matching across sources needs perceptual hashing (future).
+- Near-identical (but not hash-identical) description matching is not
+  implemented; the description signal requires exact normalized-text equality.
 - Effective-price math assumes a 12-month term when amortizing "N weeks/months
   free" (raw concession text always preserved).
-- Single-user, no auth, local SQLite — by design for phase one.
+- Single-user, no auth, local SQLite — by design.
 - Scheduled runs aren't wired up; run manually or via cron/launchd on
   `npm run ingest -- --all`.
 
@@ -303,12 +418,15 @@ inheritance).
 
 ## Next steps
 
-1. **AppFolio adapter via Playwright** (`structure_properties`, `gaetani_real_estate`) —
-   one adapter unlocks many SF property managers.
-2. **Scheduled ingestion + saved-search alerts** — cron/launchd wrapper around
-   the runner, then a daily digest of new/changed matches using the existing
-   deterministic matcher.
+1. **Scheduled ingestion + saved-search digest** — cron/launchd wrapper around
+   `ingest --all` (the verified daily loop), then a digest of new/changed
+   matches using the existing deterministic matcher and verification reports
+   to catch silent breakage.
+2. **AppFolio adapter via Playwright** (`structure_properties`,
+   `gaetani_real_estate`; the same session likely unlocks Mosser and
+   rentbt.com) — the registry audit shows every remaining SF PM needs JS.
 3. **Claude enrichment layer** — the long-term direction: match explanations,
    amenity extraction from messy descriptions, scam-signal reasoning, dedupe
-   adjudication, and "questions to ask the landlord", operating on
-   `rawPayload`/events via a Managed Agent or scheduled workflow.
+   adjudication of medium/low-confidence groups, and "questions to ask the
+   landlord", operating on `rawPayload`/events/price history via a Managed
+   Agent or scheduled workflow.

@@ -3,6 +3,7 @@ import { sha256Hex } from "@/core/hash";
 import {
   computeEffectiveMonthly,
   extractConcessions,
+  extractUnitFromTitle,
   htmlToText,
   normalizeLaundry,
   normalizeParking,
@@ -304,6 +305,9 @@ function buildListing(
     priceMonthly: parsePrice(card.priceRaw),
     sourceNeighborhoodRaw: card.locationRaw,
     neighborhood: hood?.name ?? null,
+    // PM titles often carry the unit ("1520 Gough St - 304") even when the
+    // structured address omits it.
+    unitNumberPublic: extractUnitFromTitle(card.title),
     city: "San Francisco",
     state: "CA",
     listingType: "rent",
@@ -368,7 +372,7 @@ function buildListing(
     squareFeetRaw: detail.squareFeetRaw,
     squareFeet: parseSquareFeet(detail.squareFeetRaw),
     addressRaw: detail.addressRaw,
-    unitNumberPublic: detail.unitNumberPublic,
+    unitNumberPublic: detail.unitNumberPublic ?? base.unitNumberPublic,
     postalCode: detail.postalCode,
     latitude: detail.latitude,
     longitude: detail.longitude,

@@ -333,10 +333,29 @@ export function ListingDetail({
                   </div>
                 )}
 
-                {/* Duplicates */}
+                {/* Duplicates / reposts */}
                 {data.duplicates.length > 0 && (
-                  <div>
-                    <SectionTitle>Possible duplicates</SectionTitle>
+                  <div className="rounded-xl border border-line bg-paper/60 px-4 py-3.5">
+                    <SectionTitle>
+                      Possible duplicate / repost
+                      {data.duplicateGroup && (
+                        <span className="ml-2 normal-case">
+                          <ConfidenceChip confidence={data.duplicateGroup.confidence} />
+                        </span>
+                      )}
+                    </SectionTitle>
+                    {data.duplicateGroup && (
+                      <p className="mb-2 text-[12.5px] text-muted">
+                        {data.duplicateGroup.crossSource
+                          ? "Also seen on another source. "
+                          : "Another listing on the same source matches this one. "}
+                        Matched by:{" "}
+                        {data.duplicateGroup.reasons
+                          .map((r) => r.replaceAll("_", " "))
+                          .join(", ")}
+                        .
+                      </p>
+                    )}
                     <ul className="flex flex-col gap-1.5">
                       {data.duplicates.map((d) => (
                         <li key={d.id} className="text-[13px] text-muted">
@@ -348,7 +367,55 @@ export function ListingDetail({
                           >
                             {d.title}
                           </a>{" "}
-                          — {fmtMoney(d.priceMonthly)} on {d.sourceId}
+                          — {fmtMoney(d.priceMonthly)} on {d.sourceName}
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="mt-2 text-[11.5px] text-faint">
+                      Grouped automatically — listings are never merged. Verify on the
+                      original pages.
+                    </p>
+                  </div>
+                )}
+
+                {/* Price history */}
+                {data.priceHistory.length > 0 && (
+                  <div>
+                    <SectionTitle>Price history</SectionTitle>
+                    <ul className="flex flex-col gap-1">
+                      {data.priceHistory.map((h, i) => (
+                        <li key={h.observedAt + i} className="flex gap-2 text-[12.5px]">
+                          <span className="w-16 shrink-0 text-faint">
+                            {fmtDateShort(h.observedAt)}
+                          </span>
+                          <span className="text-muted">
+                            {h.priceMonthly != null ? (
+                              <span
+                                className={
+                                  i === 0 ? "font-medium text-ink" : undefined
+                                }
+                              >
+                                {fmtMoney(h.priceMonthly)}
+                              </span>
+                            ) : (
+                              <span title="price could not be parsed">
+                                {h.priceRaw ?? "no price"}
+                              </span>
+                            )}
+                            {h.priceEffectiveMonthly != null &&
+                              h.priceEffectiveMonthly !== h.priceMonthly && (
+                                <span className="text-good">
+                                  {" "}
+                                  ({fmtMoney(h.priceEffectiveMonthly)} effective)
+                                </span>
+                              )}
+                            {i === data.priceHistory.length - 1 && (
+                              <span className="text-faint"> · first seen price</span>
+                            )}
+                            {h.concessionsRaw && (
+                              <span className="text-faint"> · {h.concessionsRaw}</span>
+                            )}
+                          </span>
                         </li>
                       ))}
                     </ul>
@@ -452,6 +519,23 @@ export function ListingDetail({
         </div>
       </div>
     </div>
+  );
+}
+
+const CONFIDENCE_STYLES: Record<string, string> = {
+  exact: "bg-alert/10 text-alert",
+  high: "bg-warn/10 text-warn",
+  medium: "bg-line/60 text-muted",
+  low: "bg-line/40 text-faint",
+};
+
+function ConfidenceChip({ confidence }: { confidence: string }) {
+  return (
+    <span
+      className={`rounded-full px-2 py-0.5 text-[10.5px] font-semibold tracking-wide uppercase ${CONFIDENCE_STYLES[confidence] ?? CONFIDENCE_STYLES.low}`}
+    >
+      {confidence} confidence
+    </span>
   );
 }
 

@@ -4,10 +4,11 @@ import { getDb } from "@/db/client";
 import { listings, sourceRuns, sources } from "@/db/schema";
 import type {
   SourceDashboardEntry,
+  SourceOverallStatus,
   SourceRunPayload,
   SourcesResponse,
 } from "@/lib/api-types";
-import type { SourceRunRow } from "@/db/schema";
+import type { SourceRow, SourceRunRow } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +36,31 @@ function toRunPayload(run: SourceRunRow): SourceRunPayload {
   };
 }
 
+function deriveOverallStatus(
+  s: SourceRow,
+  lastRun: SourceRunRow | undefined,
+): SourceOverallStatus {
+  if (!s.enabled) {
+    if (s.registryStatus === "disabled_reference_only") return "REFERENCE_ONLY";
+    if (
+      s.registryStatus === "disabled_needs_review" ||
+      s.registryStatus === "disabled_needs_adapter"
+    ) {
+      return "NEEDS_REVIEW";
+    }
+    return "DISABLED";
+  }
+  // Enabled: prefer the explicit verification verdict, fall back to run status.
+  if (s.lastVerificationStatus === "PASS") return "PASS";
+  if (s.lastVerificationStatus === "PARTIAL") return "PARTIAL";
+  if (s.lastVerificationStatus === "FAIL") return "FAIL";
+  if (lastRun?.status === "success") return "PASS";
+  if (lastRun?.status === "partial") return "PARTIAL";
+  if (lastRun?.status === "failed") return "FAIL";
+  if (lastRun?.status === "skipped") return "SKIPPED";
+  return "NEEDS_REVIEW";
+}
+
 export async function GET() {
   const db = getDb();
   const sourceRows = db.select().from(sources).all();
@@ -60,6 +86,11 @@ export async function GET() {
       .limit(8)
       .all();
     const t = totals.get(s.id) ?? { total: 0, active: 0 };
+    const lastSuccessful = runs.find((r) => r.status === "success");
+    const trend =
+      runs.length >= 2 && runs[0].status !== "skipped" && runs[1].status !== "skipped"
+        ? runs[0].listingsFound - runs[1].listingsFound
+        : null;
     return {
       id: s.id,
       name: s.name,
@@ -67,6 +98,12 @@ export async function GET() {
       adapterType: s.adapterType,
       priority: s.priority,
       enabled: s.enabled,
+      registryStatus: s.registryStatus,
+      overallStatus: deriveOverallStatus(s, runs[0]),
+      lastVerificationStatus: s.lastVerificationStatus,
+      lastVerificationAt: s.lastVerificationAt,
+      lastSuccessfulRunAt: lastSuccessful?.startedAt ?? null,
+      listingCountTrend: trend,
       listingUrl: s.listingUrl,
       websiteUrl: s.websiteUrl,
       needsJavaScript: s.needsJavaScript,

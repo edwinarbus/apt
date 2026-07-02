@@ -1,9 +1,16 @@
 import { and, eq } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import { newId } from "@/db/client";
-import { listingEvents, listings, type ListingRow, type SourceRow } from "@/db/schema";
+import {
+  listingEvents,
+  listings,
+  priceHistory,
+  type ListingRow,
+  type SourceRow,
+} from "@/db/schema";
 import { contentHashFor, descriptionHashFor, photoHashFor } from "@/core/hash";
 import { computePricePerSquareFoot } from "@/core/normalize";
+import { canonicalizeListingUrl } from "@/core/urls";
 import type { NormalizedListing } from "@/core/types";
 import { isMissingStatus } from "@/core/stale";
 
@@ -25,6 +32,7 @@ export interface UpsertOutcome {
   kind: "new" | "changed" | "unchanged";
   priceChanged: boolean;
   reappeared: boolean;
+  priceHistoryRecorded: boolean;
 }
 
 const PRECISION_RANK: Record<string, number> = {
@@ -72,6 +80,7 @@ function finalize(source: SourceRow, item: NormalizedListing) {
       : null);
   return {
     addressNormalized,
+    canonicalUrl: canonicalizeListingUrl(item.originalUrl),
     pricePerSquareFoot: computePricePerSquareFoot(
       item.priceMonthly ?? null,
       item.squareFeet ?? null,
@@ -80,6 +89,29 @@ function finalize(source: SourceRow, item: NormalizedListing) {
     descriptionHash: descriptionHashFor(item.description),
     photoHash: photoHashFor(item.photos),
   };
+}
+
+function recordPriceHistory(
+  db: Db,
+  listingId: string,
+  runId: string,
+  now: string,
+  item: NormalizedListing,
+  fallbackDeposit: string | null,
+): void {
+  db.insert(priceHistory)
+    .values({
+      id: newId("prc"),
+      listingId,
+      sourceRunId: runId,
+      observedAt: now,
+      priceRaw: item.priceRaw ?? null,
+      priceMonthly: item.priceMonthly ?? null,
+      priceEffectiveMonthly: item.priceEffectiveMonthly ?? null,
+      concessionsRaw: item.concessionsRaw ?? null,
+      depositRaw: item.depositRaw ?? fallbackDeposit,
+    })
+    .run();
 }
 
 export function upsertListing(
@@ -113,6 +145,7 @@ export function upsertListing(
         sourceSystem: source.sourceSystem,
         sourceListingId: item.sourceListingId,
         originalUrl: item.originalUrl,
+        canonicalUrl: computed.canonicalUrl,
         title: item.title,
         description: item.description ?? null,
         rawDescription: item.rawDescription ?? null,
@@ -194,7 +227,16 @@ export function upsertListing(
       })
       .run();
     addEvent(db, id, runId, "first_seen", null, item.priceMonthly?.toString() ?? null, now);
-    return { listingId: id, kind: "new", priceChanged: false, reappeared: false };
+    // Baseline price-history entry (even when price is null/"call for price" —
+    // the raw text is the observation).
+    recordPriceHistory(db, id, runId, now, item, null);
+    return {
+      listingId: id,
+      kind: "new",
+      priceChanged: false,
+      reappeared: false,
+      priceHistoryRecorded: true,
+    };
   }
 
   return updateExisting(db, existing, item, computed, runId, now);
@@ -254,6 +296,22 @@ function updateExisting(
     patch.pricePerSquareFoot =
       computePricePerSquareFoot(item.priceMonthly, existing.squareFeet) ??
       existing.pricePerSquareFoot;
+  }
+
+  // Price history: a new row only when the observed price or effective price
+  // actually differs from what we last knew — re-running a backfill on
+  // unchanged data must not append redundant entries.
+  const effectiveChanged =
+    item.fetchDepth === "detail" &&
+    item.priceEffectiveMonthly != null &&
+    item.priceEffectiveMonthly !== existing.priceEffectiveMonthly;
+  const priceHistoryRecorded = priceChanged || effectiveChanged;
+  if (priceHistoryRecorded) {
+    recordPriceHistory(db, existing.id, runId, now, item, existing.depositRaw);
+  }
+
+  if (!existing.canonicalUrl && computed.canonicalUrl) {
+    patch.canonicalUrl = computed.canonicalUrl;
   }
 
   patch.title = item.title || existing.title;
@@ -357,5 +415,6 @@ function updateExisting(
     kind: changed ? "changed" : "unchanged",
     priceChanged,
     reappeared,
+    priceHistoryRecorded,
   };
 }

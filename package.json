@@ -14,7 +14,12 @@
     "db:studio": "drizzle-kit studio",
     "seed:sources": "tsx scripts/seed-sources.ts",
     "seed:mock": "tsx scripts/seed-mock.ts",
-    "ingest": "tsx scripts/ingest.ts"
+    "ingest": "tsx scripts/ingest.ts",
+    "sources:verify": "tsx scripts/verify-sources.ts",
+    "sources:verify:live": "tsx scripts/verify-sources.ts --live --enabled-only",
+    "listings:backfill": "tsx scripts/backfill.ts",
+    "fixtures:refresh": "tsx scripts/refresh-fixtures.ts",
+    "test:adapters": "vitest run tests/adapters-craigslist.test.ts tests/adapters-rentsfnow.test.ts"
   },
   "dependencies": {
     "better-sqlite3": "^12.11.1",

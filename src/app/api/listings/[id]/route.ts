@@ -2,8 +2,10 @@ import { NextResponse } from "next/server";
 import { and, desc, eq, ne } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import {
+  duplicateGroups,
   listingEvents,
   listings,
+  priceHistory,
   sourceRuns,
   sources,
   userListingStates,
@@ -11,6 +13,7 @@ import {
 import { computeBadges } from "@/lib/badges";
 import { resolveContact } from "@/core/contact";
 import type {
+  DuplicateGroupInfo,
   DuplicatePeer,
   ListingDetailResponse,
   PriceChangeInfo,
@@ -50,7 +53,12 @@ export async function GET(
     .limit(1)
     .get();
 
+  const sourceNameById = new Map(
+    db.select({ id: sources.id, name: sources.name }).from(sources).all()
+      .map((s) => [s.id, s.name]),
+  );
   let duplicates: DuplicatePeer[] = [];
+  let duplicateGroup: DuplicateGroupInfo | null = null;
   if (row.duplicateGroupId) {
     const peers = db
       .select()
@@ -66,11 +74,33 @@ export async function GET(
       id: p.id,
       title: p.title,
       sourceId: p.sourceId,
-      sourceName: p.sourceId,
+      sourceName: sourceNameById.get(p.sourceId) ?? p.sourceId,
       priceMonthly: p.priceMonthly,
       originalUrl: p.originalUrl,
     }));
+    const group = db
+      .select()
+      .from(duplicateGroups)
+      .where(eq(duplicateGroups.id, row.duplicateGroupId))
+      .get();
+    if (group) {
+      const memberSources = new Set([row.sourceId, ...peers.map((p) => p.sourceId)]);
+      duplicateGroup = {
+        id: group.id,
+        confidence: group.confidence as DuplicateGroupInfo["confidence"],
+        reasons: group.reasons ?? [],
+        primaryListingId: group.primaryListingId,
+        crossSource: memberSources.size > 1,
+      };
+    }
   }
+
+  const history = db
+    .select()
+    .from(priceHistory)
+    .where(eq(priceHistory.listingId, id))
+    .orderBy(desc(priceHistory.observedAt))
+    .all();
 
   const priceEvent = events.find(
     (e) => e.eventType === "price_change" && e.oldValue && e.newValue,
@@ -198,6 +228,14 @@ export async function GET(
       createdAt: e.createdAt,
     })),
     duplicates,
+    duplicateGroup,
+    priceHistory: history.map((h) => ({
+      observedAt: h.observedAt,
+      priceRaw: h.priceRaw,
+      priceMonthly: h.priceMonthly,
+      priceEffectiveMonthly: h.priceEffectiveMonthly,
+      concessionsRaw: h.concessionsRaw,
+    })),
   };
   return NextResponse.json(body);
 }

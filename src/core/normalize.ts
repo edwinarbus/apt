@@ -206,6 +206,29 @@ export function normalizeAddressKey(
   return unitKey ? `${key}|${unitKey}` : key;
 }
 
+/**
+ * Extract a public unit number from a listing title. Craigslist property
+ * managers embed units in titles ("1520 Gough St - 304", "Sunny 1BR! Unit
+ * #1081C", "1690 North Point #305 - Stunning…") while leaving the structured
+ * address unit-less. Conservative on purpose:
+ *  - "#<token>" or "Unit <token>" anywhere is trusted;
+ *  - a trailing "- <token>" is only trusted when the title itself is
+ *    address-shaped (starts with a street number), so "2BR - 1050" (sqft)
+ *    never becomes a unit.
+ */
+export function extractUnitFromTitle(
+  title: string | null | undefined,
+): string | null {
+  if (!title) return null;
+  const hash = title.match(/(?:#\s?|\bunit\s+#?)([A-Za-z]?\d{1,4}(?:-\d{1,4})?[A-Za-z]{0,2})\b/i);
+  if (hash) return hash[1];
+  const addressShaped = title.match(
+    /^\d+\s+[A-Za-z][^-–#]{2,40}[-–]\s*([A-Za-z]?\d{1,4}(?:-\d{1,4})?[A-Za-z]{0,2})\s*$/,
+  );
+  if (addressShaped && /\d/.test(addressShaped[1])) return addressShaped[1];
+  return null;
+}
+
 /** Strip HTML tags and collapse whitespace into readable plain text. */
 export function htmlToText(html: string | null | undefined): string | null {
   if (!html) return null;

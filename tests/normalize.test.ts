@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   computeEffectiveMonthly,
+  extractUnitFromTitle,
   computePricePerSquareFoot,
   extractConcessions,
   htmlToText,
@@ -115,5 +116,23 @@ describe("misc", () => {
     expect(parseLeaseTermMonths("12 month lease")).toBe(12);
     expect(parseLeaseTermMonths("month-to-month")).toBe(1);
     expect(parseLeaseTermMonths(null)).toBeNull();
+  });
+});
+
+describe("extractUnitFromTitle", () => {
+  it("extracts #-prefixed and 'Unit' units anywhere in the title", () => {
+    expect(extractUnitFromTitle("1690 North Point #305 - Stunning 1x1")).toBe("305");
+    expect(extractUnitFromTitle("Pet-Friendly 1BR Near Alamo Square Park! Unit #1081C")).toBe("1081C");
+    expect(extractUnitFromTitle("Sunny studio, Unit 12B, great light")).toBe("12B");
+  });
+  it("extracts trailing units only from address-shaped titles", () => {
+    expect(extractUnitFromTitle("1520 Gough St - 304")).toBe("304");
+    expect(extractUnitFromTitle("1340 Taylor St - 1370-010")).toBe("1370-010");
+    expect(extractUnitFromTitle("124 Mason St - 802")).toBe("802");
+  });
+  it("never mistakes sqft or prose numbers for units", () => {
+    expect(extractUnitFromTitle("Huge 2BR - 1050")).toBeNull();
+    expect(extractUnitFromTitle("Sunny 1BR near Duboce Park")).toBeNull();
+    expect(extractUnitFromTitle(null)).toBeNull();
   });
 });

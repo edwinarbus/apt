@@ -1,5 +1,5 @@
 import type { SourceRow } from "@/db/schema";
-import type { PoliteFetcher } from "@/core/fetcher";
+import type { TextFetcher } from "@/core/fetcher";
 import type { NormalizedListing, PageTraceEntry } from "@/core/types";
 
 /**
@@ -18,7 +18,7 @@ export interface KnownListing {
 
 export interface AdapterContext {
   source: SourceRow;
-  fetcher: PoliteFetcher;
+  fetcher: TextFetcher;
   knownListings: Map<string, KnownListing>;
   log: (message: string) => void;
   /** Persist raw HTML/JSON for post-mortem parser debugging. Returns the path, or null if disabled. */

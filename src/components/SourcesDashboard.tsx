@@ -15,6 +15,28 @@ const RUN_COLORS: Record<string, string> = {
   skipped: "#A39B8B",
 };
 
+const OVERALL_STATUS_STYLES: Record<string, { bg: string; fg: string }> = {
+  PASS: { bg: "#1E7F4F18", fg: "#1E7F4F" },
+  PARTIAL: { bg: "#B4530918", fg: "#B45309" },
+  FAIL: { bg: "#C2410C18", fg: "#C2410C" },
+  SKIPPED: { bg: "#A39B8B22", fg: "#6F6A5E" },
+  DISABLED: { bg: "#A39B8B22", fg: "#6F6A5E" },
+  REFERENCE_ONLY: { bg: "#0E749018", fg: "#0E7490" },
+  NEEDS_REVIEW: { bg: "#7C5BD118", fg: "#7C5BD1" },
+};
+
+function OverallStatusChip({ status }: { status: string }) {
+  const style = OVERALL_STATUS_STYLES[status] ?? OVERALL_STATUS_STYLES.SKIPPED;
+  return (
+    <span
+      className="rounded-md px-2 py-0.5 text-[11px] font-bold tracking-wide"
+      style={{ backgroundColor: style.bg, color: style.fg }}
+    >
+      {status.replaceAll("_", " ")}
+    </span>
+  );
+}
+
 function StatusDot({ status }: { status: string | null }) {
   return (
     <span
@@ -109,6 +131,7 @@ function SourceCard({ source: s }: { source: SourceDashboardEntry }) {
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <StatusDot status={run?.status ?? null} />
         <h2 className="text-[15px] font-semibold">{s.name}</h2>
+        <OverallStatusChip status={s.overallStatus} />
         <span className="rounded-full bg-line/50 px-2 py-0.5 font-mono text-[11px] text-muted">
           {s.id}
         </span>
@@ -121,8 +144,32 @@ function SourceCard({ source: s }: { source: SourceDashboardEntry }) {
         )}
         <span className="ml-auto text-[12px] text-faint">
           {s.activeListings} active / {s.totalListings} total listings
+          {s.listingCountTrend != null && s.listingCountTrend !== 0 && (
+            <span
+              className={s.listingCountTrend > 0 ? "text-good" : "text-warn"}
+              title="listings found vs previous run"
+            >
+              {" "}
+              {s.listingCountTrend > 0 ? "▲" : "▼"}
+              {Math.abs(s.listingCountTrend)}
+            </span>
+          )}
         </span>
       </div>
+      {(s.lastVerificationStatus || s.lastSuccessfulRunAt) && (
+        <p className="mt-1.5 text-[12px] text-faint">
+          {s.lastVerificationStatus && (
+            <>
+              Adapter verification: {s.lastVerificationStatus}
+              {s.lastVerificationAt && ` (${relativeTime(s.lastVerificationAt)})`}
+            </>
+          )}
+          {s.lastVerificationStatus && s.lastSuccessfulRunAt && " · "}
+          {s.lastSuccessfulRunAt && (
+            <>last successful run {relativeTime(s.lastSuccessfulRunAt)}</>
+          )}
+        </p>
+      )}
 
       <div className="mt-3 flex flex-wrap gap-1.5">
         <Flag

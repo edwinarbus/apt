@@ -99,6 +99,23 @@ export interface DuplicatePeer {
   originalUrl: string;
 }
 
+export interface DuplicateGroupInfo {
+  id: string;
+  confidence: "exact" | "high" | "medium" | "low";
+  reasons: string[];
+  primaryListingId: string | null;
+  /** true when the group spans more than one source ("also seen on …") */
+  crossSource: boolean;
+}
+
+export interface PriceHistoryEntry {
+  observedAt: string;
+  priceRaw: string | null;
+  priceMonthly: number | null;
+  priceEffectiveMonthly: number | null;
+  concessionsRaw: string | null;
+}
+
 export interface ListingDetailResponse {
   listing: ListingSummary & {
     description: string | null;
@@ -139,6 +156,8 @@ export interface ListingDetailResponse {
   };
   events: ListingEventPayload[];
   duplicates: DuplicatePeer[];
+  duplicateGroup: DuplicateGroupInfo | null;
+  priceHistory: PriceHistoryEntry[];
 }
 
 export interface SourceRunPayload {
@@ -163,6 +182,16 @@ export interface SourceRunPayload {
   warnings: string[];
 }
 
+/** Dashboard status vocabulary for a source, derived server-side. */
+export type SourceOverallStatus =
+  | "PASS"
+  | "PARTIAL"
+  | "FAIL"
+  | "SKIPPED"
+  | "DISABLED"
+  | "REFERENCE_ONLY"
+  | "NEEDS_REVIEW";
+
 export interface SourceDashboardEntry {
   id: string;
   name: string;
@@ -170,6 +199,13 @@ export interface SourceDashboardEntry {
   adapterType: string;
   priority: string;
   enabled: boolean;
+  registryStatus: string;
+  overallStatus: SourceOverallStatus;
+  lastVerificationStatus: string | null;
+  lastVerificationAt: string | null;
+  lastSuccessfulRunAt: string | null;
+  /** listingsFound delta vs the previous run of this source (null = n/a) */
+  listingCountTrend: number | null;
   listingUrl: string | null;
   websiteUrl: string | null;
   needsJavaScript: boolean | null;

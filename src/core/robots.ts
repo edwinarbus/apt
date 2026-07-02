@@ -1,5 +1,5 @@
 import type { RobotsStatus } from "./types";
-import type { PoliteFetcher } from "./fetcher";
+import type { TextFetcher } from "./fetcher";
 
 /**
  * Minimal robots.txt evaluation, recorded on each source as operational
@@ -75,7 +75,7 @@ export interface RobotsCheckResult {
 }
 
 export async function checkRobots(
-  fetcher: PoliteFetcher,
+  fetcher: TextFetcher,
   baseUrl: string,
   paths: string[],
   userAgentToken = "*",

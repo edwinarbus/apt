@@ -22,6 +22,8 @@ export interface ScamAssessmentInput {
   photoCount: number;
   /** Set by the runner when this listing's description hash appears in a different neighborhood. */
   descriptionSharedAcrossNeighborhoods?: boolean;
+  /** Set by the runner when the search-card price and detail-page price disagree substantially. */
+  cardDetailPriceMismatch?: boolean;
 }
 
 export interface ScamAssessment {
@@ -156,6 +158,9 @@ export function assessListing(
   }
   if (URGENCY_PRESSURE.test(text)) {
     weak.push("urgency_pressure_language");
+  }
+  if (input.cardDetailPriceMismatch) {
+    weak.push("inconsistent_card_detail_price");
   }
   if (!input.addressRaw && input.latitude == null && !input.neighborhood) {
     weak.push("no_location_information");
