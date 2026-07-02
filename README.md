@@ -621,12 +621,15 @@ protected-class proxies.
   camera hard-bounded), with real terrain (AWS terrarium DEM), extruded
   buildings, and a hazy dark sky. The **37 official planning neighborhoods**
   (simplified from SF's public boundaries, `src/data/sf-neighborhoods.json`)
-  render as glowing HUD polygons with mono labels; **clicking one lifts it out
-  of the map** — a solid slab rises carrying the actual buildings inside the
-  boundary (a `within` filter splits the building layer), satellite imagery
-  (Esri) is revealed in its footprint, photo **thumbnail markers** of that
-  hood's listings hover above the slab on glowing stalks, and the list filters
-  to exactly those apartments (polygon containment, not name tags). Thumbnails
+  render as glowing HUD polygons with mono labels; **clicking one physically
+  lifts it out of the map** — a custom `aptdem://` tile protocol re-encodes the
+  elevation tiles on the fly, boosting every DEM pixel inside the boundary by
+  ~240 m, so the entire neighborhood (satellite imagery, streets, buildings,
+  markers) drapes up onto a raised plateau with sheer texture-stretched cliff
+  sides, diorama-style, with hillshade relief sculpting both the city and the
+  lifted top. Photo **thumbnail markers** of that hood's listings ride the
+  plateau, and the list filters to exactly those apartments (polygon
+  containment, not name tags). Thumbnails
   also appear at close zoom city-wide, with pop/ripple click animations. While
   a search runs, the **sonar plays on the map itself**: a rotating beam and
   expanding rings sweep from your position, the real shortlisted listings ping
