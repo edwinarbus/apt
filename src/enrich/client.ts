@@ -1,3 +1,4 @@
+import { estimateCostUsd, type AiUsage } from "@/lib/ai-cost";
 import {
   EnrichmentSchema,
   SCHEMA_DESCRIPTION,
@@ -10,12 +11,8 @@ import {
  * and tests never depend on the SDK directly — tests inject a fake, production
  * injects AnthropicEnrichmentClient.
  */
-export interface EnrichmentUsage {
-  inputTokens: number;
-  outputTokens: number;
-  cacheReadTokens: number;
-  cacheCreationTokens: number;
-}
+export type EnrichmentUsage = AiUsage;
+export { estimateCostUsd };
 
 export interface EnrichmentCallResult {
   data: Enrichment | null;
@@ -29,27 +26,7 @@ export interface EnrichmentClient {
   enrichOne(input: EnrichmentInput): Promise<EnrichmentCallResult>;
 }
 
-export const DEFAULT_ENRICH_MODEL = "claude-opus-4-8";
-
-/** USD per million tokens, by model. Cache reads bill ~0.1x input; writes ~1.25x. */
-const PRICING: Record<string, { input: number; output: number }> = {
-  "claude-opus-4-8": { input: 5, output: 25 },
-  "claude-opus-4-7": { input: 5, output: 25 },
-  "claude-sonnet-5": { input: 3, output: 15 },
-  "claude-sonnet-4-6": { input: 3, output: 15 },
-  "claude-haiku-4-5": { input: 1, output: 5 },
-  "claude-fable-5": { input: 10, output: 50 },
-};
-
-export function estimateCostUsd(model: string, usage: EnrichmentUsage): number {
-  const p = PRICING[model] ?? PRICING["claude-opus-4-8"];
-  const cost =
-    (usage.inputTokens / 1_000_000) * p.input +
-    (usage.outputTokens / 1_000_000) * p.output +
-    (usage.cacheReadTokens / 1_000_000) * p.input * 0.1 +
-    (usage.cacheCreationTokens / 1_000_000) * p.input * 1.25;
-  return Math.round(cost * 1_000_000) / 1_000_000;
-}
+export const DEFAULT_ENRICH_MODEL = "claude-sonnet-5";
 
 /**
  * System prompt. Stable across every listing so it caches (the volatile

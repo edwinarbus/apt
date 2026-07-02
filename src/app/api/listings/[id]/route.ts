@@ -6,6 +6,7 @@ import {
   listingEnrichment,
   listingEvents,
   listings,
+  listingVision,
   priceHistory,
   sourceRuns,
   sources,
@@ -14,12 +15,14 @@ import {
 import { computeBadges } from "@/lib/badges";
 import { resolveContact } from "@/core/contact";
 import type { Enrichment } from "@/enrich/schema";
+import type { Vision } from "@/vision/schema";
 import type {
   DuplicateGroupInfo,
   DuplicatePeer,
   EnrichmentPayload,
   ListingDetailResponse,
   PriceChangeInfo,
+  VisionPayload,
 } from "@/lib/api-types";
 import type { RunStatus } from "@/core/types";
 
@@ -128,6 +131,26 @@ export async function GET(
     };
   }
 
+  const visionRow = db
+    .select()
+    .from(listingVision)
+    .where(eq(listingVision.listingId, id))
+    .get();
+  let vision: VisionPayload | null = null;
+  if (visionRow && visionRow.data) {
+    const v = visionRow.data as Vision;
+    vision = {
+      model: visionRow.model,
+      analyzedAt: visionRow.analyzedAt,
+      imageCount: visionRow.imageCount,
+      visualSummary: visionRow.visualSummary,
+      features: v.features ?? [],
+      rooms: v.rooms ?? [],
+      condition: v.condition ?? null,
+      notes: v.notes ?? null,
+    };
+  }
+
   const priceEvent = events.find(
     (e) => e.eventType === "price_change" && e.oldValue && e.newValue,
   );
@@ -209,6 +232,8 @@ export async function GET(
       sourceLastRunStatus: (lastRun?.status as RunStatus) ?? null,
       sourceLastRunAt: lastRun?.startedAt ?? null,
       badges,
+      visualTags: visionRow?.features ?? [],
+      visualSearchText: visionRow?.searchText ?? null,
       description: row.description,
       photos: row.photos ?? [],
       floorPlanUrls: row.floorPlanUrls ?? [],
@@ -263,6 +288,7 @@ export async function GET(
       concessionsRaw: h.concessionsRaw,
     })),
     enrichment,
+    vision,
   };
   return NextResponse.json(body);
 }

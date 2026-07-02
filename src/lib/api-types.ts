@@ -74,6 +74,10 @@ export interface ListingSummary {
   sourceLastRunStatus: RunStatus | null;
   sourceLastRunAt: string | null;
   badges: BadgeKind[];
+  /** AI vision (Haiku): compact visible-feature tags for display + search chips */
+  visualTags: string[];
+  /** lowercased vision blob (features + summary + rooms) for local visual search; null if not analyzed */
+  visualSearchText: string | null;
 }
 
 export interface ListingsResponse {
@@ -114,6 +118,18 @@ export interface PriceHistoryEntry {
   priceMonthly: number | null;
   priceEffectiveMonthly: number | null;
   concessionsRaw: string | null;
+}
+
+/** Optional AI vision analysis of the listing's photos (Claude vision, Haiku). Observational, never authoritative. */
+export interface VisionPayload {
+  model: string;
+  analyzedAt: string;
+  imageCount: number;
+  visualSummary: string | null;
+  features: string[];
+  rooms: { room: string; details: string }[];
+  condition: "renovated" | "modern" | "standard" | "dated" | "unknown" | null;
+  notes: string | null;
 }
 
 /** Optional AI-generated enrichment (Claude). Clearly labeled and never authoritative. */
@@ -174,6 +190,7 @@ export interface ListingDetailResponse {
   duplicateGroup: DuplicateGroupInfo | null;
   priceHistory: PriceHistoryEntry[];
   enrichment: EnrichmentPayload | null;
+  vision: VisionPayload | null;
 }
 
 export interface SourceRunPayload {

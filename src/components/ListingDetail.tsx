@@ -312,6 +312,62 @@ export function ListingDetail({
                   </div>
                 )}
 
+                {/* What the photos show (optional vision) */}
+                {data.vision && (
+                  <div className="rounded-xl border border-accent/20 bg-accent-soft/40 px-4 py-3.5">
+                    <div className="mb-1.5 flex items-center justify-between">
+                      <SectionTitle>✦ What the photos show</SectionTitle>
+                      <span className="text-[10.5px] text-faint">
+                        {data.vision.model} · {data.vision.imageCount} photo
+                        {data.vision.imageCount === 1 ? "" : "s"} ·{" "}
+                        {relativeTime(data.vision.analyzedAt)}
+                      </span>
+                    </div>
+                    {data.vision.visualSummary && (
+                      <p className="text-[13.5px] leading-relaxed text-ink/90">
+                        {data.vision.visualSummary}
+                      </p>
+                    )}
+                    {data.vision.features.length > 0 && (
+                      <div className="mt-2.5 flex flex-wrap gap-1.5">
+                        {data.vision.features.map((f) => (
+                          <span
+                            key={f}
+                            className="rounded-full border border-accent/20 bg-surface px-2.5 py-1 text-[12px] text-ink/80"
+                          >
+                            {f}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {data.vision.rooms.length > 0 && (
+                      <ul className="mt-2.5 flex flex-col gap-0.5 text-[12.5px] text-muted">
+                        {data.vision.rooms.map((r) => (
+                          <li key={r.room}>
+                            <span className="font-medium text-ink/80 capitalize">{r.room}:</span>{" "}
+                            {r.details}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {((data.vision.condition && data.vision.condition !== "unknown") ||
+                      data.vision.notes) && (
+                      <div className="mt-2.5 flex flex-wrap items-center gap-2 text-[11px] text-faint">
+                        {data.vision.condition && data.vision.condition !== "unknown" && (
+                          <span className="rounded-full bg-line/50 px-2 py-0.5 text-muted capitalize">
+                            {data.vision.condition}
+                          </span>
+                        )}
+                        {data.vision.notes && <span className="italic">{data.vision.notes}</span>}
+                      </div>
+                    )}
+                    <p className="mt-2.5 text-[11px] text-faint">
+                      AI-detected from the listing photos — may be wrong or incomplete. Verify
+                      against the actual photos and the original listing.
+                    </p>
+                  </div>
+                )}
+
                 {/* Facts */}
                 <div className="grid grid-cols-2 gap-x-6 gap-y-2.5 sm:grid-cols-3">
                   <Fact label="Beds" value={fmtBeds(l.bedrooms)} raw={l.bedroomsRaw} />

@@ -2,6 +2,8 @@
 
 export interface Filters {
   query: string;
+  /** natural-language visual search over AI photo features ("hardwood floors and bay windows") */
+  visualQuery: string;
   minPrice: number | null;
   maxPrice: number | null;
   minBeds: number | null;
@@ -16,6 +18,7 @@ export interface Filters {
 
 export const DEFAULT_FILTERS: Filters = {
   query: "",
+  visualQuery: "",
   minPrice: null,
   maxPrice: null,
   minBeds: null,
@@ -74,6 +77,14 @@ export function FilterBar({
         value={filters.query}
         onChange={(e) => set("query", e.target.value)}
         className="w-56 shrink-0 rounded-full border border-line bg-surface px-3.5 py-1.5 text-[13px] outline-none placeholder:text-faint focus:border-faint"
+      />
+      <input
+        type="search"
+        placeholder="✦ In photos: hardwood floors, bay windows…"
+        title="Natural-language search over AI-detected features in the listing photos. Combine terms with 'and' or commas. Only matches listings you've run `npm run vision` on."
+        value={filters.visualQuery}
+        onChange={(e) => set("visualQuery", e.target.value)}
+        className="w-64 shrink-0 rounded-full border border-accent/40 bg-accent/5 px-3.5 py-1.5 text-[13px] text-ink outline-none placeholder:text-accent/70 focus:border-accent"
       />
       <div className="flex shrink-0 items-center gap-1 rounded-full border border-line bg-surface px-2.5 py-1">
         <span className="text-[12px] text-faint">$</span>

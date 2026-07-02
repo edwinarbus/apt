@@ -393,6 +393,44 @@ export const listingEnrichment = sqliteTable("listing_enrichment", {
 
 export type ListingEnrichmentRow = typeof listingEnrichment.$inferSelect;
 
+/**
+ * Optional AI vision layer (Claude vision, Haiku by default). Like enrichment,
+ * completely separate from the deterministic pipeline. One row per listing,
+ * refreshed only when the listing's photoHash changes (new/removed photos), so
+ * re-running is cheap. Extracts searchable visual features from the listing's
+ * photos ("hardwood floors", "bay windows", …) so the UI can do natural-language
+ * visual search. Photos and everything else on `listings` remain the source of
+ * truth — this is additive, clearly labeled AI-generated in the UI.
+ */
+export const listingVision = sqliteTable("listing_vision", {
+  listingId: text("listing_id")
+    .primaryKey()
+    .references(() => listings.id),
+  model: text("model").notNull(),
+  schemaVersion: integer("schema_version").notNull(),
+  /** the listing.photoHash at analysis time — re-analyze when it differs */
+  photoHashAtVision: text("photo_hash_at_vision"),
+  /** how many images were actually sent to the model */
+  imageCount: integer("image_count").notNull().default(0),
+  analyzedAt: text("analyzed_at").notNull(),
+
+  /** short observational description of what the photos show */
+  visualSummary: text("visual_summary"),
+  /** concise visual feature tags, promoted for display/search chips */
+  features: text("features", { mode: "json" }).$type<string[]>(),
+  /** denormalized lowercased blob (features + summary + rooms) for fast search */
+  searchText: text("search_text"),
+  /** the validated structured vision result (features, rooms, condition, …) */
+  data: text("data", { mode: "json" }),
+
+  inputTokens: integer("input_tokens").notNull().default(0),
+  outputTokens: integer("output_tokens").notNull().default(0),
+  costUsd: real("cost_usd").notNull().default(0),
+  error: text("error"),
+});
+
+export type ListingVisionRow = typeof listingVision.$inferSelect;
+
 export type SavedSearchMatchRow = typeof savedSearchMatches.$inferSelect;
 export type DigestRunRow = typeof digestRuns.$inferSelect;
 

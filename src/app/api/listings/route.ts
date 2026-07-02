@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server";
 import { desc, eq } from "drizzle-orm";
 import { getDb } from "@/db/client";
-import { listingEvents, listings, sourceRuns, sources, userListingStates } from "@/db/schema";
+import {
+  listingEvents,
+  listings,
+  listingVision,
+  sourceRuns,
+  sources,
+  userListingStates,
+} from "@/db/schema";
 import { computeBadges } from "@/lib/badges";
 import type { ListingSummary, ListingsResponse, PriceChangeInfo } from "@/lib/api-types";
 import type { RunStatus } from "@/core/types";
@@ -17,6 +24,17 @@ export async function GET() {
 
   const sourceRows = db.select().from(sources).all();
   const sourceById = new Map(sourceRows.map((s) => [s.id, s]));
+
+  // Optional AI vision tags/search text (present only for analyzed listings).
+  const visionRows = db
+    .select({
+      listingId: listingVision.listingId,
+      features: listingVision.features,
+      searchText: listingVision.searchText,
+    })
+    .from(listingVision)
+    .all();
+  const visionByListing = new Map(visionRows.map((v) => [v.listingId, v]));
 
   // Latest run per source.
   const runs = db
@@ -64,6 +82,7 @@ export async function GET() {
     const source = sourceById.get(row.sourceId);
     const lastRun = lastRunBySource.get(row.sourceId) ?? null;
     const priceChange = lastPriceChange.get(row.id) ?? null;
+    const vision = visionByListing.get(row.id) ?? null;
     const badges = computeBadges({
       firstSeenAt: row.firstSeenAt,
       staleStatus: row.staleStatus as never,
@@ -116,6 +135,8 @@ export async function GET() {
       sourceLastRunStatus: lastRun?.status ?? null,
       sourceLastRunAt: lastRun?.at ?? null,
       badges,
+      visualTags: vision?.features ?? [],
+      visualSearchText: vision?.searchText ?? null,
     };
   });
 

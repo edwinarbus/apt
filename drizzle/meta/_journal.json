@@ -29,6 +29,13 @@
       "when": 1783002525985,
       "tag": "0003_unusual_ink",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1783003786822,
+      "tag": "0004_past_star_brand",
+      "breakpoints": true
     }
   ]
 }

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { BadgeKind, ListingSummary, ListingsResponse } from "@/lib/api-types";
 import { computeBadges } from "@/lib/badges";
+import { matchesVisualQuery } from "@/lib/visual-search";
 import type { UserListingStatus } from "@/core/types";
 import { FilterBar, type Filters, DEFAULT_FILTERS } from "./FilterBar";
 import { MapView } from "./MapView";
@@ -67,6 +68,9 @@ export function AppShell() {
       if (q) {
         const hay = `${l.title} ${l.neighborhood ?? ""} ${l.addressRaw ?? ""} ${l.sourceName}`.toLowerCase();
         if (!hay.includes(q)) return false;
+      }
+      if (filters.visualQuery.trim() && !matchesVisualQuery(l.visualSearchText, filters.visualQuery)) {
+        return false;
       }
       return true;
     });

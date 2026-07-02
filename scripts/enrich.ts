@@ -12,8 +12,8 @@ import { enrichListings, formatEnrichSummary } from "@/enrich/enricher";
  *   npm run enrich -- --force              re-enrich even if unchanged
  *   npm run enrich -- --all                no per-run limit (enrich every eligible listing)
  *
- * Model: $APT_ENRICH_MODEL (default claude-opus-4-8). For this high-volume,
- * bounded extraction task, `APT_ENRICH_MODEL=claude-haiku-4-5` is ~5x cheaper.
+ * Model: $APT_ENRICH_MODEL (default claude-sonnet-5). For this high-volume,
+ * bounded extraction task, `APT_ENRICH_MODEL=claude-haiku-4-5` is cheaper still.
  * Requires ANTHROPIC_API_KEY (or an `ant auth login` profile).
  */
 

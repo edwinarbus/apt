@@ -23,6 +23,7 @@
     "daily": "tsx scripts/daily.ts",
     "schedule:install": "tsx scripts/install-schedule.ts",
     "enrich": "tsx scripts/enrich.ts",
+    "vision": "tsx scripts/vision.ts",
     "test:adapters": "vitest run tests/adapters-craigslist.test.ts tests/adapters-rentsfnow.test.ts tests/adapters-rentbt.test.ts tests/adapters-mosser.test.ts"
   },
   "dependencies": {
