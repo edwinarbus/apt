@@ -8,6 +8,8 @@ import type {
   SearchResponse,
 } from "@/lib/api-types";
 import { computeBadges } from "@/lib/badges";
+import { pointInMultiPolygon, type MultiPolygonCoords } from "@/lib/geo";
+import hoodsData from "@/data/sf-neighborhoods.json";
 import type { UserListingStatus } from "@/core/types";
 import { SearchBar, type LocationStatus } from "./SearchBar";
 import { EMPTY_PROGRESS, type SearchProgressState } from "./SearchProgress";
@@ -50,6 +52,18 @@ export function AppShell() {
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locationStatus, setLocationStatus] = useState<LocationStatus>("idle");
   const [radiusMi, setRadiusMi] = useState(10);
+
+  // Neighborhood isolate (click a hood polygon on the map)
+  const [selectedHood, setSelectedHood] = useState<string | null>(null);
+
+  // Escape releases the lifted neighborhood (when no modal is open).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !detailOpen) setSelectedHood(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [detailOpen]);
 
   useEffect(() => {
     fetch("/api/listings")
@@ -190,6 +204,15 @@ export function AppShell() {
     [listings],
   );
 
+  // Polygon of the isolated neighborhood (exact containment beats name tags).
+  const hoodPolygon = useMemo(() => {
+    if (!selectedHood) return null;
+    const f = (hoodsData as GeoJSON.FeatureCollection).features.find(
+      (x) => (x.properties as { name: string }).name === selectedHood,
+    );
+    return f ? ((f.geometry as GeoJSON.MultiPolygon).coordinates as MultiPolygonCoords) : null;
+  }, [selectedHood]);
+
   const displayed = useMemo(() => {
     if (!listings) return [];
     const price = (l: ListingSummary) =>
@@ -213,12 +236,21 @@ export function AppShell() {
       });
     }
 
+    if (hoodPolygon) {
+      result = result.filter(
+        (l) =>
+          l.latitude != null &&
+          l.longitude != null &&
+          pointInMultiPolygon(l.longitude, l.latitude, hoodPolygon),
+      );
+    }
+
     if (sort === "price_asc") return [...result].sort((a, b) => price(a) - price(b));
     if (sort === "price_desc") return [...result].sort((a, b) => price(b) - price(a));
     // default: search → keep score order; browse → newest first
     if (search) return result;
     return [...result].sort((a, b) => (a.firstSeenAt < b.firstSeenAt ? 1 : -1));
-  }, [listings, search, showHiddenGone, sort]);
+  }, [listings, search, showHiddenGone, sort, hoodPolygon]);
 
   const select = useCallback((id: string | null, openDetail = true) => {
     setSelectedId(id);
@@ -260,6 +292,11 @@ export function AppShell() {
           onSelect={(id) => select(id)}
           searching={searching}
           searchActive={search != null}
+          selectedHood={selectedHood}
+          onHoodSelect={setSelectedHood}
+          scanIds={progress.keptIds}
+          radarPoints={radarPoints}
+          userLocation={locationStatus === "granted" ? location : null}
         />
       </div>
 
@@ -281,6 +318,8 @@ export function AppShell() {
             onRadiusChange={setRadiusMi}
             showHiddenGone={showHiddenGone}
             onToggleHiddenGone={() => setShowHiddenGone((v) => !v)}
+            selectedHood={selectedHood}
+            onClearHood={() => setSelectedHood(null)}
           />
         </div>
       </div>
@@ -294,8 +333,7 @@ export function AppShell() {
           searching={searching}
           progress={progress}
           hasLocation={locationStatus === "granted"}
-          radarPoints={radarPoints}
-          userLocation={locationStatus === "granted" ? location : null}
+          hoodName={selectedHood}
           selectedId={selectedId}
           onSelect={(id) => select(id)}
           sort={sort}

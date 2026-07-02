@@ -3,11 +3,7 @@
 import { useEffect, useRef } from "react";
 import type { ListingSummary } from "@/lib/api-types";
 import type { MatchInfo, SortKey } from "./AppShell";
-import {
-  SearchProgress,
-  type RadarPoint,
-  type SearchProgressState,
-} from "./SearchProgress";
+import { SearchProgress, type SearchProgressState } from "./SearchProgress";
 import {
   fmtBaths,
   fmtBeds,
@@ -25,8 +21,7 @@ export function ListingPanel({
   searching,
   progress,
   hasLocation,
-  radarPoints,
-  userLocation,
+  hoodName,
   selectedId,
   onSelect,
   sort,
@@ -38,15 +33,14 @@ export function ListingPanel({
   searching?: boolean;
   progress?: SearchProgressState;
   hasLocation?: boolean;
-  radarPoints?: RadarPoint[];
-  userLocation?: { lat: number; lng: number } | null;
+  hoodName?: string | null;
   selectedId: string | null;
   onSelect: (id: string) => void;
   sort: SortKey;
   onSortChange: (s: SortKey) => void;
 }) {
   return (
-    <aside className="flex h-full w-full flex-col overflow-hidden rounded-[22px] border border-white/60 bg-paper/85 shadow-2xl ring-1 ring-ink/5 backdrop-blur-xl">
+    <aside className="flex h-full w-full flex-col overflow-hidden rounded-[22px] border border-white/10 bg-paper/80 shadow-2xl ring-1 ring-black/40 backdrop-blur-xl">
       <div className="flex items-center justify-between border-b border-line/70 px-4 py-2.5">
         <div>
           <span className="text-sm font-semibold">
@@ -54,7 +48,7 @@ export function ListingPanel({
               ? "Matching…"
               : `${listings.length} ${searchActive ? "match" : "listing"}${
                   listings.length === 1 ? "" : searchActive ? "es" : "s"
-                }`}
+                }${hoodName ? ` · ${hoodName}` : ""}`}
           </span>
           <p className="text-[11px] text-faint">
             {searchActive || searching
@@ -79,8 +73,6 @@ export function ListingPanel({
               progress ?? { candidates: null, kept: null, keptIds: null, model: null, chars: 0 }
             }
             hasLocation={!!hasLocation}
-            points={radarPoints ?? []}
-            userLocation={userLocation ?? null}
           />
         ) : listings.length === 0 ? (
           <p className="px-2 py-8 text-center text-sm text-faint">

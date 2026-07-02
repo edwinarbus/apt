@@ -615,18 +615,29 @@ protected-class proxies.
 
 ## UI
 
-- **Map** (`/`) — a full-bleed **3D stage**: MapLibre over OpenFreeMap Positron
-  with extruded buildings, a hazy sky/atmosphere, and a choreographed camera —
-  cinematic descent on load, a pull-up to surveillance altitude while a search
-  scans, a swoop onto the ranked targets (all markers flip to terracotta
-  lock-on targets with a synchronized radar pulse), and a rooftop dive with a
-  corner-bracket lock reticle on selection. The search bar and results are
-  floating glass panels over the scene; all camera motion collapses to jump
-  cuts under `prefers-reduced-motion` (and when the tab is hidden, so throttled
-  rAF can't strand the camera mid-flight). Clustered markers are color-coded by
-  status (new today, price drop, verify carefully, saved, contacted,
-  missing/stale), price labels appear at higher zooms, approximate locations
-  render ghosted, compact legend bottom-left. Right panel: photo cards with price
+- **Map** (`/`) — a full-bleed **Navy-ops 3D stage**, dark by default: the
+  Positron basemap is recolored to a navy palette at runtime, **only San
+  Francisco is visible** (the world outside the city polygons is masked and the
+  camera hard-bounded), with real terrain (AWS terrarium DEM), extruded
+  buildings, and a hazy dark sky. The **37 official planning neighborhoods**
+  (simplified from SF's public boundaries, `src/data/sf-neighborhoods.json`)
+  render as glowing HUD polygons with mono labels; **clicking one lifts it out
+  of the map** — a solid slab rises carrying the actual buildings inside the
+  boundary (a `within` filter splits the building layer), satellite imagery
+  (Esri) is revealed in its footprint, photo **thumbnail markers** of that
+  hood's listings hover above the slab on glowing stalks, and the list filters
+  to exactly those apartments (polygon containment, not name tags). Thumbnails
+  also appear at close zoom city-wide, with pop/ripple click animations. While
+  a search runs, the **sonar plays on the map itself**: a rotating beam and
+  expanding rings sweep from your position, the real shortlisted listings ping
+  as cyan targets, a designator hops between them, and the camera hones in on
+  where they concentrate; results then flip all markers to terracotta lock-on
+  targets with a synchronized pulse, and selection dives to the rooftop with a
+  corner-bracket reticle. The search bar and results are floating glass panels;
+  all motion collapses to jump cuts under `prefers-reduced-motion` and hidden
+  tabs. Clustered markers are color-coded by status, price labels appear at
+  higher zooms, approximate locations render ghosted, compact legend
+  bottom-left. Right panel: photo cards with price
   (effective price when concessions parse), beds/baths/sqft, neighborhood,
   badges, source attribution, last-checked time, and — when a search is active —
   its **AI match score and one-line reason**. The top bar is one big

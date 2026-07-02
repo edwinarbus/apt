@@ -2,35 +2,232 @@
 
 import { useEffect, useRef } from "react";
 import maplibregl from "maplibre-gl";
-import type { GeoJSONSource, MapGeoJSONFeature } from "maplibre-gl";
+import type { GeoJSONSource, MapGeoJSONFeature, StyleSpecification } from "maplibre-gl";
 import type { ListingSummary } from "@/lib/api-types";
-import { markerColor } from "@/lib/badges";
+import { BADGE_COLORS, DEFAULT_MARKER_COLOR, markerColor } from "@/lib/badges";
 import { fmtMoneyShort } from "@/lib/format";
+import { multiPolygonBounds, type MultiPolygonCoords } from "@/lib/geo";
+import hoodsData from "@/data/sf-neighborhoods.json";
 
 /**
- * The 3D stage. MapLibre renders SF with extruded buildings, a hazy sky, and
- * a choreographed camera: a cinematic descent on load, a pull-up to
- * surveillance altitude while a search scans, then a swoop onto the ranked
- * targets — which pulse like a lock-on, with bracket reticles on selection.
- * All motion collapses to jump-cuts under prefers-reduced-motion.
+ * The Navy-ops 3D stage.
+ *
+ * - Dark navy basemap (Positron recolored at runtime); ONLY San Francisco is
+ *   visible — the rest of the world is masked and the camera is hard-bounded.
+ * - Real terrain (AWS terrarium DEM) + extruded buildings.
+ * - The 37 official planning neighborhoods render as glowing HUD polygons.
+ *   Clicking one LIFTS it out of the map: a solid slab rises carrying the
+ *   actual buildings inside the boundary (a `within` filter splits the
+ *   building layer), revealing satellite imagery in the crater below, while
+ *   photo thumbnails of that hood's listings hover above the slab.
+ * - While a search runs, the sonar plays ON the map: a rotating beam and
+ *   expanding rings sweep from your position, then the REAL shortlisted
+ *   listings ping and a designator hops between them as the camera hones in
+ *   on where they concentrate.
+ * - All motion honors prefers-reduced-motion and hidden tabs.
  */
 
 const SF_CENTER: [number, number] = [-122.4384, 37.7639];
-const MAP_STYLE = "https://tiles.openfreemap.org/styles/positron";
-const ACCENT = "#bf4e2c";
-
-const LEGEND: Array<[string, string]> = [
-  ["#1E7F4F", "New"],
-  ["#1D63DC", "Drop"],
-  ["#C2410C", "Verify"],
-  ["#C43D7E", "Saved"],
-  ["#33302A", "Listing"],
+const MAP_STYLE_URL = "https://tiles.openfreemap.org/styles/positron";
+const SF_MAX_BOUNDS: [[number, number], [number, number]] = [
+  [-122.61, 37.66],
+  [-122.25, 37.9],
 ];
+
+const PAPER = "#070d18";
+const ACCENT = "#ff6b3d";
+/** A filter that never matches (expression form — legacy `["==",1,0]` fails validation). */
+const NEVER_MATCH = ["literal", false] as unknown as maplibregl.FilterSpecification;
+const HOOD = "#3fd0ff";
+const HOOD_BRIGHT = "#7ce4ff";
+const HALO = "#081120";
+const LIFT_METERS = 260;
 
 const CLUSTER_COLOR_BROWSE = [
   "step", ["get", "point_count"],
-  "#4A463E", 10, "#8A6B4F", 40, "#BF4E2C",
+  "#33475f", 10, "#4a6076", 40, "#ff6b3d",
 ] as unknown as maplibregl.ExpressionSpecification;
+
+const LEGEND: Array<[string, string]> = [
+  [BADGE_COLORS.new_today, "New"],
+  [BADGE_COLORS.price_drop, "Drop"],
+  [BADGE_COLORS.verify_carefully, "Verify"],
+  [BADGE_COLORS.saved, "Saved"],
+  [DEFAULT_MARKER_COLOR, "Listing"],
+];
+
+export interface RadarPoint {
+  id: string;
+  lat: number;
+  lng: number;
+}
+
+interface HoodFeature {
+  properties: { name: string };
+  geometry: { type: "MultiPolygon"; coordinates: MultiPolygonCoords };
+}
+const HOODS = (hoodsData as unknown as { features: HoodFeature[] }).features;
+
+const WORLD_RING: [number, number][] = [
+  [-180, -85],
+  [180, -85],
+  [180, 85],
+  [-180, 85],
+  [-180, -85],
+];
+
+function outsideSfMask(): GeoJSON.Feature {
+  const holes: [number, number][][] = [];
+  for (const f of HOODS) {
+    for (const poly of f.geometry.coordinates) if (poly[0]) holes.push(poly[0]);
+  }
+  return {
+    type: "Feature",
+    properties: {},
+    geometry: { type: "Polygon", coordinates: [WORLD_RING, ...holes] },
+  };
+}
+
+function hoodByName(name: string | null): HoodFeature | undefined {
+  return name ? HOODS.find((f) => f.properties.name === name) : undefined;
+}
+
+function hoodRevealMask(name: string | null): GeoJSON.Feature {
+  const holes: [number, number][][] = [];
+  const hood = hoodByName(name);
+  for (const poly of hood?.geometry.coordinates ?? []) if (poly[0]) holes.push(poly[0]);
+  return {
+    type: "Feature",
+    properties: {},
+    geometry: { type: "Polygon", coordinates: [WORLD_RING, ...holes] },
+  };
+}
+
+/** Recolor the light Positron style into the navy ops palette before boot. */
+function darkenStyle(style: StyleSpecification): StyleSpecification {
+  const TEXT = "#8ba3c2";
+  const TEXT_MINOR = "#5f7492";
+  for (const layer of style.layers ?? []) {
+    const paint = (layer.paint ?? {}) as Record<string, unknown>;
+    const id = layer.id.toLowerCase();
+    if (layer.type === "background") {
+      paint["background-color"] = PAPER;
+    } else if (layer.type === "fill") {
+      if (id.includes("water")) paint["fill-color"] = "#0c1a2e";
+      else if (id.includes("green") || id.includes("park") || id.includes("wood") || id.includes("grass"))
+        paint["fill-color"] = "#0d1a24";
+      else if (id.includes("building")) paint["fill-color"] = "#131f33";
+      else paint["fill-color"] = "#0b1526";
+      delete paint["fill-outline-color"];
+    } else if (layer.type === "line") {
+      if (id.includes("water")) paint["line-color"] = "#12253c";
+      else if (id.includes("casing")) paint["line-color"] = "#101d31";
+      else if (id.includes("boundary") || id.includes("admin")) paint["line-color"] = "#2a3d5c";
+      else if (id.includes("rail") || id.includes("transit")) paint["line-color"] = "#1c2c44";
+      else paint["line-color"] = "#22344f";
+    } else if (layer.type === "symbol") {
+      paint["text-color"] = id.includes("place") || id.includes("city") ? TEXT : TEXT_MINOR;
+      paint["text-halo-color"] = PAPER;
+      paint["text-halo-width"] = 1.1;
+      delete paint["icon-color"];
+    }
+    layer.paint = paint as never;
+  }
+  return style;
+}
+
+function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+}
+
+function metersPerPixel(lat: number, zoom: number): number {
+  return (40075016.686 * Math.cos((lat * Math.PI) / 180)) / (2 ** zoom * 512);
+}
+
+/* ---------- Drawn marker assets ----------
+ * IMPORTANT: MapLibre positions a marker by writing `style.transform` on the
+ * ROOT element it's given. Any CSS animation/transition/hover that touches
+ * transform must therefore live on an INNER wrapper, or the marker teleports
+ * to the map origin while animating. Every asset below is root(plain) → inner.
+ */
+
+function withRoot(inner: HTMLElement): HTMLDivElement {
+  const root = document.createElement("div");
+  root.appendChild(inner);
+  return root;
+}
+
+function makeBracketElement(): HTMLDivElement {
+  const el = document.createElement("div");
+  el.className = "map-lock";
+  el.innerHTML = `
+    <svg viewBox="0 0 48 48" width="48" height="48" style="display:block">
+      <g stroke="${ACCENT}" stroke-width="2.4" fill="none" stroke-linecap="round">
+        <path d="M6,16 L6,6 L16,6" /><path d="M32,6 L42,6 L42,16" />
+        <path d="M42,32 L42,42 L32,42" /><path d="M16,42 L6,42 L6,32" />
+      </g>
+      <circle cx="24" cy="24" r="7.5" fill="none" stroke="${ACCENT}" stroke-width="1.6" class="radar-reticle-pulse" />
+    </svg>`;
+  return withRoot(el);
+}
+
+function makeScanElement(): HTMLDivElement {
+  const el = document.createElement("div");
+  el.className = "map-scan animate-pop-in";
+  el.innerHTML = `
+    <svg viewBox="0 0 40 40" width="40" height="40" style="display:block">
+      <g stroke="${HOOD}" stroke-width="1.8" fill="none" stroke-linecap="round">
+        <path d="M5,13 L5,5 L13,5" /><path d="M27,5 L35,5 L35,13" />
+        <path d="M35,27 L35,35 L27,35" /><path d="M13,35 L5,35 L5,27" />
+      </g>
+      <circle cx="20" cy="20" r="3" fill="none" stroke="${HOOD}" stroke-width="1.4" class="radar-reticle-pulse" />
+    </svg>`;
+  return withRoot(el);
+}
+
+function makeRippleElement(): HTMLDivElement {
+  const el = document.createElement("div");
+  el.className = "click-ripple";
+  return withRoot(el);
+}
+
+function makeThumbElement(
+  l: ListingSummary,
+  hot: boolean,
+  onClick: () => void,
+): HTMLDivElement {
+  const el = document.createElement("div");
+  el.className = `thumb-marker${hot ? " thumb-hot" : ""}`;
+  const frame = document.createElement("div");
+  frame.className = "thumb-frame";
+  if (l.primaryPhotoUrl) {
+    const img = document.createElement("img");
+    img.className = "thumb-img";
+    img.src = l.primaryPhotoUrl;
+    img.alt = "";
+    img.referrerPolicy = "no-referrer";
+    img.loading = "lazy";
+    img.onerror = () => img.remove();
+    frame.appendChild(img);
+  }
+  const price = document.createElement("span");
+  price.className = "thumb-price";
+  price.textContent = fmtMoneyShort(l.priceEffectiveMonthly ?? l.priceMonthly) ?? "—";
+  frame.appendChild(price);
+  el.appendChild(frame);
+  const stalk = document.createElement("span");
+  stalk.className = "thumb-stalk";
+  el.appendChild(stalk);
+  el.addEventListener("click", (e) => {
+    e.stopPropagation();
+    el.classList.add("thumb-click");
+    window.setTimeout(onClick, 130);
+  });
+  return withRoot(el);
+}
 
 function toGeoJson(listings: ListingSummary[]) {
   return {
@@ -53,29 +250,7 @@ function toGeoJson(listings: ListingSummary[]) {
   };
 }
 
-function prefersReducedMotion(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches
-  );
-}
-
-/** Corner-bracket lock reticle rendered as an HTML marker on the selection. */
-function makeBracketElement(): HTMLDivElement {
-  const el = document.createElement("div");
-  el.className = "map-lock";
-  el.innerHTML = `
-    <svg viewBox="0 0 48 48" width="48" height="48" style="display:block">
-      <g stroke="${ACCENT}" stroke-width="2.4" fill="none" stroke-linecap="round">
-        <path d="M6,16 L6,6 L16,6" />
-        <path d="M32,6 L42,6 L42,16" />
-        <path d="M42,32 L42,42 L32,42" />
-        <path d="M16,42 L6,42 L6,32" />
-      </g>
-      <circle cx="24" cy="24" r="7.5" fill="none" stroke="${ACCENT}" stroke-width="1.6" class="radar-reticle-pulse" />
-    </svg>`;
-  return el;
-}
+const EMPTY_FC = { type: "FeatureCollection", features: [] } as GeoJSON.FeatureCollection;
 
 export function MapView({
   listings,
@@ -83,274 +258,877 @@ export function MapView({
   onSelect,
   searching,
   searchActive,
+  selectedHood,
+  onHoodSelect,
+  scanIds,
+  radarPoints,
+  userLocation,
 }: {
   listings: ListingSummary[];
   selectedId: string | null;
   onSelect: (id: string) => void;
   searching?: boolean;
   searchActive?: boolean;
+  selectedHood: string | null;
+  onHoodSelect: (name: string | null) => void;
+  /** the actual shortlisted listing ids streamed mid-search */
+  scanIds?: string[] | null;
+  /** id → coords for every active listing (sonar target lookup) */
+  radarPoints?: RadarPoint[];
+  userLocation?: { lat: number; lng: number } | null;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const loadedRef = useRef(false);
   const listingsRef = useRef(listings);
   const onSelectRef = useRef(onSelect);
+  const onHoodSelectRef = useRef(onHoodSelect);
+  const selectedHoodRef = useRef<string | null>(null);
+  const hoveredHoodRef = useRef<string | null>(null);
   const lockMarkerRef = useRef<maplibregl.Marker | null>(null);
+  const scanMarkerRef = useRef<maplibregl.Marker | null>(null);
+  const scanHopTimerRef = useRef<number | null>(null);
   const pulseRafRef = useRef<number | null>(null);
+  const liftRafRef = useRef<number | null>(null);
+  const sonarRafRef = useRef<number | null>(null);
+  const liftKRef = useRef(0);
+  const thumbsRef = useRef<Map<string, maplibregl.Marker>>(new Map());
   const searchActiveRef = useRef(false);
+  const cleanupRef = useRef<(() => void) | null>(null);
+  const refreshThumbsRef = useRef<() => void>(() => {});
+
+  /* ---------- Thumbnail markers (imperative, viewport-managed) ---------- */
+  const refreshThumbs = () => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current) return;
+    const zoom = map.getZoom();
+    const hoodMode = selectedHoodRef.current != null;
+    const show = hoodMode || zoom >= 14.3;
+    const thumbs = thumbsRef.current;
+    if (!show) {
+      for (const m of thumbs.values()) m.remove();
+      thumbs.clear();
+      return;
+    }
+    const bounds = map.getBounds();
+    const cap = hoodMode ? 60 : 40;
+    const wanted: ListingSummary[] = [];
+    for (const l of listingsRef.current) {
+      if (l.latitude == null || l.longitude == null) continue;
+      if (!hoodMode && !bounds.contains([l.longitude, l.latitude])) continue;
+      wanted.push(l);
+      if (wanted.length >= cap) break;
+    }
+    const wantedIds = new Set(wanted.map((l) => l.id));
+    for (const [id, m] of thumbs) {
+      if (!wantedIds.has(id)) {
+        m.remove();
+        thumbs.delete(id);
+      }
+    }
+    const liftPx =
+      hoodMode && liftKRef.current > 0
+        ? (LIFT_METERS * liftKRef.current) / metersPerPixel(37.77, zoom)
+        : 0;
+    for (const l of wanted) {
+      let marker = thumbs.get(l.id);
+      if (!marker) {
+        const el = makeThumbElement(l, searchActiveRef.current, () => {
+          spawnRipple(map, [l.longitude!, l.latitude!]);
+          onSelectRef.current(l.id);
+        });
+        marker = new maplibregl.Marker({ element: el, anchor: "bottom" })
+          .setLngLat([l.longitude!, l.latitude!])
+          .addTo(map);
+        thumbs.set(l.id, marker);
+      }
+      const off = Math.round(liftPx);
+      marker.setOffset([0, -off ? -off : -6]);
+      const stalk = marker.getElement().querySelector<HTMLElement>(".thumb-stalk");
+      if (stalk) stalk.style.height = `${Math.max(0, off - 4)}px`;
+    }
+  };
   useEffect(() => {
     listingsRef.current = listings;
     onSelectRef.current = onSelect;
+    onHoodSelectRef.current = onHoodSelect;
+    refreshThumbsRef.current = refreshThumbs;
   });
 
+  /* ---------- Map boot ---------- */
   useEffect(() => {
-    if (!containerRef.current || mapRef.current) return;
+    if (!containerRef.current) return;
+    let cancelled = false;
+    const container = containerRef.current;
     const reduced = prefersReducedMotion();
-    const map = new maplibregl.Map({
-      container: containerRef.current,
-      style: MAP_STYLE,
-      center: SF_CENTER,
-      zoom: reduced ? 12.4 : 11.1,
-      pitch: reduced ? 55 : 0,
-      bearing: reduced ? -14 : 0,
-      minZoom: 10,
-      maxPitch: 72,
-      attributionControl: { compact: true },
-    });
-    mapRef.current = map;
-    map.addControl(
-      new maplibregl.NavigationControl({ showCompass: true, visualizePitch: true }),
-      "bottom-right",
-    );
-    map.on("error", (e) => console.error("[apt map]", e.error?.message ?? e));
-    (window as unknown as { __aptMap?: maplibregl.Map }).__aptMap = map;
 
-    map.on("load", () => {
-      // Hazy horizon so the tilted city reads with depth.
+    (async () => {
+      let style: StyleSpecification | string = MAP_STYLE_URL;
       try {
-        map.setSky({
-          "sky-color": "#cfe3ee",
-          "horizon-color": "#f3ead9",
-          "fog-color": "#efe9dc",
-          "sky-horizon-blend": 0.55,
-          "horizon-fog-blend": 0.5,
-          "fog-ground-blend": 0.9,
-          "atmosphere-blend": [
-            "interpolate", ["linear"], ["zoom"],
-            10, 0.28, 13, 0.42, 16, 0.15,
-          ] as never,
-        });
-      } catch (err) {
-        console.warn("[apt map] sky unavailable", err);
+        const res = await fetch(MAP_STYLE_URL);
+        if (res.ok) style = darkenStyle((await res.json()) as StyleSpecification);
+      } catch {
+        /* fall back to hosted light style rather than no map */
       }
+      if (cancelled) return;
 
-      // Extruded buildings from the style's own vector source.
-      try {
-        const layers = map.getStyle().layers ?? [];
-        const buildingLayer = layers.find(
-          (l) => "source-layer" in l && l["source-layer"] === "building",
-        );
-        const labelLayer = layers.find(
-          (l) => l.type === "symbol" && "layout" in l && (l.layout as Record<string, unknown>)?.["text-field"],
-        );
-        if (buildingLayer && "source" in buildingLayer) {
-          map.addLayer(
-            {
+      const map = new maplibregl.Map({
+        container,
+        style,
+        center: SF_CENTER,
+        zoom: reduced ? 12.4 : 11.2,
+        pitch: reduced ? 55 : 0,
+        bearing: reduced ? -14 : 0,
+        minZoom: 10.4,
+        maxPitch: 72,
+        maxBounds: SF_MAX_BOUNDS,
+        attributionControl: { compact: true },
+      });
+      mapRef.current = map;
+      map.addControl(
+        new maplibregl.NavigationControl({ showCompass: true, visualizePitch: true }),
+        "bottom-right",
+      );
+      map.on("error", (e) => console.error("[apt map]", e.error?.message ?? e));
+      (window as unknown as { __aptMap?: maplibregl.Map }).__aptMap = map;
+
+      map.on("load", () => {
+        try {
+          map.setSky({
+            "sky-color": "#03060c",
+            "horizon-color": "#0d1c30",
+            "fog-color": "#0a1526",
+            "sky-horizon-blend": 0.5,
+            "horizon-fog-blend": 0.5,
+            "fog-ground-blend": 0.9,
+            "atmosphere-blend": [
+              "interpolate", ["linear"], ["zoom"],
+              10, 0.22, 13, 0.35, 16, 0.1,
+            ] as never,
+          });
+        } catch (err) {
+          console.warn("[apt map] sky unavailable", err);
+        }
+
+        try {
+          map.addSource("dem", {
+            type: "raster-dem",
+            tiles: ["https://elevation-tiles-prod.s3.amazonaws.com/terrarium/{z}/{x}/{y}.png"],
+            encoding: "terrarium",
+            tileSize: 256,
+            maxzoom: 13,
+            attribution: "Terrain: Mapzen/AWS",
+          });
+          map.setTerrain({ source: "dem", exaggeration: 1.3 });
+        } catch (err) {
+          console.warn("[apt map] terrain unavailable", err);
+        }
+
+        // SF-only mask
+        map.addSource("outside-sf", { type: "geojson", data: outsideSfMask() });
+        map.addLayer({
+          id: "outside-sf-mask",
+          type: "fill",
+          source: "outside-sf",
+          paint: { "fill-color": PAPER, "fill-opacity": 0.94 },
+        });
+
+        // Satellite crater reveal (hidden until a hood lifts)
+        map.addSource("satellite", {
+          type: "raster",
+          tiles: [
+            "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+          ],
+          tileSize: 256,
+          maxzoom: 19,
+          attribution: "Imagery: Esri",
+        });
+        map.addLayer({
+          id: "hood-satellite",
+          type: "raster",
+          source: "satellite",
+          layout: { visibility: "none" },
+          paint: { "raster-opacity": 0.92, "raster-saturation": -0.15 },
+        });
+        map.addSource("hood-reveal", { type: "geojson", data: hoodRevealMask(null) });
+        map.addLayer({
+          id: "hood-reveal-mask",
+          type: "fill",
+          source: "hood-reveal",
+          layout: { visibility: "none" },
+          paint: { "fill-color": PAPER, "fill-opacity": 0.9 },
+        });
+
+        // Buildings (ground) + the lifted copy used during a hood isolate
+        let buildingSource: string | null = null;
+        try {
+          const layers = map.getStyle().layers ?? [];
+          const buildingLayer = layers.find(
+            (l) => "source-layer" in l && l["source-layer"] === "building",
+          );
+          if (buildingLayer && "source" in buildingLayer) {
+            buildingSource = buildingLayer.source as string;
+            map.addLayer({
               id: "apt-3d-buildings",
               type: "fill-extrusion",
-              source: buildingLayer.source as string,
+              source: buildingSource,
               "source-layer": "building",
               minzoom: 13,
               paint: {
-                "fill-extrusion-color": "#e7e1d3",
+                "fill-extrusion-color": "#1d2f4b",
                 "fill-extrusion-height": [
                   "interpolate", ["linear"], ["zoom"],
                   13, 0,
                   13.8, ["coalesce", ["get", "render_height"], 10],
                 ],
                 "fill-extrusion-base": ["coalesce", ["get", "render_min_height"], 0],
-                "fill-extrusion-opacity": 0.72,
+                "fill-extrusion-opacity": 0.85,
               },
-            },
-            labelLayer?.id,
-          );
-        }
-      } catch (err) {
-        console.warn("[apt map] 3d buildings unavailable", err);
-      }
-
-      map.addSource("listings", {
-        type: "geojson",
-        data: toGeoJson(listingsRef.current),
-        cluster: true,
-        clusterRadius: 48,
-        clusterMaxZoom: 15,
-        promoteId: "id",
-      });
-
-      map.addLayer({
-        id: "clusters",
-        type: "circle",
-        source: "listings",
-        filter: ["has", "point_count"],
-        paint: {
-          "circle-color": CLUSTER_COLOR_BROWSE,
-          "circle-radius": ["step", ["get", "point_count"], 15, 10, 20, 40, 26],
-          "circle-stroke-width": 2,
-          "circle-stroke-color": "#ffffff",
-          "circle-opacity": 0.92,
-        },
-      });
-      map.addLayer({
-        id: "cluster-count",
-        type: "symbol",
-        source: "listings",
-        filter: ["has", "point_count"],
-        layout: {
-          "text-field": "{point_count_abbreviated}",
-          "text-font": ["Noto Sans Bold"],
-          "text-size": 12,
-        },
-        paint: { "text-color": "#ffffff" },
-      });
-
-      // Lock-on pulse for search targets (driven by rAF while a search is live).
-      map.addLayer({
-        id: "match-pulse",
-        type: "circle",
-        source: "listings",
-        filter: ["!", ["has", "point_count"]],
-        layout: { visibility: "none" },
-        paint: {
-          "circle-color": "transparent",
-          "circle-radius": 10,
-          "circle-stroke-width": 1.6,
-          "circle-stroke-color": ACCENT,
-          "circle-stroke-opacity": 0.5,
-          "circle-pitch-alignment": "map",
-        },
-      });
-
-      map.addLayer({
-        id: "point-selected",
-        type: "circle",
-        source: "listings",
-        filter: ["==", ["get", "id"], "__none__"],
-        paint: {
-          "circle-color": "transparent",
-          "circle-radius": 13,
-          "circle-stroke-width": 3,
-          "circle-stroke-color": ACCENT,
-        },
-      });
-      map.addLayer({
-        id: "points",
-        type: "circle",
-        source: "listings",
-        filter: ["!", ["has", "point_count"]],
-        paint: {
-          "circle-color": ["get", "color"],
-          "circle-radius": 7,
-          "circle-stroke-width": 2,
-          "circle-stroke-color": "#ffffff",
-          "circle-opacity": ["case", ["get", "approximate"], 0.55, 0.95],
-        },
-      });
-      map.addLayer({
-        id: "point-price",
-        type: "symbol",
-        source: "listings",
-        filter: ["!", ["has", "point_count"]],
-        minzoom: 13.2,
-        layout: {
-          "text-field": ["get", "priceShort"],
-          "text-font": ["Noto Sans Bold"],
-          "text-size": 11,
-          "text-offset": [0, -1.45],
-          "text-allow-overlap": false,
-        },
-        paint: {
-          "text-color": ["get", "color"],
-          "text-halo-color": "#ffffff",
-          "text-halo-width": 1.8,
-        },
-      });
-
-      map.on("click", "clusters", async (e) => {
-        const feature = e.features?.[0] as MapGeoJSONFeature | undefined;
-        if (!feature) return;
-        const source = map.getSource("listings") as GeoJSONSource;
-        const zoom = await source.getClusterExpansionZoom(
-          feature.properties!.cluster_id as number,
-        );
-        map.easeTo({
-          center: (feature.geometry as GeoJSON.Point).coordinates as [number, number],
-          zoom: zoom + 0.4,
-        });
-      });
-      map.on("click", "points", (e) => {
-        const feature = e.features?.[0];
-        const id = feature?.properties?.id as string | undefined;
-        if (id) onSelectRef.current(id);
-      });
-      for (const layer of ["clusters", "points"]) {
-        map.on("mouseenter", layer, () => {
-          map.getCanvas().style.cursor = "pointer";
-        });
-        map.on("mouseleave", layer, () => {
-          map.getCanvas().style.cursor = "";
-        });
-      }
-
-      loadedRef.current = true;
-      map.resize();
-      syncData(map, listingsRef.current);
-
-      // Cinematic descent into the city. Hidden/throttled tabs starve rAF and
-      // would freeze mid-flight, so jump-cut there and add a stall fallback.
-      const intro = { center: SF_CENTER as [number, number], zoom: 12.5, pitch: 55, bearing: -14 };
-      if (reduced || document.visibilityState === "hidden") {
-        map.jumpTo(intro);
-      } else {
-        map.flyTo({ ...intro, duration: 2800, curve: 1.3 });
-        window.setTimeout(() => {
-          if (mapRef.current === map && map.isMoving() && map.getZoom() < 12) {
-            map.stop();
-            map.jumpTo(intro);
+            });
           }
-        }, 4200);
-      }
-    });
+        } catch (err) {
+          console.warn("[apt map] 3d buildings unavailable", err);
+        }
 
-    const ro = new ResizeObserver(() => map.resize());
-    ro.observe(containerRef.current);
+        // Neighborhood HUD polygons
+        map.addSource("hoods", {
+          type: "geojson",
+          data: hoodsData as GeoJSON.FeatureCollection,
+          promoteId: "name",
+        });
+        map.addLayer({
+          id: "hoods-fill",
+          type: "fill",
+          source: "hoods",
+          paint: {
+            "fill-color": HOOD,
+            "fill-opacity": [
+              "case",
+              ["boolean", ["feature-state", "hover"], false], 0.12,
+              0.035,
+            ],
+          },
+        });
+        map.addLayer({
+          id: "hoods-line-glow",
+          type: "line",
+          source: "hoods",
+          paint: { "line-color": HOOD, "line-width": 4.5, "line-opacity": 0.1, "line-blur": 3 },
+        });
+        map.addLayer({
+          id: "hoods-line",
+          type: "line",
+          source: "hoods",
+          paint: { "line-color": HOOD, "line-width": 1, "line-opacity": 0.45 },
+        });
+        // The floating slab that carries the lifted neighborhood.
+        map.addLayer({
+          id: "hood-slab",
+          type: "fill-extrusion",
+          source: "hoods",
+          filter: ["==", ["get", "name"], "__none__"],
+          paint: {
+            "fill-extrusion-color": "#16283f",
+            "fill-extrusion-height": 0,
+            "fill-extrusion-base": 0,
+            "fill-extrusion-opacity": 0.98,
+          },
+        });
+        // Buildings riding the slab (filtered to the hood polygon on select).
+        if (buildingSource) {
+          map.addLayer({
+            id: "hood-buildings-lifted",
+            type: "fill-extrusion",
+            source: buildingSource,
+            "source-layer": "building",
+            minzoom: 12,
+            filter: NEVER_MATCH,
+            paint: {
+              "fill-extrusion-color": "#35597f",
+              "fill-extrusion-height": 10,
+              "fill-extrusion-base": 0,
+              "fill-extrusion-opacity": 0.96,
+            },
+          });
+        }
+        map.addLayer({
+          id: "hood-selected-line",
+          type: "line",
+          source: "hoods",
+          filter: ["==", ["get", "name"], "__none__"],
+          paint: { "line-color": HOOD_BRIGHT, "line-width": 2.4, "line-opacity": 0.95 },
+        });
+        map.addLayer({
+          id: "hoods-label",
+          type: "symbol",
+          source: "hoods",
+          layout: {
+            "text-field": ["upcase", ["get", "name"]],
+            "text-font": ["Noto Sans Bold"],
+            "text-size": ["interpolate", ["linear"], ["zoom"], 10.5, 9, 13, 12.5],
+            "text-letter-spacing": 0.18,
+            "text-max-width": 7,
+          },
+          paint: {
+            "text-color": "#9fd8ef",
+            "text-opacity": 0.8,
+            "text-halo-color": PAPER,
+            "text-halo-width": 1.4,
+          },
+        });
+
+        // Sonar (hidden until a search runs)
+        map.addSource("sonar-center", { type: "geojson", data: EMPTY_FC });
+        for (let i = 0; i < 3; i++) {
+          map.addLayer({
+            id: `sonar-ring-${i}`,
+            type: "circle",
+            source: "sonar-center",
+            layout: { visibility: "none" },
+            paint: {
+              "circle-color": "transparent",
+              "circle-radius": 0,
+              "circle-stroke-color": HOOD,
+              "circle-stroke-width": 1.6,
+              "circle-stroke-opacity": 0,
+              "circle-pitch-alignment": "map",
+            },
+          });
+        }
+        map.addSource("sonar-beam", { type: "geojson", data: EMPTY_FC });
+        map.addLayer({
+          id: "sonar-beam",
+          type: "line",
+          source: "sonar-beam",
+          layout: { visibility: "none", "line-cap": "round" },
+          paint: {
+            "line-color": HOOD,
+            "line-width": 2,
+            "line-opacity": ["get", "o"] as unknown as maplibregl.ExpressionSpecification,
+            "line-blur": 1,
+          },
+        });
+        map.addSource("scan-targets", { type: "geojson", data: EMPTY_FC });
+        map.addLayer({
+          id: "scan-target-dots",
+          type: "circle",
+          source: "scan-targets",
+          layout: { visibility: "none" },
+          paint: {
+            "circle-color": HOOD,
+            "circle-radius": 3,
+            "circle-opacity": 0.9,
+            "circle-stroke-color": HALO,
+            "circle-stroke-width": 1,
+          },
+        });
+        map.addLayer({
+          id: "scan-target-ping",
+          type: "circle",
+          source: "scan-targets",
+          layout: { visibility: "none" },
+          paint: {
+            "circle-color": "transparent",
+            "circle-radius": 6,
+            "circle-stroke-color": HOOD,
+            "circle-stroke-width": 1.4,
+            "circle-stroke-opacity": 0.6,
+            "circle-pitch-alignment": "map",
+          },
+        });
+
+        // Listings
+        map.addSource("listings", {
+          type: "geojson",
+          data: toGeoJson(listingsRef.current),
+          cluster: true,
+          clusterRadius: 48,
+          clusterMaxZoom: 15,
+          promoteId: "id",
+        });
+        map.addLayer({
+          id: "clusters",
+          type: "circle",
+          source: "listings",
+          filter: ["has", "point_count"],
+          paint: {
+            "circle-color": CLUSTER_COLOR_BROWSE,
+            "circle-radius": ["step", ["get", "point_count"], 15, 10, 20, 40, 26],
+            "circle-stroke-width": 2,
+            "circle-stroke-color": HALO,
+            "circle-opacity": 0.92,
+          },
+        });
+        map.addLayer({
+          id: "cluster-count",
+          type: "symbol",
+          source: "listings",
+          filter: ["has", "point_count"],
+          layout: {
+            "text-field": "{point_count_abbreviated}",
+            "text-font": ["Noto Sans Bold"],
+            "text-size": 12,
+          },
+          paint: { "text-color": "#eaf2ff" },
+        });
+        map.addLayer({
+          id: "match-pulse",
+          type: "circle",
+          source: "listings",
+          filter: ["!", ["has", "point_count"]],
+          layout: { visibility: "none" },
+          paint: {
+            "circle-color": "transparent",
+            "circle-radius": 10,
+            "circle-stroke-width": 1.6,
+            "circle-stroke-color": ACCENT,
+            "circle-stroke-opacity": 0.5,
+            "circle-pitch-alignment": "map",
+          },
+        });
+        map.addLayer({
+          id: "point-selected",
+          type: "circle",
+          source: "listings",
+          filter: ["==", ["get", "id"], "__none__"],
+          paint: {
+            "circle-color": "transparent",
+            "circle-radius": 13,
+            "circle-stroke-width": 3,
+            "circle-stroke-color": ACCENT,
+          },
+        });
+        map.addLayer({
+          id: "points",
+          type: "circle",
+          source: "listings",
+          filter: ["!", ["has", "point_count"]],
+          paint: {
+            "circle-color": ["get", "color"],
+            "circle-radius": 7,
+            "circle-stroke-width": 2,
+            "circle-stroke-color": HALO,
+            "circle-opacity": ["case", ["get", "approximate"], 0.55, 0.95],
+          },
+        });
+        map.addLayer({
+          id: "point-price",
+          type: "symbol",
+          source: "listings",
+          filter: ["!", ["has", "point_count"]],
+          minzoom: 13.2,
+          layout: {
+            "text-field": ["get", "priceShort"],
+            "text-font": ["Noto Sans Bold"],
+            "text-size": 11,
+            "text-offset": [0, -1.45],
+            "text-allow-overlap": false,
+          },
+          paint: {
+            "text-color": ["get", "color"],
+            "text-halo-color": HALO,
+            "text-halo-width": 1.6,
+          },
+        });
+
+        // Interactions
+        map.on("click", "clusters", async (e) => {
+          const feature = e.features?.[0] as MapGeoJSONFeature | undefined;
+          if (!feature) return;
+          const source = map.getSource("listings") as GeoJSONSource;
+          const zoom = await source.getClusterExpansionZoom(
+            feature.properties!.cluster_id as number,
+          );
+          map.easeTo({
+            center: (feature.geometry as GeoJSON.Point).coordinates as [number, number],
+            zoom: zoom + 0.4,
+          });
+        });
+        map.on("click", "points", (e) => {
+          const f = e.features?.[0];
+          const id = f?.properties?.id as string | undefined;
+          if (id) {
+            spawnRipple(map, (f!.geometry as GeoJSON.Point).coordinates as [number, number]);
+            onSelectRef.current(id);
+          }
+        });
+        map.on("click", "hoods-fill", (e) => {
+          const hits = map.queryRenderedFeatures(e.point, {
+            layers: ["points", "clusters"],
+          });
+          if (hits.length > 0) return;
+          const name = e.features?.[0]?.properties?.name as string | undefined;
+          if (!name) return;
+          onHoodSelectRef.current(selectedHoodRef.current === name ? null : name);
+        });
+        map.on("mousemove", "hoods-fill", (e) => {
+          const name = e.features?.[0]?.properties?.name as string | undefined;
+          if (hoveredHoodRef.current === name) return;
+          if (hoveredHoodRef.current) {
+            map.setFeatureState(
+              { source: "hoods", id: hoveredHoodRef.current },
+              { hover: false },
+            );
+          }
+          hoveredHoodRef.current = name ?? null;
+          if (name) map.setFeatureState({ source: "hoods", id: name }, { hover: true });
+        });
+        map.on("mouseleave", "hoods-fill", () => {
+          if (hoveredHoodRef.current) {
+            map.setFeatureState(
+              { source: "hoods", id: hoveredHoodRef.current },
+              { hover: false },
+            );
+            hoveredHoodRef.current = null;
+          }
+        });
+        for (const layer of ["clusters", "points"]) {
+          map.on("mouseenter", layer, () => {
+            map.getCanvas().style.cursor = "pointer";
+          });
+          map.on("mouseleave", layer, () => {
+            map.getCanvas().style.cursor = "";
+          });
+        }
+        map.on("moveend", () => refreshThumbsRef.current());
+        map.on("zoomend", () => refreshThumbsRef.current());
+
+        loadedRef.current = true;
+        map.resize();
+        syncData(map, listingsRef.current);
+        refreshThumbsRef.current();
+
+        const intro = { center: SF_CENTER as [number, number], zoom: 12.5, pitch: 55, bearing: -14 };
+        if (reduced || document.visibilityState === "hidden") {
+          map.jumpTo(intro);
+        } else {
+          map.flyTo({ ...intro, duration: 2800, curve: 1.3 });
+          window.setTimeout(() => {
+            if (mapRef.current === map && map.isMoving() && map.getZoom() < 12) {
+              map.stop();
+              map.jumpTo(intro);
+            }
+          }, 4200);
+        }
+      });
+
+      const ro = new ResizeObserver(() => map.resize());
+      ro.observe(container);
+      cleanupRef.current = () => {
+        ro.disconnect();
+        for (const r of [pulseRafRef, liftRafRef, sonarRafRef]) {
+          if (r.current != null) cancelAnimationFrame(r.current);
+        }
+        if (scanHopTimerRef.current != null) clearInterval(scanHopTimerRef.current);
+        lockMarkerRef.current?.remove();
+        scanMarkerRef.current?.remove();
+        for (const m of thumbsRef.current.values()) m.remove();
+        thumbsRef.current.clear();
+        map.remove();
+        mapRef.current = null;
+        loadedRef.current = false;
+      };
+    })();
 
     return () => {
-      ro.disconnect();
-      if (pulseRafRef.current != null) cancelAnimationFrame(pulseRafRef.current);
-      lockMarkerRef.current?.remove();
-      map.remove();
-      mapRef.current = null;
-      loadedRef.current = false;
+      cancelled = true;
+      cleanupRef.current?.();
+      cleanupRef.current = null;
     };
+     
   }, []);
 
-  // Push listing changes into the source.
+  // Push listing changes into the source + thumbnails.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
     syncData(map, listings);
+    refreshThumbsRef.current();
   }, [listings]);
 
-  // Surveillance pull-up while a search scans.
+  /* ---------- Sonar ON the map while a search scans ---------- */
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current) return;
+    const reduced = prefersReducedMotion();
+    const visible = searching ? "visible" : "none";
+    const center: [number, number] =
+      userLocation &&
+      userLocation.lng > SF_MAX_BOUNDS[0][0] &&
+      userLocation.lng < SF_MAX_BOUNDS[1][0] &&
+      userLocation.lat > SF_MAX_BOUNDS[0][1] &&
+      userLocation.lat < SF_MAX_BOUNDS[1][1]
+        ? [userLocation.lng, userLocation.lat]
+        : SF_CENTER;
+
+    try {
+      for (let i = 0; i < 3; i++) map.setLayoutProperty(`sonar-ring-${i}`, "visibility", visible);
+      map.setLayoutProperty("sonar-beam", "visibility", visible);
+      map.setLayoutProperty("scan-target-dots", "visibility", visible);
+      map.setLayoutProperty("scan-target-ping", "visibility", visible);
+      (map.getSource("sonar-center") as GeoJSONSource | undefined)?.setData(
+        searching
+          ? { type: "Feature", properties: {}, geometry: { type: "Point", coordinates: center } }
+          : EMPTY_FC,
+      );
+      if (!searching) {
+        (map.getSource("sonar-beam") as GeoJSONSource | undefined)?.setData(EMPTY_FC);
+        (map.getSource("scan-targets") as GeoJSONSource | undefined)?.setData(EMPTY_FC);
+      }
+    } catch {
+      return;
+    }
+
+    if (sonarRafRef.current != null) {
+      cancelAnimationFrame(sonarRafRef.current);
+      sonarRafRef.current = null;
+    }
+    if (!searching) {
+      scanMarkerRef.current?.remove();
+      scanMarkerRef.current = null;
+      if (scanHopTimerRef.current != null) {
+        clearInterval(scanHopTimerRef.current);
+        scanHopTimerRef.current = null;
+      }
+      return;
+    }
+
+    // Surveillance pull-up, then the sweep.
+    if (!reduced && document.visibilityState !== "hidden") {
+      map.flyTo({ center, zoom: 11.7, pitch: 30, bearing: 0, duration: 1500 });
+    }
+    if (reduced) return;
+
+    const RING_PERIOD = 3000;
+    const BEAM_DEG_PER_MS = 0.11;
+    const BEAM_LEN = 0.075;
+    const cosLat = Math.cos((center[1] * Math.PI) / 180);
+    const start = performance.now();
+    const tick = (t: number) => {
+      const m = mapRef.current;
+      if (!m) return;
+      const dt = t - start;
+      try {
+        // Expanding rings, three phases.
+        for (let i = 0; i < 3; i++) {
+          const k = ((dt + (i * RING_PERIOD) / 3) % RING_PERIOD) / RING_PERIOD;
+          m.setPaintProperty(`sonar-ring-${i}`, "circle-radius", k * 480);
+          m.setPaintProperty(`sonar-ring-${i}`, "circle-stroke-opacity", 0.42 * (1 - k));
+        }
+        // Rotating beam with two fading trails.
+        const theta = ((dt * BEAM_DEG_PER_MS) % 360) * (Math.PI / 180);
+        const beamAt = (angle: number, o: number): GeoJSON.Feature => ({
+          type: "Feature",
+          properties: { o },
+          geometry: {
+            type: "LineString",
+            coordinates: [
+              center,
+              [
+                center[0] + (BEAM_LEN * Math.sin(angle)) / cosLat,
+                center[1] + BEAM_LEN * Math.cos(angle),
+              ],
+            ],
+          },
+        });
+        (m.getSource("sonar-beam") as GeoJSONSource | undefined)?.setData({
+          type: "FeatureCollection",
+          features: [
+            beamAt(theta, 0.7),
+            beamAt(theta - 0.1, 0.32),
+            beamAt(theta - 0.2, 0.12),
+          ],
+        });
+        // Target pings once the shortlist is in.
+        const k2 = (dt % 1400) / 1400;
+        m.setPaintProperty("scan-target-ping", "circle-radius", 5 + k2 * 17);
+        m.setPaintProperty("scan-target-ping", "circle-stroke-opacity", 0.6 * (1 - k2));
+      } catch {
+        return;
+      }
+      sonarRafRef.current = requestAnimationFrame(tick);
+    };
+    sonarRafRef.current = requestAnimationFrame(tick);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searching]);
+
+  // Shortlist arrives: ping the REAL candidates, hop a designator, hone in.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current || !searching) return;
-    if (prefersReducedMotion()) return;
-    map.flyTo({ center: SF_CENTER, zoom: 11.55, pitch: 26, bearing: 0, duration: 1500 });
-  }, [searching]);
+    const coords = (scanIds ?? [])
+      .map((id) => radarPoints?.find((p) => p.id === id))
+      .filter((p): p is RadarPoint => p != null)
+      .map((p) => [p.lng, p.lat] as [number, number]);
+    if (coords.length === 0) return;
 
-  // Target mode: recolor to lock-on accent, start the pulse, swoop onto results.
+    try {
+      (map.getSource("scan-targets") as GeoJSONSource | undefined)?.setData({
+        type: "FeatureCollection",
+        features: coords.map((c) => ({
+          type: "Feature",
+          properties: {},
+          geometry: { type: "Point", coordinates: c },
+        })),
+      });
+    } catch {
+      return;
+    }
+
+    // Hone the camera in on where the candidates concentrate.
+    const bounds = new maplibregl.LngLatBounds();
+    for (const c of coords) bounds.extend(c);
+    if (!bounds.isEmpty() && !prefersReducedMotion() && document.visibilityState !== "hidden") {
+      const cam = map.cameraForBounds(bounds, {
+        padding: { top: 170, left: 100, right: 100, bottom: 100 },
+        maxZoom: 13.8,
+        bearing: -10,
+      });
+      if (cam) map.flyTo({ ...cam, pitch: 38, duration: 2600, curve: 1.2 });
+    }
+
+    // Designator hops between the actual shortlisted listings.
+    if (scanHopTimerRef.current != null) clearInterval(scanHopTimerRef.current);
+    let idx = 0;
+    const hop = () => {
+      const m = mapRef.current;
+      if (!m) return;
+      scanMarkerRef.current?.remove();
+      scanMarkerRef.current = new maplibregl.Marker({ element: makeScanElement() })
+        .setLngLat(coords[idx % coords.length])
+        .addTo(m);
+      idx++;
+    };
+    hop();
+    scanHopTimerRef.current = window.setInterval(hop, 700);
+    return () => {
+      if (scanHopTimerRef.current != null) {
+        clearInterval(scanHopTimerRef.current);
+        scanHopTimerRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scanIds, searching]);
+
+  /* ---------- Neighborhood isolate: lift the hood out of the map ---------- */
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current) return;
+    selectedHoodRef.current = selectedHood;
+    const reduced = prefersReducedMotion();
+    const hood = hoodByName(selectedHood);
+    const hoodGeom = hood
+      ? ({ type: "MultiPolygon", coordinates: hood.geometry.coordinates } as GeoJSON.MultiPolygon)
+      : null;
+
+    try {
+      const nameFilter: maplibregl.FilterSpecification = [
+        "==", ["get", "name"], selectedHood ?? "__none__",
+      ];
+      map.setFilter("hood-slab", nameFilter);
+      map.setFilter("hood-selected-line", nameFilter);
+      (map.getSource("hood-reveal") as GeoJSONSource | undefined)?.setData(
+        hoodRevealMask(selectedHood),
+      );
+      map.setLayoutProperty("hood-satellite", "visibility", selectedHood ? "visible" : "none");
+      map.setLayoutProperty("hood-reveal-mask", "visibility", selectedHood ? "visible" : "none");
+      map.setPaintProperty("hoods-line", "line-opacity", selectedHood ? 0.22 : 0.45);
+      map.setPaintProperty("hoods-label", "text-opacity", selectedHood ? 0.4 : 0.8);
+      // Split the building layer: ground buildings outside, lifted inside.
+      if (map.getLayer("hood-buildings-lifted")) {
+        map.setFilter(
+          "hood-buildings-lifted",
+          hoodGeom ? (["within", hoodGeom] as unknown as maplibregl.FilterSpecification) : NEVER_MATCH,
+        );
+      }
+      if (map.getLayer("apt-3d-buildings")) {
+        map.setFilter(
+          "apt-3d-buildings",
+          hoodGeom ? (["!", ["within", hoodGeom]] as unknown as maplibregl.FilterSpecification) : null,
+        );
+      }
+      // Thumbnails replace dots inside a lifted hood.
+      const dotVis = selectedHood ? "none" : "visible";
+      for (const id of ["points", "clusters", "cluster-count", "point-price"]) {
+        map.setLayoutProperty(id, "visibility", dotVis);
+      }
+      if (!selectedHood) {
+        map.setLayoutProperty(
+          "match-pulse",
+          "visibility",
+          searchActiveRef.current && !reduced ? "visible" : "none",
+        );
+      } else {
+        map.setLayoutProperty("match-pulse", "visibility", "none");
+      }
+    } catch {
+      return;
+    }
+
+    // Animate the lift.
+    if (liftRafRef.current != null) cancelAnimationFrame(liftRafRef.current);
+    const applyLift = (k: number) => {
+      liftKRef.current = k;
+      const L = LIFT_METERS * k;
+      try {
+        map.setPaintProperty("hood-slab", "fill-extrusion-height", L);
+        map.setPaintProperty("hood-slab", "fill-extrusion-base", Math.max(0, L - 16));
+        if (map.getLayer("hood-buildings-lifted")) {
+          map.setPaintProperty("hood-buildings-lifted", "fill-extrusion-base", [
+            "+", L, ["coalesce", ["get", "render_min_height"], 0],
+          ]);
+          map.setPaintProperty("hood-buildings-lifted", "fill-extrusion-height", [
+            "+", L, ["coalesce", ["get", "render_height"], 10],
+          ]);
+        }
+      } catch {
+        /* torn down */
+      }
+      refreshThumbsRef.current();
+    };
+    if (selectedHood) {
+      if (reduced) {
+        applyLift(1);
+      } else {
+        const start = performance.now();
+        const DURATION = 1300;
+        const tick = (t: number) => {
+          const k = Math.min(1, (t - start) / DURATION);
+          applyLift(1 - Math.pow(1 - k, 3));
+          if (k < 1) liftRafRef.current = requestAnimationFrame(tick);
+        };
+        liftRafRef.current = requestAnimationFrame(tick);
+      }
+    } else {
+      applyLift(0);
+    }
+
+    // Camera: swoop into the hood, or back out to the city frame.
+    if (selectedHood && hood) {
+      const [[w, s], [e, n]] = multiPolygonBounds(hood.geometry.coordinates);
+      const cam = map.cameraForBounds(
+        [
+          [w, s],
+          [e, n],
+        ],
+        { padding: { top: 190, left: 90, right: 90, bottom: 80 }, bearing: -20, maxZoom: 14.6 },
+      );
+      if (cam) {
+        if (reduced || document.visibilityState === "hidden") {
+          map.jumpTo({ ...cam, pitch: 58 });
+        } else {
+          map.flyTo({ ...cam, pitch: 58, duration: 1700, curve: 1.35 });
+        }
+      }
+    } else if (!selectedHood && !searchActiveRef.current) {
+      const home = { center: SF_CENTER as [number, number], zoom: 12.5, pitch: 55, bearing: -14 };
+      if (reduced || document.visibilityState === "hidden") map.jumpTo(home);
+      else map.flyTo({ ...home, duration: 1400, curve: 1.3 });
+    }
+     
+  }, [selectedHood]);
+
+  /* ---------- Target mode (search results) ---------- */
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
@@ -374,16 +1152,17 @@ export function MapView({
         searchActive ? ACCENT : CLUSTER_COLOR_BROWSE,
       );
       map.setLayerZoomRange("point-price", searchActive ? 12.1 : 13.2, 24);
-      map.setLayoutProperty(
-        "match-pulse",
-        "visibility",
-        searchActive && !prefersReducedMotion() ? "visible" : "none",
-      );
+      if (!selectedHoodRef.current) {
+        map.setLayoutProperty(
+          "match-pulse",
+          "visibility",
+          searchActive && !prefersReducedMotion() ? "visible" : "none",
+        );
+      }
     } catch {
-      /* layers not ready yet */
+      return;
     }
 
-    // Uniform lock-on ping across all targets.
     if (pulseRafRef.current != null) {
       cancelAnimationFrame(pulseRafRef.current);
       pulseRafRef.current = null;
@@ -403,8 +1182,7 @@ export function MapView({
       pulseRafRef.current = requestAnimationFrame(tick);
     }
 
-    // Swoop the camera onto the result set.
-    if (searchActive) {
+    if (searchActive && !selectedHoodRef.current) {
       const pts = listings.filter((l) => l.latitude != null && l.longitude != null);
       if (pts.length > 0) {
         const bounds = new maplibregl.LngLatBounds();
@@ -420,7 +1198,7 @@ export function MapView({
             bearing: -14,
           });
           if (cam) {
-            if (prefersReducedMotion()) {
+            if (prefersReducedMotion() || document.visibilityState === "hidden") {
               map.jumpTo({ ...cam, pitch: 55 });
             } else {
               map.flyTo({ ...cam, pitch: 55, duration: 2000, curve: 1.35 });
@@ -432,11 +1210,15 @@ export function MapView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchActive, searchActive ? listings : null]);
 
-  // Selection: bracket lock marker + dive to the rooftop.
+  /* ---------- Selection: bracket lock + rooftop dive ---------- */
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
-    map.setFilter("point-selected", ["==", ["get", "id"], selectedId ?? "__none__"]);
+    try {
+      map.setFilter("point-selected", ["==", ["get", "id"], selectedId ?? "__none__"]);
+    } catch {
+      return;
+    }
 
     lockMarkerRef.current?.remove();
     lockMarkerRef.current = null;
@@ -451,7 +1233,7 @@ export function MapView({
         })
           .setLngLat([listing.longitude, listing.latitude])
           .addTo(map);
-        if (prefersReducedMotion()) {
+        if (prefersReducedMotion() || document.visibilityState === "hidden") {
           map.jumpTo({
             center: [listing.longitude, listing.latitude],
             zoom: Math.max(map.getZoom(), 15.4),
@@ -471,36 +1253,41 @@ export function MapView({
   }, [selectedId, listings]);
 
   return (
-    <div className="relative h-full w-full">
+    <div className="relative h-full w-full bg-paper">
       <div ref={containerRef} className="h-full w-full" />
-      {/* Cinematic vignette + top wash for HUD readability */}
       <div
         className="pointer-events-none absolute inset-0"
         style={{
           background:
-            "linear-gradient(to bottom, rgba(246,244,239,0.5), rgba(246,244,239,0) 130px), radial-gradient(120% 90% at 50% 45%, rgba(35,33,28,0) 62%, rgba(35,33,28,0.16) 100%)",
+            "linear-gradient(to bottom, rgba(7,13,24,0.55), rgba(7,13,24,0) 130px), radial-gradient(120% 90% at 50% 45%, rgba(0,0,0,0) 60%, rgba(0,0,0,0.32) 100%)",
         }}
       />
-      {/* Compact legend chip */}
-      <div className="pointer-events-none absolute bottom-6 left-3 z-10 flex items-center gap-3 rounded-full border border-white/60 bg-surface/80 px-3.5 py-2 shadow-md backdrop-blur-md">
+      <div className="pointer-events-none absolute bottom-6 left-3 z-10 flex items-center gap-3 rounded-full border border-white/10 bg-surface/80 px-3.5 py-2 shadow-md backdrop-blur-md">
         {LEGEND.map(([color, label]) => (
           <span key={label} className="flex items-center gap-1.5">
             <span
-              className="h-2 w-2 rounded-full border border-white shadow-sm"
-              style={{ backgroundColor: color }}
+              className="h-2 w-2 rounded-full"
+              style={{ backgroundColor: color, boxShadow: `0 0 6px ${color}66` }}
             />
             <span className="text-[10.5px] font-medium text-muted">{label}</span>
           </span>
         ))}
         <span
           className="text-[10.5px] text-faint"
-          title="Faded markers are approximate (neighborhood-level) locations. During a search, all markers turn terracotta targets."
+          title="Faded markers are approximate (neighborhood-level) locations. During a search all markers become lock-on targets. Click a neighborhood to lift it out of the map."
         >
           ⓘ
         </span>
       </div>
     </div>
   );
+}
+
+function spawnRipple(map: maplibregl.Map, lngLat: [number, number]) {
+  const marker = new maplibregl.Marker({ element: makeRippleElement() })
+    .setLngLat(lngLat)
+    .addTo(map);
+  window.setTimeout(() => marker.remove(), 520);
 }
 
 function syncData(map: maplibregl.Map, listings: ListingSummary[]) {

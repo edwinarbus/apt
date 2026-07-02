@@ -106,7 +106,7 @@ export function ListingDetail({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/45 p-4 backdrop-blur-[3px]"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 backdrop-blur-[3px]"
       onClick={onClose}
     >
       <div

@@ -62,6 +62,8 @@ export function SearchBar({
   onRadiusChange,
   showHiddenGone,
   onToggleHiddenGone,
+  selectedHood,
+  onClearHood,
 }: {
   query: string;
   onQueryChange: (q: string) => void;
@@ -77,6 +79,8 @@ export function SearchBar({
   onRadiusChange: (mi: number) => void;
   showHiddenGone: boolean;
   onToggleHiddenGone: () => void;
+  selectedHood: string | null;
+  onClearHood: () => void;
 }) {
   const [listening, setListening] = useState(false);
   const [micSupported, setMicSupported] = useState(false);
@@ -142,7 +146,7 @@ export function SearchBar({
   const hasSearch = search != null;
 
   return (
-    <div className="flex flex-col gap-2.5 rounded-[26px] border border-white/60 bg-surface/75 px-3.5 pt-3 pb-2.5 shadow-2xl ring-1 ring-ink/5 backdrop-blur-xl">
+    <div className="flex flex-col gap-2.5 rounded-[26px] border border-white/10 bg-surface/75 px-3.5 pt-3 pb-2.5 shadow-2xl ring-1 ring-black/40 backdrop-blur-xl">
       {/* The one big box */}
       <div
         className={`relative rounded-[22px] p-[1.5px] transition-shadow duration-300 ${
@@ -207,6 +211,16 @@ export function SearchBar({
 
       {/* Controls row */}
       <div className="flex flex-wrap items-center gap-2 text-[12px]">
+        {selectedHood && (
+          <button
+            type="button"
+            onClick={onClearHood}
+            className="animate-pop-in inline-flex items-center gap-1.5 rounded-full border border-[#3fd0ff]/40 bg-[#3fd0ff]/10 px-2.5 py-1 font-mono text-[11px] font-semibold tracking-[0.12em] text-[#7ce4ff] uppercase transition-colors hover:bg-[#3fd0ff]/20"
+            title="Isolated neighborhood — click to release"
+          >
+            ▣ {selectedHood} <span aria-hidden>✕</span>
+          </button>
+        )}
         {locationStatus === "granted" && location ? (
           <span
             className="inline-flex items-center gap-1 rounded-full border border-good/30 bg-good/10 px-2.5 py-1 text-good"

@@ -86,26 +86,26 @@ export const BADGE_LABELS: Record<BadgeKind, string> = {
   source_uncertain: "Source uncertain",
 };
 
-/** Marker + chip colors (hex, used by both the map layers and CSS). */
+/** Marker + chip colors (hex, used by both the map layers and CSS) — tuned for the dark navy theme. */
 export const BADGE_COLORS: Record<BadgeKind, string> = {
-  new_today: "#1E7F4F",
-  price_drop: "#1D63DC",
-  price_increase: "#7C5BD1",
-  stale: "#8A857B",
-  likely_unavailable: "#B0AAA0",
-  verify_carefully: "#C2410C",
-  watch: "#B45309",
-  duplicate: "#64748B",
-  saved: "#C43D7E",
-  contacted: "#6D28D9",
-  maybe: "#0E7490",
-  toured: "#0F766E",
-  applied: "#4338CA",
-  suspicious: "#B91C1C",
-  source_uncertain: "#B45309",
+  new_today: "#2FD08A",
+  price_drop: "#4DA3FF",
+  price_increase: "#A78BFA",
+  stale: "#7C8AA0",
+  likely_unavailable: "#5D6B80",
+  verify_carefully: "#FF7A4D",
+  watch: "#F0A13F",
+  duplicate: "#8FA3BC",
+  saved: "#FF6FA5",
+  contacted: "#B18CFF",
+  maybe: "#38C7D8",
+  toured: "#2DD4BF",
+  applied: "#8B9BF9",
+  suspicious: "#FF5D5D",
+  source_uncertain: "#F0A13F",
 };
 
-export const DEFAULT_MARKER_COLOR = "#33302A";
+export const DEFAULT_MARKER_COLOR = "#AFC2DB";
 
 /** The single color a listing's map marker should take (first badge wins). */
 export function markerColor(badges: BadgeKind[]): string {

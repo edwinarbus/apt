@@ -1,18 +1,19 @@
 @import "tailwindcss";
 
 @theme {
-  --color-paper: #f6f4ef;
-  --color-surface: #ffffff;
-  --color-ink: #23211c;
-  --color-muted: #6f6a5e;
-  --color-faint: #a39b8b;
-  --color-line: #e6e1d6;
-  --color-accent: #bf4e2c;
-  --color-accent-deep: #9e3f22;
-  --color-accent-soft: #f8e9e3;
-  --color-good: #1e7f4f;
-  --color-warn: #b45309;
-  --color-alert: #c2410c;
+  /* Navy ops palette — dark by default. */
+  --color-paper: #070d18;
+  --color-surface: #0f1a2b;
+  --color-ink: #e9f0fb;
+  --color-muted: #9db0ca;
+  --color-faint: #5d7089;
+  --color-line: #1f2f47;
+  --color-accent: #ff6b3d;
+  --color-accent-deep: #e0512b;
+  --color-accent-soft: #3b1d12;
+  --color-good: #2fd08a;
+  --color-warn: #f0a13f;
+  --color-alert: #ff5d5d;
 
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-display: var(--font-fraunces), Georgia, serif;
@@ -23,6 +24,7 @@ body {
   color: var(--color-ink);
   font-family: var(--font-sans);
   font-feature-settings: "cv11", "ss01";
+  color-scheme: dark;
 }
 
 /* ---------- Motion ---------- */
@@ -120,10 +122,10 @@ body {
 @keyframes glow-ring {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgba(191, 78, 44, 0.16);
+    box-shadow: 0 0 0 0 rgba(255, 107, 61, 0.28);
   }
   50% {
-    box-shadow: 0 0 0 7px rgba(191, 78, 44, 0.06);
+    box-shadow: 0 0 0 7px rgba(255, 107, 61, 0.1);
   }
 }
 
@@ -181,7 +183,86 @@ body {
   height: 48px;
   pointer-events: none;
   animation: pop-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
-  filter: drop-shadow(0 1px 3px rgba(35, 33, 28, 0.35));
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.5));
+}
+/* Scan designator that hops between shortlisted listings during a search */
+.map-scan {
+  width: 40px;
+  height: 40px;
+  pointer-events: none;
+  transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+  filter: drop-shadow(0 0 6px rgba(63, 208, 255, 0.5));
+}
+/* One-shot ripple where the user clicks a listing */
+@keyframes click-ripple {
+  from {
+    transform: scale(0.25);
+    opacity: 0.9;
+  }
+  to {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+.click-ripple {
+  width: 44px;
+  height: 44px;
+  pointer-events: none;
+  border: 2px solid #ff6b3d;
+  border-radius: 9999px;
+  animation: click-ripple 0.5s ease-out forwards;
+}
+/* Photo thumbnail markers at close zoom / lifted neighborhoods */
+.thumb-marker {
+  width: 64px;
+  cursor: pointer;
+  animation: pop-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+  transition: transform 0.15s ease;
+  filter: drop-shadow(0 3px 8px rgba(0, 0, 0, 0.55));
+}
+.thumb-marker:hover {
+  transform: scale(1.12);
+  z-index: 10;
+}
+.thumb-marker.thumb-click {
+  animation: pop-in 0.18s ease-in reverse;
+}
+.thumb-marker .thumb-img {
+  width: 64px;
+  height: 44px;
+  object-fit: cover;
+  border-radius: 8px 8px 0 0;
+  display: block;
+  background: #0f1a2b;
+}
+.thumb-marker .thumb-price {
+  display: block;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 1.5px 0 2.5px;
+  color: #e9f0fb;
+  background: rgba(15, 26, 43, 0.95);
+  border-radius: 0 0 8px 8px;
+}
+.thumb-marker,
+.thumb-marker .thumb-frame {
+  border-radius: 9px;
+}
+.thumb-marker .thumb-frame {
+  border: 1.5px solid rgba(63, 208, 255, 0.45);
+  overflow: hidden;
+}
+.thumb-marker.thumb-hot .thumb-frame {
+  border-color: rgba(255, 107, 61, 0.8);
+}
+/* Stalk connecting an elevated thumbnail to its ground point */
+.thumb-marker .thumb-stalk {
+  display: block;
+  width: 1.5px;
+  margin: 0 auto;
+  background: linear-gradient(to bottom, rgba(63, 208, 255, 0.55), rgba(63, 208, 255, 0));
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -219,10 +300,24 @@ body {
   background: var(--color-faint);
 }
 
-/* MapLibre chrome tuned to the theme */
+/* MapLibre chrome tuned to the dark theme */
 .maplibregl-ctrl-attrib {
   font-size: 10px !important;
-  background: rgba(246, 244, 239, 0.75) !important;
+  background: rgba(7, 13, 24, 0.72) !important;
+  color: var(--color-faint) !important;
+}
+.maplibregl-ctrl-attrib a {
+  color: var(--color-muted) !important;
+}
+.maplibregl-ctrl-group {
+  background: rgba(15, 26, 43, 0.9) !important;
+  border: 1px solid var(--color-line);
+}
+.maplibregl-ctrl-group button + button {
+  border-top: 1px solid var(--color-line) !important;
+}
+.maplibregl-ctrl button .maplibregl-ctrl-icon {
+  filter: invert(0.85) hue-rotate(180deg);
 }
 .maplibregl-canvas {
   outline: none;
