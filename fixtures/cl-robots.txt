@@ -1,0 +1,11 @@
+User-agent: *
+Disallow: /reply
+Disallow: /fb/
+Disallow: /suggest
+Disallow: /flag
+Disallow: /mf
+Disallow: /mailflag
+Disallow: /eaf
+
+Sitemap: https://sfbay.craigslist.org/sitemap/index.xml
+Sitemap: https://sfbay.craigslist.org/sitemap/index-by-date-cat.xml

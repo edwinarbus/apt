@@ -1,0 +1,194 @@
+import type {
+  GeocodePrecision,
+  RunStatus,
+  ScamRiskLevel,
+  StaleStatus,
+  UserListingStatus,
+} from "@/core/types";
+
+/** Wire types shared between API routes and client components. */
+
+export type BadgeKind =
+  | "new_today"
+  | "price_drop"
+  | "price_increase"
+  | "stale"
+  | "likely_unavailable"
+  | "verify_carefully"
+  | "watch"
+  | "duplicate"
+  | "saved"
+  | "contacted"
+  | "maybe"
+  | "toured"
+  | "applied"
+  | "suspicious"
+  | "source_uncertain";
+
+export interface PriceChangeInfo {
+  oldPrice: number;
+  newPrice: number;
+  at: string;
+}
+
+export interface ListingSummary {
+  id: string;
+  sourceId: string;
+  sourceName: string;
+  sourceSystem: string;
+  originalUrl: string;
+  title: string;
+  propertyName: string | null;
+  neighborhood: string | null;
+  sourceNeighborhoodRaw: string | null;
+  addressRaw: string | null;
+  unitNumberPublic: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  geocodePrecision: GeocodePrecision;
+  priceMonthly: number | null;
+  priceEffectiveMonthly: number | null;
+  concessionsRaw: string | null;
+  bedrooms: number | null;
+  bathrooms: number | null;
+  squareFeet: number | null;
+  pricePerSquareFoot: number | null;
+  primaryPhotoUrl: string | null;
+  photoCount: number;
+  catsAllowed: boolean | null;
+  dogsAllowed: boolean | null;
+  laundryNormalized: string | null;
+  parkingNormalized: string | null;
+  availableDate: string | null;
+  postedAt: string | null;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  missingSince: string | null;
+  staleStatus: StaleStatus;
+  listingStatus: string;
+  scamRiskLevel: ScamRiskLevel;
+  duplicateGroupId: string | null;
+  userStatus: UserListingStatus | null;
+  userNote: string | null;
+  lastPriceChange: PriceChangeInfo | null;
+  sourceLastRunStatus: RunStatus | null;
+  sourceLastRunAt: string | null;
+  badges: BadgeKind[];
+}
+
+export interface ListingsResponse {
+  listings: ListingSummary[];
+  generatedAt: string;
+}
+
+export interface ListingEventPayload {
+  id: string;
+  eventType: string;
+  oldValue: string | null;
+  newValue: string | null;
+  note: string | null;
+  createdAt: string;
+}
+
+export interface DuplicatePeer {
+  id: string;
+  title: string;
+  sourceId: string;
+  sourceName: string;
+  priceMonthly: number | null;
+  originalUrl: string;
+}
+
+export interface ListingDetailResponse {
+  listing: ListingSummary & {
+    description: string | null;
+    photos: string[];
+    floorPlanUrls: string[];
+    virtualTourUrl: string | null;
+    amenitiesRaw: string[];
+    utilitiesIncluded: string[];
+    utilitiesRaw: string | null;
+    petPolicyRaw: string | null;
+    dogRestrictionsRaw: string | null;
+    laundryRaw: string | null;
+    parkingRaw: string | null;
+    depositRaw: string | null;
+    depositAmount: number | null;
+    applicationFeeRaw: string | null;
+    brokerFeeRaw: string | null;
+    leaseTermRaw: string | null;
+    moveInDate: string | null;
+    priceRaw: string | null;
+    bedroomsRaw: string | null;
+    bathroomsRaw: string | null;
+    squareFeetRaw: string | null;
+    addressNormalized: string | null;
+    city: string | null;
+    state: string | null;
+    postalCode: string | null;
+    scamWarnings: string[];
+    contactName: string | null;
+    contactPhone: string | null;
+    contactEmail: string | null;
+    contactUrl: string | null;
+    contactInheritedFromSource: boolean;
+    sourceWebsiteUrl: string | null;
+    showingInfoRaw: string | null;
+    applicationUrl: string | null;
+    detailFetchedAt: string | null;
+  };
+  events: ListingEventPayload[];
+  duplicates: DuplicatePeer[];
+}
+
+export interface SourceRunPayload {
+  id: string;
+  startedAt: string;
+  finishedAt: string | null;
+  status: RunStatus;
+  listingsFound: number;
+  newListings: number;
+  changedListings: number;
+  priceChangedListings: number;
+  missingListings: number;
+  suspectedDuplicates: number;
+  suspectedScams: number;
+  pagesVisited: number;
+  detailPagesVisited: number;
+  totalListingsReportedBySource: number | null;
+  paginationCompleted: boolean | null;
+  detailExtractionCompleted: boolean | null;
+  staleProcessed: boolean;
+  errorMessage: string | null;
+  warnings: string[];
+}
+
+export interface SourceDashboardEntry {
+  id: string;
+  name: string;
+  sourceSystem: string;
+  adapterType: string;
+  priority: string;
+  enabled: boolean;
+  listingUrl: string | null;
+  websiteUrl: string | null;
+  needsJavaScript: boolean | null;
+  blocksAutomation: boolean | null;
+  safeForPersonalLowFrequencyFetching: boolean | null;
+  permissionStatus: string;
+  robotsStatus: string;
+  robotsCheckedAt: string | null;
+  robotsNotes: string | null;
+  sourceStatusNotes: string | null;
+  notes: string | null;
+  crawlIntervalHours: number;
+  activeListings: number;
+  totalListings: number;
+  lastRun: SourceRunPayload | null;
+  recentRuns: SourceRunPayload[];
+}
+
+export interface SourcesResponse {
+  sources: SourceDashboardEntry[];
+  generatedAt: string;
+}
