@@ -18,7 +18,7 @@ import { ListingDetail } from "./ListingDetail";
 /** One NDJSON line from /api/search. */
 type SearchStreamEvent =
   | { type: "stage"; stage: "assemble"; candidates: number }
-  | { type: "stage"; stage: "prerank"; kept: number }
+  | { type: "stage"; stage: "prerank"; kept: number; ids?: string[] }
   | { type: "stage"; stage: "model_start"; model: string }
   | { type: "delta"; chars: number }
   | { type: "done"; result: SearchResponse }
@@ -123,7 +123,7 @@ export function AppShell() {
             event.stage === "assemble"
               ? { ...p, candidates: event.candidates }
               : event.stage === "prerank"
-                ? { ...p, kept: event.kept }
+                ? { ...p, kept: event.kept, keptIds: event.ids ?? null }
                 : { ...p, model: event.model },
           );
         } else if (event.type === "delta") {
@@ -174,6 +174,21 @@ export function AppShell() {
     if (search) for (const mt of search.matches) m.set(mt.id, { score: mt.score, reason: mt.reason });
     return m;
   }, [search]);
+
+  // Real coordinates for the search radar — every active listing with a fix.
+  const radarPoints = useMemo(
+    () =>
+      (listings ?? [])
+        .filter(
+          (l) =>
+            l.latitude != null &&
+            l.longitude != null &&
+            l.listingStatus === "active" &&
+            l.staleStatus !== "likely_unavailable",
+        )
+        .map((l) => ({ id: l.id, lat: l.latitude!, lng: l.longitude! })),
+    [listings],
+  );
 
   const displayed = useMemo(() => {
     if (!listings) return [];
@@ -284,6 +299,8 @@ export function AppShell() {
           searching={searching}
           progress={progress}
           hasLocation={locationStatus === "granted"}
+          radarPoints={radarPoints}
+          userLocation={locationStatus === "granted" ? location : null}
           selectedId={selectedId}
           onSelect={(id) => select(id)}
           sort={sort}

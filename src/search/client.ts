@@ -19,7 +19,8 @@ export interface SearchCallResult {
 /** Live progress emitted while a search runs, for a streaming UI. */
 export type SearchProgressEvent =
   | { type: "stage"; stage: "assemble"; candidates: number }
-  | { type: "stage"; stage: "prerank"; kept: number }
+  /** ids = the actual shortlisted listings, so the UI can target the real ones */
+  | { type: "stage"; stage: "prerank"; kept: number; ids: string[] }
   | { type: "stage"; stage: "model_start"; model: string }
   | { type: "delta"; chars: number };
 
@@ -133,7 +134,7 @@ export class AnthropicSearchClient implements SearchClient {
 
   constructor(opts: { model?: string; maxTokens?: number } = {}) {
     this.model = opts.model ?? process.env.APT_SEARCH_MODEL ?? DEFAULT_SEARCH_MODEL;
-    this.maxTokens = opts.maxTokens ?? 5000;
+    this.maxTokens = opts.maxTokens ?? 8000;
   }
 
   private async getClient() {
@@ -167,6 +168,12 @@ export class AnthropicSearchClient implements SearchClient {
       const stream = client.messages.stream({
         model: this.model,
         max_tokens: this.maxTokens,
+        // Explicitly OFF: omitting `thinking` leaves adaptive thinking on for
+        // Sonnet 5, which adds ~30-60s and can eat the whole token budget
+        // before any text (observed: zero text events + unparseable reply).
+        // Interactive search needs the fast path; the per-match reasons still
+        // force inline reasoning.
+        thinking: { type: "disabled" },
         system: [
           { type: "text", text: SEARCH_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
         ],
@@ -195,7 +202,10 @@ export class AnthropicSearchClient implements SearchClient {
       if (!parsed) {
         return {
           data: null,
-          error: "could not parse a valid search result from the model reply",
+          error:
+            res.stop_reason === "max_tokens"
+              ? "the model ran out of output tokens before finishing — try a narrower search"
+              : "could not parse a valid search result from the model reply",
           usage,
           model: this.model,
         };

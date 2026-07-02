@@ -330,13 +330,19 @@ just runs city-wide.
 3. Claude (**Sonnet 5**) ranks those, returning `{interpretation, intentChips,
    matches:[{id, score, reason}]}`; hallucinated ids are dropped and scores clamped.
 
-The route **streams NDJSON progress** (candidates assembled → shortlist →
-model reading → output growing → final result), and the UI renders it as a
-live analysis feed — real pipeline events with animated checkmarks and a
-reasoning ticker (plus a card-shuffle of illustrated dogs while you wait),
-then results stagger in with per-listing score rings. Works in Safari too —
-verified end-to-end on the WebKit engine (speech input degrades gracefully
-where the browser doesn't offer it).
+The route **streams NDJSON progress** (candidates assembled → shortlist with
+its actual ids → model reading → output growing → final result), and the UI
+renders it as a live ops display: a **tactical radar of San Francisco** where
+every blip is a real active listing at its true coordinates, a sweep beam
+pings them as it passes, and once the server streams the shortlist the
+reticle locks target-by-target onto the exact listings Claude is reading —
+alongside a stage feed with animated checkmarks and a live reasoning ticker.
+Real pipeline events only; results then stagger in with per-listing score
+rings. Works in Safari too — verified end-to-end on the WebKit engine (speech
+input degrades gracefully where the browser doesn't offer it). Note: search
+explicitly disables extended thinking (`thinking: {type: "disabled"}`) —
+Sonnet 5 defaults to adaptive thinking, which added 30–60s and could consume
+the whole token budget before any output.
 
 **Model / cost / speed.** `$APT_SEARCH_MODEL` (default `claude-sonnet-5`, the
 quality choice). A search is one call (~1–3¢) and takes ~15–30s — it's genuinely

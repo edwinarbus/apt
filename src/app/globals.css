@@ -78,26 +78,43 @@ body {
     opacity: 1;
   }
 }
-/* Card shuffle: each card rises to the front, tilts, and settles back. */
-@keyframes card-shuffle {
-  0%,
-  100% {
-    transform: translateX(0) rotate(var(--tilt, 0deg)) scale(1);
-  }
-  12% {
-    transform: translateX(46px) translateY(-8px) rotate(7deg) scale(1.07);
-  }
-  24% {
-    transform: translateX(0) rotate(var(--tilt, 0deg)) scale(1);
+/* Tactical radar: sweep beam, blip pings synced to the sweep, target reticle. */
+@keyframes radar-rotate {
+  to {
+    transform: rotate(360deg);
   }
 }
-@keyframes tail-wag {
+@keyframes dot-ping {
   0%,
   100% {
-    transform: rotate(-14deg);
+    opacity: 0.3;
+  }
+  4% {
+    opacity: 1;
+  }
+  14% {
+    opacity: 0.55;
+  }
+  92% {
+    opacity: 0.3;
+  }
+}
+@keyframes dot-ping-hot {
+  0%,
+  100% {
+    opacity: 0.65;
   }
   50% {
-    transform: rotate(16deg);
+    opacity: 1;
+  }
+}
+@keyframes reticle-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
   }
 }
 @keyframes glow-ring {
@@ -139,12 +156,24 @@ body {
 .thinking-dot {
   animation: dot-bounce 1.2s ease-in-out infinite;
 }
-.shuffle-card {
-  animation: card-shuffle 3.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+.radar-sweep {
+  animation: radar-rotate 4s linear infinite;
 }
-.wag {
-  transform-origin: 15% 85%;
-  animation: tail-wag 0.7s ease-in-out infinite;
+.radar-dot {
+  animation: dot-ping 4s linear infinite;
+}
+.radar-dot-hot {
+  animation: dot-ping-hot 1.4s ease-in-out infinite;
+}
+.radar-dot-cold {
+  opacity: 0.1 !important;
+  animation: none !important;
+}
+.radar-reticle {
+  transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.radar-reticle-pulse {
+  animation: reticle-pulse 0.9s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -154,9 +183,14 @@ body {
   .animate-glow,
   .shimmer-text,
   .thinking-dot,
-  .shuffle-card,
-  .wag {
+  .radar-sweep,
+  .radar-dot,
+  .radar-dot-hot,
+  .radar-reticle-pulse {
     animation: none !important;
+  }
+  .radar-dot {
+    opacity: 0.55;
   }
   .shimmer-text {
     -webkit-text-fill-color: currentColor;

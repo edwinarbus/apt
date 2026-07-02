@@ -182,11 +182,16 @@ describe("runSearch", () => {
     expect(r.matches).toHaveLength(0);
   });
 
-  it("emits live progress events (assemble → prerank) for the streaming UI", async () => {
+  it("emits live progress events (assemble → prerank with the real shortlist ids)", async () => {
     const events: string[] = [];
+    let prerankIds: string[] = [];
     await runSearch(db, new FakeSearchClient(), { query: "x" }, (e) => {
       events.push(e.type === "stage" ? e.stage : e.type);
+      if (e.type === "stage" && e.stage === "prerank") prerankIds = e.ids;
     });
     expect(events).toEqual(["assemble", "prerank"]); // model events come from the live client
+    // The ids are the actual shortlisted listings, so the radar can target them.
+    expect(prerankIds).toHaveLength(2);
+    expect(prerankIds.every((id) => id.startsWith("lst_"))).toBe(true);
   });
 });

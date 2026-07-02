@@ -194,7 +194,12 @@ export async function runSearch(
   const allCandidates = assembleCandidates(db, opts);
   onProgress?.({ type: "stage", stage: "assemble", candidates: allCandidates.length });
   const ranked = prerankAndCap(opts.query, allCandidates, opts.maxRank ?? DEFAULT_MAX_RANK);
-  onProgress?.({ type: "stage", stage: "prerank", kept: ranked.length });
+  onProgress?.({
+    type: "stage",
+    stage: "prerank",
+    kept: ranked.length,
+    ids: ranked.map((c) => c.id),
+  });
   const base: SearchResult = {
     interpretation: "",
     intentChips: [],
