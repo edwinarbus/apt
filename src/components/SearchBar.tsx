@@ -55,8 +55,6 @@ export function SearchBar({
   searching,
   searchError,
   search,
-  resultCount,
-  totalCount,
   location,
   locationStatus,
   onRequestLocation,
@@ -72,8 +70,6 @@ export function SearchBar({
   searching: boolean;
   searchError: string | null;
   search: SearchResponse | null;
-  resultCount: number;
-  totalCount: number;
   location: { lat: number; lng: number } | null;
   locationStatus: LocationStatus;
   onRequestLocation: () => void;
@@ -146,7 +142,7 @@ export function SearchBar({
   const hasSearch = search != null;
 
   return (
-    <div className="relative z-20 flex shrink-0 flex-col gap-2.5 border-b border-line bg-gradient-to-b from-surface/95 to-paper/60 px-4 pt-3.5 pb-3 backdrop-blur-sm">
+    <div className="flex flex-col gap-2.5 rounded-[26px] border border-white/60 bg-surface/75 px-3.5 pt-3 pb-2.5 shadow-2xl ring-1 ring-ink/5 backdrop-blur-xl">
       {/* The one big box */}
       <div
         className={`relative rounded-[22px] p-[1.5px] transition-shadow duration-300 ${
@@ -269,13 +265,6 @@ export function SearchBar({
             Clear
           </button>
         )}
-        <span className="ml-auto text-faint tabular-nums">
-          {searching
-            ? " "
-            : hasSearch
-              ? `${resultCount} match${resultCount === 1 ? "" : "es"} of ${search!.candidateCount} searched`
-              : `${totalCount} listings`}
-        </span>
       </div>
 
       {searchError && (

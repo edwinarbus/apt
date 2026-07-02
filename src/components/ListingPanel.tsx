@@ -46,8 +46,8 @@ export function ListingPanel({
   onSortChange: (s: SortKey) => void;
 }) {
   return (
-    <aside className="flex w-[400px] shrink-0 flex-col border-l border-line bg-paper xl:w-[440px]">
-      <div className="flex items-center justify-between border-b border-line px-4 py-2.5">
+    <aside className="flex h-full w-full flex-col overflow-hidden rounded-[22px] border border-white/60 bg-paper/85 shadow-2xl ring-1 ring-ink/5 backdrop-blur-xl">
+      <div className="flex items-center justify-between border-b border-line/70 px-4 py-2.5">
         <div>
           <span className="text-sm font-semibold">
             {searching

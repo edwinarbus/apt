@@ -615,10 +615,18 @@ protected-class proxies.
 
 ## UI
 
-- **Map** (`/`) — MapLibre over OpenFreeMap Positron tiles. Clustered markers,
-  color-coded by status (new today, price drop, verify carefully, saved,
-  contacted, missing/stale), price labels at higher zooms, approximate
-  locations ghosted, legend bottom-left. Right panel: photo cards with price
+- **Map** (`/`) — a full-bleed **3D stage**: MapLibre over OpenFreeMap Positron
+  with extruded buildings, a hazy sky/atmosphere, and a choreographed camera —
+  cinematic descent on load, a pull-up to surveillance altitude while a search
+  scans, a swoop onto the ranked targets (all markers flip to terracotta
+  lock-on targets with a synchronized radar pulse), and a rooftop dive with a
+  corner-bracket lock reticle on selection. The search bar and results are
+  floating glass panels over the scene; all camera motion collapses to jump
+  cuts under `prefers-reduced-motion` (and when the tab is hidden, so throttled
+  rAF can't strand the camera mid-flight). Clustered markers are color-coded by
+  status (new today, price drop, verify carefully, saved, contacted,
+  missing/stale), price labels appear at higher zooms, approximate locations
+  render ghosted, compact legend bottom-left. Right panel: photo cards with price
   (effective price when concessions parse), beds/baths/sqft, neighborhood,
   badges, source attribution, last-checked time, and — when a search is active —
   its **AI match score and one-line reason**. The top bar is one big

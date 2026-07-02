@@ -175,6 +175,14 @@ body {
 .radar-reticle-pulse {
   animation: reticle-pulse 0.9s ease-in-out infinite;
 }
+/* Bracket lock reticle marker on the 3D map's selected listing */
+.map-lock {
+  width: 48px;
+  height: 48px;
+  pointer-events: none;
+  animation: pop-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+  filter: drop-shadow(0 1px 3px rgba(35, 33, 28, 0.35));
+}
 
 @media (prefers-reduced-motion: reduce) {
   .animate-fade-up,

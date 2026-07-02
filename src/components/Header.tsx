@@ -22,7 +22,7 @@ export function Header() {
   };
 
   return (
-    <header className="flex h-14 shrink-0 items-center gap-6 border-b border-line bg-paper/95 px-5">
+    <header className="z-30 flex h-12 shrink-0 items-center gap-5 border-b border-line/60 bg-paper/85 px-4 backdrop-blur-md">
       <div className="flex items-center gap-2.5">
         <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-accent to-accent-deep font-display text-[15px] font-bold text-white shadow-sm">
           A

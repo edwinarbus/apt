@@ -251,47 +251,42 @@ export function AppShell() {
   const selected = listings?.find((l) => l.id === selectedId) ?? null;
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <SearchBar
-        query={query}
-        onQueryChange={setQuery}
-        onSearch={doSearch}
-        onClear={clearSearch}
-        searching={searching}
-        searchError={searchError}
-        search={search}
-        resultCount={displayed.length}
-        totalCount={listings?.length ?? 0}
-        location={location}
-        locationStatus={locationStatus}
-        onRequestLocation={requestLocation}
-        radiusMi={radiusMi}
-        onRadiusChange={setRadiusMi}
-        showHiddenGone={showHiddenGone}
-        onToggleHiddenGone={() => setShowHiddenGone((v) => !v)}
-      />
-      <div className="flex min-h-0 flex-1">
-        <div className="relative min-w-0 flex-1">
-          <MapView
-            listings={displayed}
-            selectedId={selectedId}
-            onSelect={(id) => select(id)}
+    <div className="relative h-full min-h-0 flex-1 overflow-hidden">
+      {/* Full-bleed 3D stage */}
+      <div className="absolute inset-0">
+        <MapView
+          listings={displayed}
+          selectedId={selectedId}
+          onSelect={(id) => select(id)}
+          searching={searching}
+          searchActive={search != null}
+        />
+      </div>
+
+      {/* Floating command bar */}
+      <div className="pointer-events-none absolute top-3 right-[404px] left-3 z-20 flex justify-center max-lg:right-3">
+        <div className="pointer-events-auto w-full max-w-[820px]">
+          <SearchBar
+            query={query}
+            onQueryChange={setQuery}
+            onSearch={doSearch}
+            onClear={clearSearch}
+            searching={searching}
+            searchError={searchError}
+            search={search}
+            location={location}
+            locationStatus={locationStatus}
+            onRequestLocation={requestLocation}
+            radiusMi={radiusMi}
+            onRadiusChange={setRadiusMi}
+            showHiddenGone={showHiddenGone}
+            onToggleHiddenGone={() => setShowHiddenGone((v) => !v)}
           />
-          {error && (
-            <Overlay>
-              <p className="font-medium text-alert">Could not load listings</p>
-              <p className="mt-1 text-sm text-muted">{error}</p>
-            </Overlay>
-          )}
-          {listings !== null && listings.length === 0 && (
-            <Overlay>
-              <p className="font-display text-lg font-semibold">No listings yet</p>
-              <p className="mt-2 max-w-sm text-sm leading-relaxed text-muted">
-                Ingest real SF sources with <Code>npm run ingest -- --all</Code>, then reload.
-              </p>
-            </Overlay>
-          )}
         </div>
+      </div>
+
+      {/* Floating results panel */}
+      <div className="absolute top-3 right-3 bottom-3 z-20 w-[392px] max-lg:hidden">
         <ListingPanel
           listings={displayed}
           reasons={reasonById}
@@ -307,6 +302,22 @@ export function AppShell() {
           onSortChange={setSort}
         />
       </div>
+
+      {error && (
+        <Overlay>
+          <p className="font-medium text-alert">Could not load listings</p>
+          <p className="mt-1 text-sm text-muted">{error}</p>
+        </Overlay>
+      )}
+      {listings !== null && listings.length === 0 && (
+        <Overlay>
+          <p className="font-display text-lg font-semibold">No listings yet</p>
+          <p className="mt-2 max-w-sm text-sm leading-relaxed text-muted">
+            Ingest real SF sources with <Code>npm run ingest -- --all</Code>, then reload.
+          </p>
+        </Overlay>
+      )}
+
       {detailOpen && selected && (
         <ListingDetail
           key={selected.id}
@@ -321,7 +332,7 @@ export function AppShell() {
 
 function Overlay({ children }: { children: React.ReactNode }) {
   return (
-    <div className="absolute inset-0 z-10 flex items-center justify-center bg-paper/60 backdrop-blur-sm">
+    <div className="absolute inset-0 z-30 flex items-center justify-center bg-paper/60 backdrop-blur-sm">
       <div className="rounded-2xl border border-line bg-surface px-8 py-6 text-center shadow-lg">
         {children}
       </div>
