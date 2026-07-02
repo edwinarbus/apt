@@ -128,6 +128,13 @@ export function selectVisionCandidates(
         listingId: row.id,
         title: row.title,
         neighborhood: row.neighborhood,
+        propertyName: row.propertyName,
+        description: row.description,
+        bedrooms: row.bedrooms,
+        bathrooms: row.bathrooms,
+        squareFeet: row.squareFeet,
+        priceRaw: row.priceRaw,
+        amenitiesRaw: row.amenitiesRaw,
         imageUrls,
       },
     });

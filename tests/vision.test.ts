@@ -4,6 +4,7 @@ import { listingVision, listings } from "@/db/schema";
 import type { Db } from "@/db/client";
 import { runSource } from "@/ingest/runner";
 import {
+  buildVisionContext,
   parseVision,
   type VisionClient,
   type VisionCallResult,
@@ -61,6 +62,30 @@ describe("parseVision", () => {
     expect(parseVision("not json")).toBeNull();
     // wrong enum value
     expect(parseVision(JSON.stringify({ ...validVision, condition: "amazing" }))).toBeNull();
+  });
+});
+
+describe("buildVisionContext", () => {
+  it("wraps the listing's own description and facts as grounding context", () => {
+    const text = buildVisionContext({
+      listingId: "l1",
+      title: "Top-floor Victorian 1BR",
+      neighborhood: "Noe Valley",
+      propertyName: null,
+      description: "Sunny unit with restored hardwood floors and original bay windows.",
+      bedrooms: 1,
+      bathrooms: 1,
+      squareFeet: 750,
+      priceRaw: "$3,500",
+      amenitiesRaw: ["dishwasher"],
+      imageUrls: ["https://img/1.jpg"],
+    });
+    expect(text).toContain("<listing_info>");
+    expect(text).toContain("Noe Valley");
+    expect(text).toContain("1 bd · 1 ba · 750 sqft");
+    expect(text).toContain("hardwood floors and original bay windows");
+    // framed as context, not ground truth
+    expect(text.toLowerCase()).toContain("context");
   });
 });
 

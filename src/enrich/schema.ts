@@ -9,7 +9,7 @@ import { z } from "zod";
  * Bump SCHEMA_VERSION when the shape or prompt changes so a re-run re-enriches
  * listings whose stored enrichment used an older version.
  */
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export const LaundryEnum = z.enum([
   "in_unit",
@@ -62,6 +62,7 @@ export interface EnrichmentInput {
   listingId: string;
   title: string;
   description: string | null;
+  propertyName: string | null;
   priceMonthly: number | null;
   priceRaw: string | null;
   bedrooms: number | null;
@@ -71,6 +72,16 @@ export interface EnrichmentInput {
   addressRaw: string | null;
   sourceName: string;
   amenitiesRaw: string[] | null;
+  /** the source's own raw fee/term/availability/pet fields — ground the notes in these */
+  concessionsRaw: string | null;
+  depositRaw: string | null;
+  applicationFeeRaw: string | null;
+  brokerFeeRaw: string | null;
+  leaseTermRaw: string | null;
+  availableDate: string | null;
+  petPolicyRaw: string | null;
+  laundryRaw: string | null;
+  parkingRaw: string | null;
   /** deterministic scam signals already computed, for the model's context */
   deterministicScamWarnings: string[] | null;
 }

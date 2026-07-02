@@ -220,8 +220,11 @@ npm run enrich -- --all --cost-cap 5   # everything, but stop near $5
 ### Photo vision & visual search (`npm run vision`)
 
 For each listing with photos, Claude looks at up to `--max-images` of them
-(default 6, sent as URLs so the source image hosts aren't re-hit) and returns,
-validated against `src/vision/schema.ts`:
+(default 6, sent as URLs so the source image hosts aren't re-hit) — **grounded in
+the listing's own description + facts** (neighborhood, beds/baths, amenities),
+which it uses to name features the way the description does and to flag
+photo↔description mismatches, while still only reporting what's actually visible.
+It returns, validated against `src/vision/schema.ts`:
 
 - a short **observational summary** of what the photos actually show
 - **visual feature tags** — "hardwood floors", "bay windows", "stainless steel

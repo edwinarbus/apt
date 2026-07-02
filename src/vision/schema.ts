@@ -10,7 +10,7 @@ import { z } from "zod";
  * Bump VISION_SCHEMA_VERSION when the shape or prompt changes so a re-run
  * re-analyzes listings whose stored vision used an older version.
  */
-export const VISION_SCHEMA_VERSION = 1;
+export const VISION_SCHEMA_VERSION = 2;
 
 export const ConditionEnum = z.enum([
   "renovated",
@@ -55,6 +55,18 @@ export interface VisionInput {
   listingId: string;
   title: string;
   neighborhood: string | null;
+  /**
+   * The listing's own basic info, passed as grounding CONTEXT so the model can
+   * name features the way the description does, confirm/deny claimed features,
+   * and flag photo↔description mismatches — never as features to copy blindly.
+   */
+  propertyName: string | null;
+  description: string | null;
+  bedrooms: number | null;
+  bathrooms: number | null;
+  squareFeet: number | null;
+  priceRaw: string | null;
+  amenitiesRaw: string[] | null;
   /** http(s) image URLs, already deduped and capped by the orchestrator */
   imageUrls: string[];
 }
