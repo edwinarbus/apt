@@ -623,11 +623,15 @@ protected-class proxies.
   (simplified from SF's public boundaries, `src/data/sf-neighborhoods.json`)
   render as glowing HUD polygons with mono labels; **clicking one physically
   lifts it out of the map** — a custom `aptdem://` tile protocol re-encodes the
-  elevation tiles on the fly, boosting every DEM pixel inside the boundary by
-  ~240 m, so the entire neighborhood (satellite imagery, streets, buildings,
-  markers) drapes up onto a raised plateau with sheer texture-stretched cliff
-  sides, diorama-style, with hillshade relief sculpting both the city and the
-  lifted top. Photo **thumbnail markers** of that hood's listings ride the
+  elevation tiles on the fly (rasterizing the hood polygon into a native canvas
+  mask, then boosting every DEM pixel inside it by ~520 m), so the entire
+  neighborhood (satellite imagery, streets, buildings, markers) rises onto a
+  raised plateau with sheer texture-stretched cliff sides, diorama-style, with
+  hillshade relief sculpting both the city and the lifted top. The DEM tiles are
+  proxied through `/api/dem` (the upstream terrarium bucket sends no CORS header,
+  so a direct fetch would be blocked and the canvas re-encode would fail); a
+  re-encode error falls back to the true-elevation tile so a lift never breaks
+  the map. Photo **thumbnail markers** of that hood's listings ride the
   plateau, and the list filters to exactly those apartments (polygon
   containment, not name tags). Thumbnails
   also appear at close zoom city-wide, with pop/ripple click animations. While
