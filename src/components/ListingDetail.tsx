@@ -106,11 +106,11 @@ export function ListingDetail({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 backdrop-blur-[3px]"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-[2px]"
       onClick={onClose}
     >
       <div
-        className="flex max-h-[93vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-surface shadow-2xl"
+        className="flex max-h-[93vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg border border-line bg-surface shadow-[0_24px_70px_rgba(0,0,0,0.6)]"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="panel-scroll min-h-0 flex-1 overflow-y-auto">
@@ -130,7 +130,7 @@ export function ListingDetail({
                 <button
                   type="button"
                   onClick={onClose}
-                  className="absolute top-3 right-3 flex h-8 w-8 items-center justify-center rounded-full bg-ink/60 text-paper backdrop-blur transition hover:bg-ink"
+                  className="absolute top-3 right-3 flex h-8 w-8 items-center justify-center rounded-sm border border-line-strong bg-paper/70 text-[13px] text-muted backdrop-blur transition-colors hover:border-faint hover:text-ink"
                   aria-label="Close"
                 >
                   ✕
@@ -157,9 +157,9 @@ export function ListingDetail({
                 {/* Header */}
                 <div>
                   <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                    <span className="font-display text-[26px] font-semibold tracking-tight">
+                    <span className="font-mono text-[26px] font-semibold tracking-tight text-ink tabular-nums">
                       {fmtMoney(l.priceMonthly)}
-                      <span className="ml-1 text-sm font-normal text-faint">/mo</span>
+                      <span className="ml-1 font-sans text-sm font-normal text-faint">/mo</span>
                     </span>
                     {l.priceEffectiveMonthly != null &&
                       l.priceMonthly != null &&
@@ -202,7 +202,7 @@ export function ListingDetail({
                       type="button"
                       disabled={savingStatus}
                       onClick={() => setStatus(status)}
-                      className={`rounded-full border px-3 py-1.5 text-[12px] font-medium transition-colors disabled:opacity-50 ${
+                      className={`rounded-sm border px-3 py-1.5 text-[12px] font-medium transition-colors disabled:opacity-50 ${
                         l.userStatus === status
                           ? "border-ink bg-ink text-paper"
                           : "border-line bg-surface text-muted hover:border-faint hover:text-ink"
@@ -219,7 +219,7 @@ export function ListingDetail({
                 </div>
 
                 {/* Verification reminder */}
-                <div className="rounded-xl border border-warn/25 bg-warn/8 px-4 py-3 text-[13px] leading-relaxed">
+                <div className="rounded-md border border-warn/25 bg-warn/8 px-4 py-3 text-[13px] leading-relaxed">
                   <p className="font-medium text-warn">Verify before acting</p>
                   <p className="mt-0.5 text-muted">
                     Data was scraped from {l.sourceName} and may lag or parse imperfectly.
@@ -240,7 +240,7 @@ export function ListingDetail({
 
                 {/* Suspicious signals */}
                 {l.scamWarnings.length > 0 && (
-                  <div className="rounded-xl border border-alert/25 bg-alert/8 px-4 py-3 text-[13px]">
+                  <div className="rounded-md border border-alert/25 bg-alert/8 px-4 py-3 text-[13px]">
                     <p className="font-medium text-alert">
                       Suspicious signals — verify carefully
                     </p>
@@ -257,9 +257,9 @@ export function ListingDetail({
 
                 {/* AI notes (optional enrichment) */}
                 {data.enrichment && (
-                  <div className="rounded-xl border border-accent/20 bg-accent-soft/40 px-4 py-3.5">
+                  <div className="rounded-md border border-accent/20 bg-accent-soft/40 px-4 py-3.5">
                     <div className="mb-1.5 flex items-center justify-between">
-                      <SectionTitle>✦ AI notes</SectionTitle>
+                      <SectionTitle>AI notes</SectionTitle>
                       <span className="text-[10.5px] text-faint">
                         {data.enrichment.model} · {relativeTime(data.enrichment.enrichedAt)}
                       </span>
@@ -314,9 +314,9 @@ export function ListingDetail({
 
                 {/* What the photos show (optional vision) */}
                 {data.vision && (
-                  <div className="rounded-xl border border-accent/20 bg-accent-soft/40 px-4 py-3.5">
+                  <div className="rounded-md border border-accent/20 bg-accent-soft/40 px-4 py-3.5">
                     <div className="mb-1.5 flex items-center justify-between">
-                      <SectionTitle>✦ What the photos show</SectionTitle>
+                      <SectionTitle>What the photos show</SectionTitle>
                       <span className="text-[10.5px] text-faint">
                         {data.vision.model} · {data.vision.imageCount} photo
                         {data.vision.imageCount === 1 ? "" : "s"} ·{" "}
@@ -333,7 +333,7 @@ export function ListingDetail({
                         {data.vision.features.map((f) => (
                           <span
                             key={f}
-                            className="rounded-full border border-accent/20 bg-surface px-2.5 py-1 text-[12px] text-ink/80"
+                            className="rounded-sm border border-accent/20 bg-surface px-2.5 py-1 text-[12px] text-ink/80"
                           >
                             {f}
                           </span>
@@ -354,7 +354,7 @@ export function ListingDetail({
                       data.vision.notes) && (
                       <div className="mt-2.5 flex flex-wrap items-center gap-2 text-[11px] text-faint">
                         {data.vision.condition && data.vision.condition !== "unknown" && (
-                          <span className="rounded-full bg-line/50 px-2 py-0.5 text-muted capitalize">
+                          <span className="rounded-sm bg-line/50 px-2 py-0.5 text-muted capitalize">
                             {data.vision.condition}
                           </span>
                         )}
@@ -437,7 +437,7 @@ export function ListingDetail({
                       {l.amenitiesRaw.map((a) => (
                         <span
                           key={a}
-                          className="rounded-full bg-line/50 px-2.5 py-1 text-[12px] text-muted"
+                          className="rounded-sm bg-line/50 px-2.5 py-1 text-[12px] text-muted"
                         >
                           {a}
                         </span>
@@ -448,7 +448,7 @@ export function ListingDetail({
 
                 {/* Duplicates / reposts */}
                 {data.duplicates.length > 0 && (
-                  <div className="rounded-xl border border-line bg-paper/60 px-4 py-3.5">
+                  <div className="rounded-md border border-line bg-paper/60 px-4 py-3.5">
                     <SectionTitle>
                       Possible duplicate / repost
                       {data.duplicateGroup && (
@@ -572,7 +572,7 @@ export function ListingDetail({
                 )}
 
                 {/* Contact & links */}
-                <div className="rounded-xl border border-line bg-paper/60 px-4 py-3.5">
+                <div className="rounded-md border border-line bg-paper/60 px-4 py-3.5">
                   <SectionTitle>Source &amp; contact</SectionTitle>
                   <div className="flex flex-col gap-1 text-[13px] text-muted">
                     <span>
@@ -609,7 +609,7 @@ export function ListingDetail({
                       href={l.originalUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="rounded-full bg-accent px-4 py-2 text-[13px] font-semibold text-white transition hover:bg-accent-deep"
+                      className="rounded-md bg-accent px-4 py-2 text-[13px] font-semibold text-paper transition-colors hover:bg-accent-deep"
                     >
                       Open original listing ↗
                     </a>
@@ -645,7 +645,7 @@ const CONFIDENCE_STYLES: Record<string, string> = {
 function ConfidenceChip({ confidence }: { confidence: string }) {
   return (
     <span
-      className={`rounded-full px-2 py-0.5 text-[10.5px] font-semibold tracking-wide uppercase ${CONFIDENCE_STYLES[confidence] ?? CONFIDENCE_STYLES.low}`}
+      className={`rounded-sm px-2 py-0.5 text-[10.5px] font-semibold tracking-wide uppercase ${CONFIDENCE_STYLES[confidence] ?? CONFIDENCE_STYLES.low}`}
     >
       {confidence} confidence
     </span>
@@ -700,7 +700,7 @@ function ExtButton({ href, children }: { href: string; children: React.ReactNode
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="rounded-full border border-line bg-surface px-4 py-2 text-[13px] font-medium text-muted transition hover:border-faint hover:text-ink"
+      className="rounded-sm border border-line bg-surface px-4 py-2 text-[13px] font-medium text-muted transition hover:border-faint hover:text-ink"
     >
       {children} ↗
     </a>

@@ -14,7 +14,7 @@ import type { UserListingStatus } from "@/core/types";
 import { SearchBar, type LocationStatus } from "./SearchBar";
 import { EMPTY_PROGRESS, type SearchProgressState } from "./SearchProgress";
 import { MapView } from "./MapView";
-import { ListingPanel } from "./ListingPanel";
+import { ListingPanel, SortSelect, listingCountLabel } from "./ListingPanel";
 import { ListingDetail } from "./ListingDetail";
 
 /** One NDJSON line from /api/search. */
@@ -55,6 +55,9 @@ export function AppShell() {
 
   // Neighborhood isolate (click a hood polygon on the map)
   const [selectedHood, setSelectedHood] = useState<string | null>(null);
+
+  // Mobile results drawer (below lg the panel becomes a bottom sheet).
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   // Escape releases the lifted neighborhood (when no modal is open).
   useEffect(() => {
@@ -112,6 +115,7 @@ export function AppShell() {
     setSearchError(null);
     setSearch(null);
     setProgress(EMPTY_PROGRESS);
+    setDrawerOpen(true); // raise the mobile sheet so the live feed is visible
     try {
       const res = await fetch("/api/search", {
         method: "POST",
@@ -324,7 +328,7 @@ export function AppShell() {
         </div>
       </div>
 
-      {/* Floating results panel */}
+      {/* Floating results panel — desktop */}
       <div className="absolute top-3 right-3 bottom-3 z-20 w-[392px] max-lg:hidden">
         <ListingPanel
           listings={displayed}
@@ -341,16 +345,50 @@ export function AppShell() {
         />
       </div>
 
+      {/* Results drawer — mobile / narrow (bottom sheet) */}
+      <MobileDrawer
+        open={drawerOpen}
+        onToggle={() => setDrawerOpen((v) => !v)}
+        count={displayed.length}
+        searching={searching}
+        searchActive={search != null}
+        hoodName={selectedHood}
+        sort={sort}
+        onSortChange={setSort}
+      >
+        <ListingPanel
+          chromeless
+          hideHeader
+          listings={displayed}
+          reasons={reasonById}
+          searchActive={search != null}
+          searching={searching}
+          progress={progress}
+          hasLocation={locationStatus === "granted"}
+          hoodName={selectedHood}
+          selectedId={selectedId}
+          onSelect={(id) => select(id)}
+          sort={sort}
+          onSortChange={setSort}
+        />
+      </MobileDrawer>
+
       {error && (
         <Overlay>
-          <p className="font-medium text-alert">Could not load listings</p>
-          <p className="mt-1 text-sm text-muted">{error}</p>
+          <p className="font-mono text-[10px] tracking-[0.18em] text-alert uppercase">
+            ● Feed error
+          </p>
+          <p className="mt-2 text-sm font-medium text-ink">Could not load listings</p>
+          <p className="mt-1 font-mono text-[11.5px] text-muted">{error}</p>
         </Overlay>
       )}
       {listings !== null && listings.length === 0 && (
         <Overlay>
-          <p className="font-display text-lg font-semibold">No listings yet</p>
-          <p className="mt-2 max-w-sm text-sm leading-relaxed text-muted">
+          <p className="font-mono text-[10px] tracking-[0.18em] text-muted uppercase">
+            ○ No data
+          </p>
+          <p className="mt-2 text-base font-semibold text-ink">No listings yet</p>
+          <p className="mt-2 max-w-sm text-[12.5px] leading-relaxed text-muted">
             Ingest real SF sources with <Code>npm run ingest -- --all</Code>, then reload.
           </p>
         </Overlay>
@@ -368,10 +406,89 @@ export function AppShell() {
   );
 }
 
+/** Bottom-sheet results drawer for narrow viewports (below `lg`). */
+function MobileDrawer({
+  open,
+  onToggle,
+  count,
+  searching,
+  searchActive,
+  hoodName,
+  sort,
+  onSortChange,
+  children,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  count: number;
+  searching?: boolean;
+  searchActive?: boolean;
+  hoodName?: string | null;
+  sort: SortKey;
+  onSortChange: (s: SortKey) => void;
+  children: React.ReactNode;
+}) {
+  const label = listingCountLabel({ count, searching, searchActive, hoodName });
+  return (
+    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 lg:hidden">
+      <div
+        className="pointer-events-auto relative flex flex-col overflow-hidden rounded-t-xl border-x border-t border-line bg-surface/97 shadow-[0_-10px_44px_rgba(0,0,0,0.55)] transition-[height] duration-300 ease-[cubic-bezier(0.2,0,0,1)]"
+        style={{
+          height: open
+            ? "min(70dvh, 560px)"
+            : "calc(52px + env(safe-area-inset-bottom))",
+          paddingBottom: "env(safe-area-inset-bottom)",
+        }}
+      >
+        {/* Grip affordance */}
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 top-1.5 mx-auto h-1 w-9 rounded-full bg-line-strong"
+        />
+        <div className="flex items-center gap-2 border-b border-line px-3 pt-3 pb-2">
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={open}
+            className="flex min-w-0 flex-1 items-baseline gap-1.5 font-mono"
+          >
+            <span className="tnum text-[15px] leading-none font-semibold text-ink">{label.n}</span>
+            <span className="text-[10px] tracking-[0.14em] text-muted">{label.unit}</span>
+            {label.scope && (
+              <span className="truncate text-[10px] tracking-[0.08em] text-accent">
+                · {label.scope.toUpperCase()}
+              </span>
+            )}
+          </button>
+          {open && <SortSelect sort={sort} searchActive={searchActive} onSortChange={onSortChange} />}
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-label={open ? "Collapse results" : "Expand results"}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-line text-muted transition-colors hover:border-line-strong hover:text-ink"
+          >
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              className={`transition-transform duration-300 ${open ? "" : "rotate-180"}`}
+              aria-hidden
+            >
+              <path d="M6 15l6-6 6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        </div>
+        <div className="min-h-0 flex-1">{children}</div>
+      </div>
+    </div>
+  );
+}
+
 function Overlay({ children }: { children: React.ReactNode }) {
   return (
-    <div className="absolute inset-0 z-30 flex items-center justify-center bg-paper/60 backdrop-blur-sm">
-      <div className="rounded-2xl border border-line bg-surface px-8 py-6 text-center shadow-lg">
+    <div className="absolute inset-0 z-30 flex items-center justify-center bg-paper/70 p-4 backdrop-blur-[2px]">
+      <div className="max-w-sm rounded-lg border border-line bg-surface px-7 py-6 text-center shadow-[0_16px_50px_rgba(0,0,0,0.55)]">
         {children}
       </div>
     </div>
@@ -380,7 +497,7 @@ function Overlay({ children }: { children: React.ReactNode }) {
 
 function Code({ children }: { children: React.ReactNode }) {
   return (
-    <code className="rounded bg-line/60 px-1.5 py-0.5 font-mono text-[12px] text-ink">
+    <code className="rounded-sm border border-line bg-elevated px-1.5 py-0.5 font-mono text-[12px] text-ink">
       {children}
     </code>
   );

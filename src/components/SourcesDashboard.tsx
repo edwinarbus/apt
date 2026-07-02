@@ -8,29 +8,30 @@ import type {
 } from "@/lib/api-types";
 import { fmtDateShort, relativeTime } from "@/lib/format";
 
+// Tactical status palette (kept in sync with globals.css tokens).
 const RUN_COLORS: Record<string, string> = {
-  success: "#1E7F4F",
-  partial: "#B45309",
-  failed: "#C2410C",
-  skipped: "#A39B8B",
+  success: "#35c489", // good
+  partial: "#e6a54a", // warn
+  failed: "#e8564d", // alert
+  skipped: "#6a7688", // stale
 };
 
 const OVERALL_STATUS_STYLES: Record<string, { bg: string; fg: string }> = {
-  PASS: { bg: "#1E7F4F18", fg: "#1E7F4F" },
-  PARTIAL: { bg: "#B4530918", fg: "#B45309" },
-  FAIL: { bg: "#C2410C18", fg: "#C2410C" },
-  SKIPPED: { bg: "#A39B8B22", fg: "#6F6A5E" },
-  DISABLED: { bg: "#A39B8B22", fg: "#6F6A5E" },
-  REFERENCE_ONLY: { bg: "#0E749018", fg: "#0E7490" },
-  NEEDS_REVIEW: { bg: "#7C5BD118", fg: "#7C5BD1" },
+  PASS: { bg: "#35c48916", fg: "#35c489" },
+  PARTIAL: { bg: "#e6a54a16", fg: "#e6a54a" },
+  FAIL: { bg: "#e8564d16", fg: "#e8564d" },
+  SKIPPED: { bg: "#6a768822", fg: "#94a2b6" },
+  DISABLED: { bg: "#6a768822", fg: "#94a2b6" },
+  REFERENCE_ONLY: { bg: "#47aede16", fg: "#47aede" },
+  NEEDS_REVIEW: { bg: "#b96fd816", fg: "#b96fd8" },
 };
 
 function OverallStatusChip({ status }: { status: string }) {
   const style = OVERALL_STATUS_STYLES[status] ?? OVERALL_STATUS_STYLES.SKIPPED;
   return (
     <span
-      className="rounded-md px-2 py-0.5 text-[11px] font-bold tracking-wide"
-      style={{ backgroundColor: style.bg, color: style.fg }}
+      className="rounded-sm border px-1.5 py-0.5 font-mono text-[10px] font-semibold tracking-[0.08em]"
+      style={{ backgroundColor: style.bg, borderColor: `${style.fg}40`, color: style.fg }}
     >
       {status.replaceAll("_", " ")}
     </span>
@@ -40,8 +41,8 @@ function OverallStatusChip({ status }: { status: string }) {
 function StatusDot({ status }: { status: string | null }) {
   return (
     <span
-      className="inline-block h-2.5 w-2.5 rounded-full"
-      style={{ backgroundColor: status ? (RUN_COLORS[status] ?? "#A39B8B") : "#D8D2C6" }}
+      className="inline-block h-2 w-2 rounded-[1px]"
+      style={{ backgroundColor: status ? (RUN_COLORS[status] ?? "#6a7688") : "#2c3848" }}
       title={status ?? "never run"}
     />
   );
@@ -55,12 +56,14 @@ function Flag({
   tone: "good" | "warn" | "muted";
 }) {
   const colors = {
-    good: "bg-good/10 text-good",
-    warn: "bg-warn/10 text-warn",
-    muted: "bg-line/50 text-muted",
+    good: "border-good/35 bg-good/10 text-good",
+    warn: "border-warn/35 bg-warn/10 text-warn",
+    muted: "border-line bg-elevated text-muted",
   };
   return (
-    <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${colors[tone]}`}>
+    <span
+      className={`rounded-sm border px-1.5 py-0.5 font-mono text-[10px] tracking-[0.03em] ${colors[tone]}`}
+    >
       {label}
     </span>
   );
@@ -93,17 +96,20 @@ export function SourcesDashboard() {
       <div className="mx-auto max-w-5xl px-6 py-8">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h1 className="font-display text-2xl font-semibold tracking-tight">
-              Sources
-            </h1>
-            <p className="mt-1 text-sm text-muted">
-              {enabled.length} of {sources.length} sources enabled
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-semibold tracking-tight text-ink">Sources</h1>
+              <span className="font-mono text-[10px] tracking-[0.16em] text-faint uppercase">
+                diagnostics
+              </span>
+            </div>
+            <p className="mt-1 font-mono text-[11.5px] tracking-[0.02em] text-muted tabular-nums">
+              {enabled.length}/{sources.length} enabled
               {lastRunAt ? ` · last ingest ${relativeTime(lastRunAt)}` : " · never ingested"}
             </p>
           </div>
-          <div className="rounded-xl border border-line bg-surface px-4 py-2.5 text-[12.5px] text-muted">
-            Run ingestion from the CLI:{" "}
-            <code className="rounded bg-line/60 px-1.5 py-0.5 font-mono text-[11.5px] text-ink">
+          <div className="rounded-md border border-line bg-surface px-3 py-2 font-mono text-[11.5px] text-muted">
+            ingest:{" "}
+            <code className="rounded-sm border border-line bg-elevated px-1.5 py-0.5 text-[11px] text-ink">
               npm run ingest -- --all
             </code>
           </div>
@@ -127,12 +133,12 @@ function SourceCard({ source: s }: { source: SourceDashboardEntry }) {
   const run = s.lastRun;
 
   return (
-    <div className="rounded-2xl border border-line bg-surface p-5 shadow-sm">
+    <div className="rounded-lg border border-line bg-surface p-4 shadow-[0_2px_10px_rgba(0,0,0,0.3)]">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <StatusDot status={run?.status ?? null} />
-        <h2 className="text-[15px] font-semibold">{s.name}</h2>
+        <h2 className="text-[15px] font-semibold text-ink">{s.name}</h2>
         <OverallStatusChip status={s.overallStatus} />
-        <span className="rounded-full bg-line/50 px-2 py-0.5 font-mono text-[11px] text-muted">
+        <span className="rounded-sm border border-line bg-elevated px-1.5 py-0.5 font-mono text-[10px] text-muted">
           {s.id}
         </span>
         <Flag label={s.sourceSystem} tone="muted" />
@@ -198,7 +204,7 @@ function SourceCard({ source: s }: { source: SourceDashboardEntry }) {
       </div>
 
       {run ? (
-        <div className="mt-3 rounded-xl bg-paper/70 px-4 py-3 text-[12.5px]">
+        <div className="mt-3 rounded-md border border-line bg-paper/60 px-3.5 py-3 font-mono text-[12px] tabular-nums">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
             <span className="font-medium" style={{ color: RUN_COLORS[run.status] }}>
               Last run: {run.status}

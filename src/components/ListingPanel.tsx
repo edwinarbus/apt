@@ -14,6 +14,29 @@ import {
 import { BadgeRow } from "./Badges";
 import { PhotoImg } from "./PhotoImg";
 
+/** Shared readout so the panel header and the mobile drawer handle agree. */
+export function listingCountLabel({
+  count,
+  searching,
+  searchActive,
+  hoodName,
+}: {
+  count: number;
+  searching?: boolean;
+  searchActive?: boolean;
+  hoodName?: string | null;
+}): { n: string; unit: string; scope: string | null } {
+  if (searching) return { n: "—", unit: "SCANNING", scope: hoodName ?? null };
+  const unit = searchActive
+    ? count === 1
+      ? "MATCH"
+      : "MATCHES"
+    : count === 1
+      ? "LISTING"
+      : "LISTINGS";
+  return { n: String(count), unit, scope: hoodName ?? null };
+}
+
 export function ListingPanel({
   listings,
   reasons,
@@ -26,6 +49,8 @@ export function ListingPanel({
   onSelect,
   sort,
   onSortChange,
+  chromeless,
+  hideHeader,
 }: {
   listings: ListingSummary[];
   reasons?: Map<string, MatchInfo>;
@@ -38,35 +63,44 @@ export function ListingPanel({
   onSelect: (id: string) => void;
   sort: SortKey;
   onSortChange: (s: SortKey) => void;
+  /** Drawer mode: drop the panel's own border/rounding/shadow. */
+  chromeless?: boolean;
+  /** Drawer mode: the handle supplies the count + sort, so skip the header. */
+  hideHeader?: boolean;
 }) {
+  const label = listingCountLabel({
+    count: listings.length,
+    searching,
+    searchActive,
+    hoodName,
+  });
+
   return (
-    <aside className="flex h-full w-full flex-col overflow-hidden rounded-[22px] border border-white/10 bg-paper/80 shadow-2xl ring-1 ring-black/40 backdrop-blur-xl">
-      <div className="flex items-center justify-between border-b border-line/70 px-4 py-2.5">
-        <div>
-          <span className="text-sm font-semibold">
-            {searching
-              ? "Matching…"
-              : `${listings.length} ${searchActive ? "match" : "listing"}${
-                  listings.length === 1 ? "" : searchActive ? "es" : "s"
-                }${hoodName ? ` · ${hoodName}` : ""}`}
-          </span>
-          <p className="text-[11px] text-faint">
-            {searchActive || searching
-              ? "Ranked by AI · verify with the source before acting."
-              : "Verify availability & terms with the source before acting."}
-          </p>
+    <aside
+      className={
+        chromeless
+          ? "flex h-full w-full flex-col overflow-hidden"
+          : "flex h-full w-full flex-col overflow-hidden rounded-lg border border-line bg-surface/96 shadow-[0_12px_44px_rgba(0,0,0,0.5)]"
+      }
+    >
+      {!hideHeader && (
+        <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-2">
+          <div className="flex min-w-0 items-baseline gap-1.5 font-mono">
+            <span className="tnum text-[15px] leading-none font-semibold text-ink">
+              {label.n}
+            </span>
+            <span className="text-[10px] tracking-[0.14em] text-muted">{label.unit}</span>
+            {label.scope && (
+              <span className="truncate text-[10px] tracking-[0.08em] text-accent">
+                · {label.scope.toUpperCase()}
+              </span>
+            )}
+          </div>
+          <SortSelect sort={sort} searchActive={searchActive} onSortChange={onSortChange} />
         </div>
-        <select
-          value={sort}
-          onChange={(e) => onSortChange(e.target.value as SortKey)}
-          className="rounded-full border border-line bg-surface px-3 py-1.5 text-[12px] text-muted outline-none"
-        >
-          <option value="newest">{searchActive ? "Best match" : "Newest first"}</option>
-          <option value="price_asc">Price: low to high</option>
-          <option value="price_desc">Price: high to low</option>
-        </select>
-      </div>
-      <div className="panel-scroll min-h-0 flex-1 overflow-y-auto px-3 py-3">
+      )}
+
+      <div className="panel-scroll min-h-0 flex-1 overflow-y-auto">
         {searching ? (
           <SearchProgress
             progress={
@@ -75,13 +109,9 @@ export function ListingPanel({
             hasLocation={!!hasLocation}
           />
         ) : listings.length === 0 ? (
-          <p className="px-2 py-8 text-center text-sm text-faint">
-            {searchActive
-              ? "No listings matched your search. Try rephrasing, widening the radius, or “Show hidden & gone”."
-              : "Nothing matches the current view."}
-          </p>
+          <EmptyState searchActive={searchActive} hoodName={hoodName} />
         ) : (
-          <ul className="flex flex-col gap-2.5">
+          <ul className="flex flex-col gap-1.5 p-2">
             {listings.map((l, i) => (
               <ListingCard
                 key={l.id}
@@ -100,18 +130,69 @@ export function ListingPanel({
   );
 }
 
-/** Small conic-gradient ring visualizing the 0–100 AI match score. */
-function ScoreRing({ score }: { score: number }) {
+export function SortSelect({
+  sort,
+  searchActive,
+  onSortChange,
+}: {
+  sort: SortKey;
+  searchActive?: boolean;
+  onSortChange: (s: SortKey) => void;
+}) {
+  return (
+    <select
+      value={sort}
+      onChange={(e) => onSortChange(e.target.value as SortKey)}
+      aria-label="Sort listings"
+      className="shrink-0 rounded-sm border border-line bg-elevated px-1.5 py-1 font-mono text-[10.5px] tracking-[0.04em] text-muted outline-none focus:border-line-strong"
+    >
+      <option value="newest">{searchActive ? "Best match" : "Newest"}</option>
+      <option value="price_asc">Price ↑</option>
+      <option value="price_desc">Price ↓</option>
+    </select>
+  );
+}
+
+function EmptyState({
+  searchActive,
+  hoodName,
+}: {
+  searchActive?: boolean;
+  hoodName?: string | null;
+}) {
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-2.5 px-6 py-10 text-center">
+      {/* Quiet empty-scope reticle — no result signal, calmly stated. */}
+      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" aria-hidden className="text-line-strong">
+        <circle cx="12" cy="12" r="8.5" stroke="currentColor" strokeWidth="1.3" />
+        <path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+      </svg>
+      <p className="font-mono text-[11px] tracking-[0.12em] text-muted uppercase">
+        {searchActive ? "No matches" : hoodName ? "Sector empty" : "No listings in view"}
+      </p>
+      <p className="max-w-[15rem] text-[11.5px] leading-relaxed text-faint">
+        {searchActive
+          ? "Rephrase, widen the radius, or enable Hidden+Gone."
+          : hoodName
+            ? "Nothing active in this neighborhood right now."
+            : "Pan or zoom the map, or run a search."}
+      </p>
+    </div>
+  );
+}
+
+/** Compact conic gauge for the 0–100 AI match score — instrumentation, not confetti. */
+function ScoreGauge({ score }: { score: number }) {
   const pct = Math.max(0, Math.min(100, score));
   return (
     <span
-      className="animate-pop-in relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
+      className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
       style={{
         background: `conic-gradient(var(--color-accent) ${pct * 3.6}deg, var(--color-line) 0deg)`,
       }}
       title={`AI match score: ${Math.round(pct)}/100`}
     >
-      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-surface text-[11px] font-bold text-accent-deep tabular-nums">
+      <span className="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-elevated font-mono text-[10.5px] font-semibold text-accent tabular-nums">
         {Math.round(pct)}
       </span>
     </span>
@@ -150,68 +231,105 @@ function ListingCard({
     [l.addressRaw, l.neighborhood ?? l.sourceNeighborhoodRaw]
       .filter(Boolean)
       .join(" · ") || PRECISION_LABELS[l.geocodePrecision];
+  const specs = [fmtBeds(l.bedrooms), fmtBaths(l.bathrooms)];
+  if (l.squareFeet) specs.push(`${l.squareFeet.toLocaleString()} SF`);
+  const approximate =
+    l.geocodePrecision === "neighborhood" || l.geocodePrecision === "city";
 
   return (
     <li
       ref={ref}
       className={animateIn ? "animate-fade-up" : undefined}
-      style={animateIn ? { animationDelay: `${Math.min(index, 12) * 70}ms` } : undefined}
+      style={animateIn ? { animationDelay: `${Math.min(index, 10) * 45}ms` } : undefined}
     >
       <button
         type="button"
         onClick={onSelect}
-        className={`group flex w-full gap-3 rounded-xl border bg-surface p-2.5 text-left shadow-sm transition-all duration-200 hover:-translate-y-[1px] hover:shadow-md ${
-          selected ? "border-accent ring-2 ring-accent/25" : "border-line hover:border-faint"
+        aria-pressed={selected}
+        className={`group relative flex w-full gap-2.5 overflow-hidden rounded-md border p-2 text-left transition-colors duration-150 ${
+          selected
+            ? "border-accent bg-accent-soft/40"
+            : "border-line bg-elevated/50 hover:border-line-strong hover:bg-elevated"
         } ${dimmed ? "opacity-55" : ""}`}
       >
-        <PhotoImg
-          src={l.primaryPhotoUrl}
-          alt={l.title}
-          className="h-[96px] w-[118px] shrink-0 rounded-lg object-cover"
+        {/* Selection rail */}
+        <span
+          className={`absolute inset-y-0 left-0 w-[2px] transition-colors ${
+            selected ? "bg-accent" : "bg-transparent"
+          }`}
+          aria-hidden
         />
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className="relative shrink-0 overflow-hidden rounded-[3px] border border-line-strong">
+          <PhotoImg
+            src={l.primaryPhotoUrl}
+            alt={l.title}
+            className="h-[82px] w-[104px] object-cover"
+          />
+          {approximate && (
+            <span
+              className="absolute right-1 bottom-1 rounded-[2px] bg-paper/80 px-1 font-mono text-[8px] tracking-[0.08em] text-muted"
+              title="Neighborhood-level (approximate) location"
+            >
+              APPROX
+            </span>
+          )}
+        </div>
+
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <div className="flex items-center gap-1.5">
-            <span className="font-display text-[17px] font-semibold tracking-tight">
+            <span className="font-mono text-[15px] leading-none font-semibold tracking-tight text-ink tabular-nums">
               {fmtMoney(price)}
             </span>
-            <span className="text-[11px] text-faint">/mo</span>
+            <span className="font-mono text-[9.5px] text-faint">/MO</span>
             {hasConcession && (
               <span
-                className="text-[10px] font-medium text-good"
+                className="font-mono text-[9px] tracking-[0.06em] text-good uppercase"
                 title={`Effective with concessions (advertised ${fmtMoney(l.priceMonthly)})`}
               >
-                effective
+                eff
               </span>
             )}
             {l.lastPriceChange && l.lastPriceChange.newPrice < l.lastPriceChange.oldPrice && (
-              <span className="text-[10px] text-faint line-through">
+              <span className="font-mono text-[9.5px] text-faint line-through tabular-nums">
                 {fmtMoney(l.lastPriceChange.oldPrice)}
               </span>
             )}
             {match && (
               <span className="ml-auto">
-                <ScoreRing score={match.score} />
+                <ScoreGauge score={match.score} />
               </span>
             )}
           </div>
-          <p className="truncate text-[13px] leading-snug font-medium text-ink" title={l.title}>
+
+          <p className="truncate text-[12.5px] leading-snug font-medium text-ink" title={l.title}>
             {l.title}
           </p>
-          <p className="truncate text-[12px] text-muted">
-            {fmtBeds(l.bedrooms)} · {fmtBaths(l.bathrooms)}
-            {l.squareFeet ? ` · ${l.squareFeet.toLocaleString()} sqft` : ""} · {location}
+          <p className="truncate font-mono text-[10px] tracking-[0.02em] text-muted">
+            {specs.join("  ·  ")}
           </p>
+          <p className="truncate text-[11px] text-faint" title={location}>
+            {location}
+          </p>
+
           {match ? (
-            <p className="mt-1.5 line-clamp-3 rounded-lg bg-accent-soft/45 px-2 py-1.5 text-[11.5px] leading-snug text-accent-deep/95">
-              <span className="mr-0.5">✦</span> {match.reason}
+            <p className="mt-1 line-clamp-2 border-l-2 border-accent/50 bg-accent-soft/35 py-1 pr-1 pl-2 text-[11px] leading-snug text-accent">
+              <span className="font-mono text-[8.5px] tracking-[0.14em] text-accent/70">
+                MATCH{" "}
+              </span>
+              {match.reason}
             </p>
           ) : (
-            <div className="mt-1">
-              <BadgeRow badges={l.badges} max={3} />
-            </div>
+            l.badges.length > 0 && (
+              <div className="mt-1">
+                <BadgeRow badges={l.badges} max={3} />
+              </div>
+            )
           )}
-          <p className="mt-auto pt-1 text-[11px] text-faint">
-            {l.sourceName} · checked {relativeTime(l.lastSeenAt)}
+
+          <p className="mt-1 flex items-center gap-1.5 font-mono text-[9.5px] tracking-[0.04em] text-faint">
+            <span className="truncate uppercase">{l.sourceName}</span>
+            <span aria-hidden className="text-line-strong">·</span>
+            <span className="shrink-0 tabular-nums">{relativeTime(l.lastSeenAt)}</span>
           </p>
         </div>
       </button>
