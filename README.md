@@ -190,6 +190,24 @@ run; only the two commands (without `--dry-run`) need a key, and they error out
 with instructions rather than prompting for one. The SDK is lazy-loaded, so
 nothing else imports it.
 
+### Setting your API key
+
+Put it in a **gitignored `.env.local`** at the project root — both the CLI
+scripts and the Next.js app read it, and `.env*` is already in `.gitignore` so
+it's never committed:
+
+```bash
+# .env.local
+ANTHROPIC_API_KEY=sk-ant-...
+# optional: APT_ENRICH_MODEL=claude-haiku-4-5 / APT_VISION_MODEL=claude-haiku-4-5
+```
+
+(An explicit `export ANTHROPIC_API_KEY=…` in your shell also works and takes
+precedence.) On **Vercel**, set the same variable under Project Settings →
+Environment Variables (or `vercel env add`); `vercel env pull .env.local` syncs
+it back down for local use. The tsx scripts load `.env.local`/`.env` via
+`src/lib/load-env.ts` (the app loads them natively).
+
 ### Text enrichment (`npm run enrich`)
 
 Per listing, validated against a Zod schema (`src/enrich/schema.ts`):

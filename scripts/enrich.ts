@@ -1,3 +1,4 @@
+import "@/lib/load-env";
 import { createDb } from "@/db/client";
 import { AnthropicEnrichmentClient, DEFAULT_ENRICH_MODEL } from "@/enrich/client";
 import { enrichListings, formatEnrichSummary } from "@/enrich/enricher";

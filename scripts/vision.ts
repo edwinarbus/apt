@@ -1,3 +1,4 @@
+import "@/lib/load-env";
 import { createDb } from "@/db/client";
 import { AnthropicVisionClient, DEFAULT_VISION_MODEL } from "@/vision/client";
 import { DEFAULT_MAX_IMAGES, runVision, formatVisionSummary } from "@/vision/vision";
