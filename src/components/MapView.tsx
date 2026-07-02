@@ -35,17 +35,18 @@ const SF_MAX_BOUNDS: [[number, number], [number, number]] = [
 ];
 
 const PAPER = "#070d18";
-const ACCENT = "#ff6b3d";
-const HOOD = "#3fd0ff";
-const HOOD_BRIGHT = "#7ce4ff";
-const HALO = "#081120";
+const ACCENT = "#47aede"; // interaction: selection, search targets, scan
+const HOOD = "#4a90b8"; // neighborhood geometry — controlled steel-cyan
+const HOOD_BRIGHT = "#6fb6d8"; // selected neighborhood outline
+const HALO = "#06090f"; // marker stroke = background, for a crisp cut-out edge
 /** How far a selected neighborhood is raised out of the map (baked into the DEM). */
 const HOOD_BOOST_M = 105;
 const TERRAIN_EXAGGERATION = 1.35;
 
+// Clusters are aggregates of mixed status → neutral graphite, denser = lighter.
 const CLUSTER_COLOR_BROWSE = [
   "step", ["get", "point_count"],
-  "#33475f", 10, "#4a6076", 40, "#ff6b3d",
+  "#17212e", 10, "#1f2c3a", 40, "#293845",
 ] as unknown as maplibregl.ExpressionSpecification;
 
 const LEGEND: Array<[string, string]> = [
@@ -392,23 +393,35 @@ function makeBracketElement(): HTMLDivElement {
         <path d="M6,16 L6,6 L16,6" /><path d="M32,6 L42,6 L42,16" />
         <path d="M42,32 L42,42 L32,42" /><path d="M16,42 L6,42 L6,32" />
       </g>
-      <circle cx="24" cy="24" r="7.5" fill="none" stroke="${ACCENT}" stroke-width="1.6" class="radar-reticle-pulse" />
+      <circle cx="24" cy="24" r="7.5" fill="none" stroke="${ACCENT}" stroke-width="1.6" class="reticle-pulse" />
     </svg>`;
   return withRoot(el);
 }
 
 function makeScanElement(): HTMLDivElement {
   const el = document.createElement("div");
-  el.className = "map-scan animate-pop-in";
+  el.className = "map-scan animate-rise-in";
   el.innerHTML = `
     <svg viewBox="0 0 40 40" width="40" height="40" style="display:block">
       <g stroke="${HOOD}" stroke-width="1.8" fill="none" stroke-linecap="round">
         <path d="M5,13 L5,5 L13,5" /><path d="M27,5 L35,5 L35,13" />
         <path d="M35,27 L35,35 L27,35" /><path d="M13,35 L5,35 L5,27" />
       </g>
-      <circle cx="20" cy="20" r="3" fill="none" stroke="${HOOD}" stroke-width="1.4" class="radar-reticle-pulse" />
+      <circle cx="20" cy="20" r="3" fill="none" stroke="${HOOD}" stroke-width="1.4" class="reticle-pulse" />
     </svg>`;
   return withRoot(el);
+}
+
+/* Sonar HUD — one CSS-animated marker (sweep + 3 staggered rings). All motion
+ * is GPU transform/opacity; the map paint pipeline never touches it. */
+function makeSonarElement(): HTMLDivElement {
+  const el = document.createElement("div");
+  el.className = "map-sonar";
+  el.innerHTML =
+    '<div class="edge"></div><div class="sweep"></div>' +
+    '<div class="ring"></div><div class="ring r2"></div><div class="ring r3"></div>' +
+    '<div class="core"></div>';
+  return el;
 }
 
 function makeRippleElement(): HTMLDivElement {
@@ -429,11 +442,14 @@ function makeThumbElement(
   if (l.primaryPhotoUrl) {
     const img = document.createElement("img");
     img.className = "thumb-img";
-    img.src = l.primaryPhotoUrl;
     img.alt = "";
     img.referrerPolicy = "no-referrer";
     img.loading = "lazy";
+    img.decoding = "async"; // keep photo decode off the compositor/main thread
+    img.width = 60;
+    img.height = 40;
     img.onerror = () => img.remove();
+    img.src = l.primaryPhotoUrl;
     frame.appendChild(img);
   }
   const price = document.createElement("span");
@@ -510,9 +526,9 @@ export function MapView({
   const hoveredHoodRef = useRef<string | null>(null);
   const lockMarkerRef = useRef<maplibregl.Marker | null>(null);
   const scanMarkerRef = useRef<maplibregl.Marker | null>(null);
+  const sonarMarkerRef = useRef<maplibregl.Marker | null>(null);
   const scanHopTimerRef = useRef<number | null>(null);
   const pulseRafRef = useRef<number | null>(null);
-  const sonarRafRef = useRef<number | null>(null);
   const riseRafRef = useRef<number | null>(null);
   const thumbsRef = useRef<Map<string, maplibregl.Marker>>(new Map());
   const searchActiveRef = useRef(false);
@@ -759,37 +775,9 @@ export function MapView({
           },
         });
 
-        // Sonar (hidden until a search runs)
-        map.addSource("sonar-center", { type: "geojson", data: EMPTY_FC });
-        for (let i = 0; i < 3; i++) {
-          map.addLayer({
-            id: `sonar-ring-${i}`,
-            type: "circle",
-            source: "sonar-center",
-            layout: { visibility: "none" },
-            paint: {
-              "circle-color": "transparent",
-              "circle-radius": 0,
-              "circle-stroke-color": HOOD,
-              "circle-stroke-width": 1.6,
-              "circle-stroke-opacity": 0,
-              "circle-pitch-alignment": "map",
-            },
-          });
-        }
-        map.addSource("sonar-beam", { type: "geojson", data: EMPTY_FC });
-        map.addLayer({
-          id: "sonar-beam",
-          type: "line",
-          source: "sonar-beam",
-          layout: { visibility: "none", "line-cap": "round" },
-          paint: {
-            "line-color": HOOD,
-            "line-width": 2,
-            "line-opacity": ["get", "o"] as unknown as maplibregl.ExpressionSpecification,
-            "line-blur": 1,
-          },
-        });
+        // Scan targets: the real shortlisted listings, marked as static dots
+        // during a search (the sweep itself is a CSS marker — see the sonar
+        // effect — so there are zero per-frame map mutations).
         map.addSource("scan-targets", { type: "geojson", data: EMPTY_FC });
         map.addLayer({
           id: "scan-target-dots",
@@ -797,25 +785,11 @@ export function MapView({
           source: "scan-targets",
           layout: { visibility: "none" },
           paint: {
-            "circle-color": HOOD,
+            "circle-color": ACCENT,
             "circle-radius": 3,
-            "circle-opacity": 0.9,
+            "circle-opacity": 0.95,
             "circle-stroke-color": HALO,
             "circle-stroke-width": 1,
-          },
-        });
-        map.addLayer({
-          id: "scan-target-ping",
-          type: "circle",
-          source: "scan-targets",
-          layout: { visibility: "none" },
-          paint: {
-            "circle-color": "transparent",
-            "circle-radius": 6,
-            "circle-stroke-color": HOOD,
-            "circle-stroke-width": 1.4,
-            "circle-stroke-opacity": 0.6,
-            "circle-pitch-alignment": "map",
           },
         });
 
@@ -835,10 +809,10 @@ export function MapView({
           filter: ["has", "point_count"],
           paint: {
             "circle-color": CLUSTER_COLOR_BROWSE,
-            "circle-radius": ["step", ["get", "point_count"], 15, 10, 20, 40, 26],
-            "circle-stroke-width": 2,
-            "circle-stroke-color": HALO,
-            "circle-opacity": 0.92,
+            "circle-radius": ["step", ["get", "point_count"], 13, 10, 17, 40, 22],
+            "circle-stroke-width": 1.25,
+            "circle-stroke-color": "#46607a",
+            "circle-opacity": 0.96,
           },
         });
         map.addLayer({
@@ -849,9 +823,9 @@ export function MapView({
           layout: {
             "text-field": "{point_count_abbreviated}",
             "text-font": ["Noto Sans Bold"],
-            "text-size": 12,
+            "text-size": 11.5,
           },
-          paint: { "text-color": "#eaf2ff" },
+          paint: { "text-color": "#e9eef5" },
         });
         map.addLayer({
           id: "match-pulse",
@@ -887,10 +861,10 @@ export function MapView({
           filter: ["!", ["has", "point_count"]],
           paint: {
             "circle-color": ["get", "color"],
-            "circle-radius": 7,
-            "circle-stroke-width": 2,
+            "circle-radius": 5.5,
+            "circle-stroke-width": 1.5,
             "circle-stroke-color": HALO,
-            "circle-opacity": ["case", ["get", "approximate"], 0.55, 0.95],
+            "circle-opacity": ["case", ["get", "approximate"], 0.5, 1],
           },
         });
         map.addLayer({
@@ -898,18 +872,18 @@ export function MapView({
           type: "symbol",
           source: "listings",
           filter: ["!", ["has", "point_count"]],
-          minzoom: 13.2,
+          minzoom: 13.4,
           layout: {
             "text-field": ["get", "priceShort"],
             "text-font": ["Noto Sans Bold"],
-            "text-size": 11,
-            "text-offset": [0, -1.45],
+            "text-size": 10.5,
+            "text-offset": [0, -1.4],
             "text-allow-overlap": false,
           },
           paint: {
-            "text-color": ["get", "color"],
+            "text-color": "#d7e2ef",
             "text-halo-color": HALO,
-            "text-halo-width": 1.6,
+            "text-halo-width": 1.8,
           },
         });
 
@@ -1010,12 +984,13 @@ export function MapView({
       ro.observe(container);
       cleanupRef.current = () => {
         ro.disconnect();
-        for (const r of [pulseRafRef, sonarRafRef, riseRafRef]) {
+        for (const r of [pulseRafRef, riseRafRef]) {
           if (r.current != null) cancelAnimationFrame(r.current);
         }
         if (scanHopTimerRef.current != null) clearInterval(scanHopTimerRef.current);
         lockMarkerRef.current?.remove();
         scanMarkerRef.current?.remove();
+        sonarMarkerRef.current?.remove();
         for (const m of thumbsRef.current.values()) m.remove();
         thumbsRef.current.clear();
         map.remove();
@@ -1040,12 +1015,14 @@ export function MapView({
     refreshThumbsRef.current();
   }, [listings]);
 
-  /* ---------- Sonar ON the map while a search scans ---------- */
+  /* ---------- Sonar ON the map while a search scans ----------
+   * The sweep is a single CSS-animated HTML marker (GPU-composited); the real
+   * shortlisted listings are static dots. Zero per-frame map mutations — this
+   * is both the smooth path (18fps → ~60) and the restrained look. */
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
     const reduced = prefersReducedMotion();
-    const visible = searching ? "visible" : "none";
     const center: [number, number] =
       userLocation &&
       userLocation.lng > SF_MAX_BOUNDS[0][0] &&
@@ -1056,27 +1033,22 @@ export function MapView({
         : SF_CENTER;
 
     try {
-      for (let i = 0; i < 3; i++) map.setLayoutProperty(`sonar-ring-${i}`, "visibility", visible);
-      map.setLayoutProperty("sonar-beam", "visibility", visible);
-      map.setLayoutProperty("scan-target-dots", "visibility", visible);
-      map.setLayoutProperty("scan-target-ping", "visibility", visible);
-      (map.getSource("sonar-center") as GeoJSONSource | undefined)?.setData(
-        searching
-          ? { type: "Feature", properties: {}, geometry: { type: "Point", coordinates: center } }
-          : EMPTY_FC,
-      );
+      map.setLayoutProperty("scan-target-dots", "visibility", searching ? "visible" : "none");
       if (!searching) {
-        (map.getSource("sonar-beam") as GeoJSONSource | undefined)?.setData(EMPTY_FC);
         (map.getSource("scan-targets") as GeoJSONSource | undefined)?.setData(EMPTY_FC);
       }
     } catch {
       return;
     }
 
-    if (sonarRafRef.current != null) {
-      cancelAnimationFrame(sonarRafRef.current);
-      sonarRafRef.current = null;
+    sonarMarkerRef.current?.remove();
+    sonarMarkerRef.current = null;
+    if (searching && !reduced) {
+      sonarMarkerRef.current = new maplibregl.Marker({ element: makeSonarElement() })
+        .setLngLat(center)
+        .addTo(map);
     }
+
     if (!searching) {
       scanMarkerRef.current?.remove();
       scanMarkerRef.current = null;
@@ -1087,62 +1059,10 @@ export function MapView({
       return;
     }
 
-    // Surveillance pull-up, then the sweep.
+    // Surveillance pull-up.
     if (!reduced && document.visibilityState !== "hidden") {
       map.flyTo({ center, zoom: 11.7, pitch: 30, bearing: 0, duration: 1500 });
     }
-    if (reduced) return;
-
-    const RING_PERIOD = 3000;
-    const BEAM_DEG_PER_MS = 0.11;
-    const BEAM_LEN = 0.075;
-    const cosLat = Math.cos((center[1] * Math.PI) / 180);
-    const start = performance.now();
-    const tick = (t: number) => {
-      const m = mapRef.current;
-      if (!m) return;
-      const dt = t - start;
-      try {
-        // Expanding rings, three phases.
-        for (let i = 0; i < 3; i++) {
-          const k = ((dt + (i * RING_PERIOD) / 3) % RING_PERIOD) / RING_PERIOD;
-          m.setPaintProperty(`sonar-ring-${i}`, "circle-radius", k * 480);
-          m.setPaintProperty(`sonar-ring-${i}`, "circle-stroke-opacity", 0.42 * (1 - k));
-        }
-        // Rotating beam with two fading trails.
-        const theta = ((dt * BEAM_DEG_PER_MS) % 360) * (Math.PI / 180);
-        const beamAt = (angle: number, o: number): GeoJSON.Feature => ({
-          type: "Feature",
-          properties: { o },
-          geometry: {
-            type: "LineString",
-            coordinates: [
-              center,
-              [
-                center[0] + (BEAM_LEN * Math.sin(angle)) / cosLat,
-                center[1] + BEAM_LEN * Math.cos(angle),
-              ],
-            ],
-          },
-        });
-        (m.getSource("sonar-beam") as GeoJSONSource | undefined)?.setData({
-          type: "FeatureCollection",
-          features: [
-            beamAt(theta, 0.7),
-            beamAt(theta - 0.1, 0.32),
-            beamAt(theta - 0.2, 0.12),
-          ],
-        });
-        // Target pings once the shortlist is in.
-        const k2 = (dt % 1400) / 1400;
-        m.setPaintProperty("scan-target-ping", "circle-radius", 5 + k2 * 17);
-        m.setPaintProperty("scan-target-ping", "circle-stroke-opacity", 0.6 * (1 - k2));
-      } catch {
-        return;
-      }
-      sonarRafRef.current = requestAnimationFrame(tick);
-    };
-    sonarRafRef.current = requestAnimationFrame(tick);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searching]);
 
@@ -1262,14 +1182,14 @@ export function MapView({
       const rise = (t: number) => {
         const k = Math.max(0, Math.min(1, (t - start - DELAY) / DURATION));
         const eased = 1 - Math.pow(1 - k, 3);
-        try {
-          map.setTerrain({
-            source: "dem",
-            exaggeration: RISE_START + (TERRAIN_EXAGGERATION - RISE_START) * eased,
-          });
-        } catch {
-          return;
-        }
+        // Mutate the live Terrain instance + repaint instead of calling
+        // map.setTerrain() every frame — that reconstructs the whole terrain
+        // engine (new Terrain + RenderToTexture) per frame and drops the lift
+        // to ~9fps. In-place exaggeration ramps at ~60fps.
+        const terrain = map.terrain as { exaggeration: number } | undefined;
+        if (!terrain) return;
+        terrain.exaggeration = RISE_START + (TERRAIN_EXAGGERATION - RISE_START) * eased;
+        map.triggerRepaint();
         if (k < 1 && selectedHoodRef.current === selectedHood) {
           riseRafRef.current = requestAnimationFrame(rise);
         }
@@ -1437,21 +1357,23 @@ export function MapView({
             "linear-gradient(to bottom, rgba(7,13,24,0.55), rgba(7,13,24,0) 130px), radial-gradient(120% 90% at 50% 45%, rgba(0,0,0,0) 60%, rgba(0,0,0,0.32) 100%)",
         }}
       />
-      <div className="pointer-events-none absolute bottom-6 left-3 z-10 flex items-center gap-3 rounded-full border border-white/10 bg-surface/80 px-3.5 py-2 shadow-md backdrop-blur-md">
+      <div className="pointer-events-none absolute bottom-6 left-3 z-10 flex items-center gap-2.5 rounded border border-line bg-surface/92 px-2.5 py-1.5 font-mono shadow-[0_2px_10px_rgba(0,0,0,0.45)] max-sm:hidden">
+        <span className="text-[9px] tracking-[0.16em] text-faint uppercase">Legend</span>
+        <span className="h-3 w-px bg-line" aria-hidden />
         {LEGEND.map(([color, label]) => (
           <span key={label} className="flex items-center gap-1.5">
             <span
-              className="h-2 w-2 rounded-full"
-              style={{ backgroundColor: color, boxShadow: `0 0 6px ${color}66` }}
+              className="h-[7px] w-[7px] rounded-[1px]"
+              style={{ backgroundColor: color }}
             />
-            <span className="text-[10.5px] font-medium text-muted">{label}</span>
+            <span className="text-[10px] tracking-[0.06em] text-muted uppercase">{label}</span>
           </span>
         ))}
         <span
-          className="text-[10.5px] text-faint"
+          className="pointer-events-auto flex h-3.5 w-3.5 cursor-help items-center justify-center rounded-[2px] border border-line text-[9px] leading-none text-faint transition-colors hover:border-line-strong hover:text-muted"
           title="Faded markers are approximate (neighborhood-level) locations. During a search all markers become lock-on targets. Click a neighborhood to lift it out of the map."
         >
-          ⓘ
+          i
         </span>
       </div>
     </div>

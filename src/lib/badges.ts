@@ -86,26 +86,30 @@ export const BADGE_LABELS: Record<BadgeKind, string> = {
   source_uncertain: "Source uncertain",
 };
 
-/** Marker + chip colors (hex, used by both the map layers and CSS) — tuned for the dark navy theme. */
+/**
+ * Marker + chip colors — the tactical status palette. Restrained and
+ * meaningful: cool for informational, warm only for caution/failure. Kept in
+ * sync with the design tokens in globals.css.
+ */
 export const BADGE_COLORS: Record<BadgeKind, string> = {
-  new_today: "#2FD08A",
-  price_drop: "#4DA3FF",
-  price_increase: "#A78BFA",
-  stale: "#7C8AA0",
-  likely_unavailable: "#5D6B80",
-  verify_carefully: "#FF7A4D",
-  watch: "#F0A13F",
-  duplicate: "#8FA3BC",
-  saved: "#FF6FA5",
-  contacted: "#B18CFF",
-  maybe: "#38C7D8",
-  toured: "#2DD4BF",
-  applied: "#8B9BF9",
-  suspicious: "#FF5D5D",
-  source_uncertain: "#F0A13F",
+  new_today: "#35c489", // success — new
+  price_drop: "#47aede", // accent — good change
+  price_increase: "#e6a54a", // warn tone — cost went up
+  stale: "#6a7688", // stale
+  likely_unavailable: "#55606f",
+  verify_carefully: "#e6a54a", // warning
+  watch: "#c79150",
+  duplicate: "#7f8da0",
+  contacted: "#8f7fe0",
+  maybe: "#4fb6c4",
+  toured: "#3fb99f",
+  applied: "#7f8fe6",
+  saved: "#b96fd8", // saved — sparingly
+  suspicious: "#e8564d", // danger
+  source_uncertain: "#c79150",
 };
 
-export const DEFAULT_MARKER_COLOR = "#AFC2DB";
+export const DEFAULT_MARKER_COLOR = "#9fb0c6";
 
 /** The single color a listing's map marker should take (first badge wins). */
 export function markerColor(badges: BadgeKind[]): string {

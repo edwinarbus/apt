@@ -134,12 +134,31 @@ body {
   width: 34px; height: 34px; pointer-events: none;
   transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
 }
-/* Sonar HUD marker (sweep + expanding rings), pure GPU compositing. */
-.map-sonar { pointer-events: none; will-change: transform; }
-.map-sonar .sweep { animation: sweep-rotate 3.4s linear infinite; transform-origin: center; }
-.map-sonar .ring { transform-origin: center; animation: ring-out 2.6s cubic-bezier(0.2, 0.4, 0.3, 1) infinite; }
-.map-sonar .ring.r2 { animation-delay: 0.87s; }
-.map-sonar .ring.r3 { animation-delay: 1.74s; }
+/* Sonar HUD marker (restrained sweep + expanding rings) — pure GPU compositing,
+ * built from HTML divs so transform-origin is well-defined cross-browser. */
+.map-sonar {
+  width: 300px; height: 300px;
+  pointer-events: none;
+}
+.map-sonar > * { position: absolute; inset: 0; border-radius: 50%; }
+.map-sonar .edge { border: 1px solid color-mix(in srgb, var(--color-accent) 14%, transparent); }
+.map-sonar .sweep {
+  background: conic-gradient(from 0deg, color-mix(in srgb, var(--color-accent) 22%, transparent), transparent 62deg);
+  animation: sweep-rotate 3.6s linear infinite;
+  will-change: transform;
+}
+.map-sonar .ring {
+  border: 1px solid color-mix(in srgb, var(--color-accent) 55%, transparent);
+  animation: ring-out 2.7s cubic-bezier(0.2, 0.4, 0.3, 1) infinite;
+  will-change: transform, opacity;
+}
+.map-sonar .ring.r2 { animation-delay: 0.9s; }
+.map-sonar .ring.r3 { animation-delay: 1.8s; }
+.map-sonar .core {
+  inset: auto; top: 50%; left: 50%;
+  width: 4px; height: 4px; margin: -2px 0 0 -2px;
+  background: var(--color-accent); border-radius: 50%;
+}
 
 .click-ripple {
   width: 40px; height: 40px; pointer-events: none;
@@ -157,6 +176,7 @@ body {
   transform: translateZ(0);
 }
 .thumb-marker:hover { transform: translateZ(0) scale(1.08); z-index: 10; }
+.thumb-marker.thumb-click { transform: translateZ(0) scale(0.92); }
 .thumb-marker .thumb-frame {
   overflow: hidden;
   border: 1px solid var(--color-line-strong);
