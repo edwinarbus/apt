@@ -6,6 +6,7 @@ import { sources } from "@/db/schema";
 import { PoliteFetcher } from "@/core/fetcher";
 import { parseClSearchPage } from "@/adapters/craigslist";
 import { parseRsnResultsPage } from "@/adapters/rentsfnow";
+import type { BtApiResponse } from "@/adapters/rentbt";
 import { isSfLocation } from "@/core/neighborhoods";
 
 /**
@@ -84,17 +85,36 @@ async function refreshRentSfNow(): Promise<void> {
   save("rsn-detail.html", detail.text);
 }
 
+async function refreshRentBt(): Promise<void> {
+  const db = createDb();
+  const source = db.select().from(sources).where(eq(sources.id, "brick_and_timber")).get();
+  const baseUrl = source?.baseUrl ?? "https://rentbt.com";
+  const fetcher = new PoliteFetcher({
+    requestDelayMs: source?.requestDelayMs ?? 3000,
+    timeoutMs: source?.timeoutMs ?? 25000,
+    retryCount: 1,
+  });
+  const res = await fetcher.fetchText(`${baseUrl}/wp-json/property-search/v1/data/`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!res.ok) throw new Error(`property-search API fetch failed: ${res.error}`);
+  const data = JSON.parse(res.text) as BtApiResponse;
+  if (!data.apartments?.length) throw new Error("no apartments in feed — structure changed?");
+  save("bt-api.json", res.text);
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const sourceIdx = args.indexOf("--source");
   const sourceId = sourceIdx >= 0 ? args[sourceIdx + 1] : null;
   if (!sourceId) {
-    console.log("usage: npm run fixtures:refresh -- --source <craigslist_sf|rentsfnow>");
+    console.log("usage: npm run fixtures:refresh -- --source <craigslist_sf|rentsfnow|brick_and_timber>");
     process.exit(1);
   }
   console.log(`Refreshing fixtures for ${sourceId} from the live source…`);
   if (sourceId === "craigslist_sf") await refreshCraigslist();
   else if (sourceId === "rentsfnow") await refreshRentSfNow();
+  else if (sourceId === "brick_and_timber") await refreshRentBt();
   else {
     console.error(`no fixture recipe for ${sourceId}`);
     process.exit(1);

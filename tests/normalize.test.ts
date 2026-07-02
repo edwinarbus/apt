@@ -95,6 +95,8 @@ describe("concessions", () => {
     // 6 weeks ≈ 1.38 months -> 4650 * (12 - 1.38) / 12 ≈ 4115
     expect(computeEffectiveMonthly(4650, concession)).toBe(4115);
     expect(computeEffectiveMonthly(3000, "1 month free")).toBe(2750);
+    // word-number concessions (common on property-manager feeds)
+    expect(computeEffectiveMonthly(3600, "One month free when you sign by 7/15")).toBe(3300);
     expect(computeEffectiveMonthly(3000, null)).toBeNull();
   });
 });

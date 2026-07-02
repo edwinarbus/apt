@@ -147,10 +147,12 @@ export function computeEffectiveMonthly(
   if (!priceMonthly || !concessionsRaw) return null;
   const text = concessionsRaw.toLowerCase();
   let freeMonths = 0;
-  const months = text.match(/(\d+(?:\.\d+)?)\s*months? free/);
-  const weeks = text.match(/(\d+(?:\.\d+)?)\s*weeks? free/);
-  if (months) freeMonths = Number(months[1]);
-  else if (weeks) freeMonths = Number(weeks[1]) / 4.345;
+  const months = text.match(/(\d+(?:\.\d+)?|one|two|three|four|six)\s*months? free/);
+  const weeks = text.match(/(\d+(?:\.\d+)?|one|two|three|four|six)\s*weeks? free/);
+  const wordNum: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, six: 6 };
+  const asNum = (s: string) => wordNum[s] ?? Number(s);
+  if (months) freeMonths = asNum(months[1]);
+  else if (weeks) freeMonths = asNum(weeks[1]) / 4.345;
   if (freeMonths <= 0 || freeMonths >= 12) return null;
   return Math.round((priceMonthly * (12 - freeMonths)) / 12);
 }

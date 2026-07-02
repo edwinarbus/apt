@@ -15,6 +15,13 @@
       "when": 1782972571797,
       "tag": "0001_colossal_rictor",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1782998602232,
+      "tag": "0002_cooing_red_ghost",
+      "breakpoints": true
     }
   ]
 }

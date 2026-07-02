@@ -10,12 +10,15 @@ behalf, and fetches politely at low frequency. It is a research/alerting tool
 for one person's apartment hunt — nothing more.
 
 > Phase one built the data pipeline + map UI. Phase two hardened it: adapter
-> verification commands, an idempotent backfill, confidence-scored dedupe,
-> canonical URLs, structured price history, and a source-health dashboard that
-> makes reliability obvious. A future phase may add Claude-based enrichment
-> (daily summaries, match explanations, scam analysis); the schema and runner
-> were designed so an agent can operate on top of them, but nothing AI-related
-> is built or wired up yet.
+> verification, idempotent backfill, confidence-scored dedupe, canonical URLs,
+> structured price history, and a source-health dashboard. Phase three added
+> the scheduled daily loop with a deterministic saved-search digest, a third
+> working SF adapter (Brick + Timber, via its own JSON feed), and reusable
+> Playwright rendering infrastructure for JS-only sources. A future phase may
+> add Claude-based enrichment (daily summaries, match explanations, scam
+> analysis); the schema and runner were designed so an agent can operate on top
+> of them, but **nothing AI-related is built or wired up yet** — the digest and
+> matching are entirely deterministic.
 
 ---
 
@@ -56,7 +59,10 @@ first use. `data/` is gitignored.
 | `npm run sources:verify` | verify every source **offline** against recorded fixtures (PASS/PARTIAL/FAIL/SKIPPED); flags: `--source <id>`, `--enabled-only`, `--json`, `--dry-run` (don't persist the verdict), `--live` |
 | `npm run sources:verify:live` | live verification of enabled sources — fetches the real sites (capped at 8 detail pages), never writes listings |
 | `npm run listings:backfill` | fetch ALL currently available listings from enabled sources with a raised detail budget (400/source); flags: `--source <id>`, `--no-stale-updates`, `--dry-run` (runs against a throwaway DB copy), `--max-detail <n>`, `--no-geocode` |
-| `npm run fixtures:refresh -- --source <id>` | re-record fixtures from the live source when its structure changes |
+| `npm run fixtures:refresh -- --source <id>` | re-record fixtures from the live source when its structure changes (`craigslist_sf`, `rentsfnow`, `brick_and_timber`) |
+| `npm run digest` | compute the saved-search digest, write a report, mark matches notified; flags: `--dry-run` (repeatable preview), `--json` |
+| `npm run daily` | the scheduled loop: ingest all enabled sources, then compute the digest |
+| `npm run schedule:install` | write a macOS launchd plist (and print the cron line) to run `npm run daily` on a schedule; flags: `--hour`, `--minute` |
 | `npm test` / `npm run test:adapters` | full vitest suite / just the adapter fixture tests (all offline) |
 | `npm run typecheck` / `npm run lint` | strict TS + ESLint |
 | `npm run db:generate` | regenerate SQL migrations after editing `src/db/schema.ts` |
@@ -100,6 +106,54 @@ detail backlogs converge in one run. It is **idempotent and safe to re-run**:
   copy (so the printed numbers are exactly what a real run would do), then
   deletes it — the real database provably untouched
 
+## Daily digest & scheduling
+
+`digest` evaluates every enabled saved search against the current live listings
+using the deterministic matcher, and reports what's genuinely new since last
+time:
+
+- **new matches** — listings that match and were never reported before
+- **price drops** — already-reported matches whose price fell
+- **dropped out** — matches that stopped matching (price rose, went stale)
+
+It's idempotent: a second run reports nothing new because matches are marked
+notified (`--dry-run` previews without marking, so it stays repeatable). Each
+run writes a Markdown report to `data/digests/` and records a `digest_runs`
+row. Matches are tracked in `saved_search_matches` (first-matched / notified /
+still-matching bookkeeping). Unknown fields on a match are surfaced ("verify:
+laundry, available_date") rather than hidden — the matcher never guesses.
+
+**It never contacts anyone.** The digest is a local report you read; sending it
+anywhere is a manual step you take.
+
+`daily` is the single entry point a scheduler runs: ingest all enabled sources,
+then compute the digest. `schedule:install` writes a launchd plist (and prints
+the equivalent cron line) — it does **not** touch the system itself; installing
+the agent is a command you run:
+
+```bash
+npm run schedule:install -- --hour 8
+cp data/us.edwinarb.apt.daily.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/us.edwinarb.apt.daily.plist
+```
+
+## Rendering JavaScript sources (Playwright)
+
+Some SF property managers render listings client-side. `PlaywrightFetcher`
+(`src/core/playwright-fetcher.ts`) is a drop-in `TextFetcher` that renders a
+page in headless Chromium and returns the resulting DOM — with optional
+`waitForSelector` and `scrollToLoad` (for lazy-loaded grids). The runner and
+verifier switch to it automatically for any source whose `needsJavaScript` is
+true; robots.txt and server-rendered detail pages still use plain HTTP, so only
+the pages that truly need a browser pay for one, and the browser is closed
+after each run. Chromium is installed once with `npx playwright install
+chromium`.
+
+This is the ready path for the AppFolio PMs (Structure, Gaetani) once they have
+inventory. Note: Brick + Timber's JS browse page turned out to be backed by a
+clean JSON feed, so its adapter uses that directly instead of rendering — always
+prefer a real API to driving a browser.
+
 ## Architecture
 
 ```
@@ -109,11 +163,14 @@ src/
     normalize.ts   price/beds/baths/sqft/laundry/parking/pets/concession parsers
     hash.ts        content/description/photo hashing (photo keys survive resizes)
     neighborhoods.ts  canonical SF hoods + centroids + Craigslist alias mapping
-    fetcher.ts     PoliteFetcher: per-source delay, timeout, bounded retries
+    fetcher.ts     PoliteFetcher (HTTP) + TextFetcher/FetchInit interfaces
+    playwright-fetcher.ts  browser-rendering TextFetcher for JS-only sources
     robots.ts      robots.txt fetch/parse/evaluate (recorded per source)
     stale.ts       cautious missing-listing lifecycle + processing gate
     scam.ts        deterministic "verify carefully" heuristics + price baselines
-    dedupe.ts      union-find duplicate grouping across 4 signals
+    dedupe.ts      union-find duplicate grouping, 6 signals + confidence tiers
+    urls.ts        listing-URL canonicalization (dedupe exact-match key)
+    contract.ts    structural adapter-contract validation + coverage stats
     match.ts       deterministic saved-search evaluation (returns unknowns separately)
     geocode.ts     Nominatim w/ permanent cache + neighborhood-centroid fallback
     contact.ts     listing-overrides-source contact resolution
@@ -122,18 +179,21 @@ src/
     registry.ts    adapterType -> implementation
     craigslist.ts  static search page + detail pages
     rentsfnow.ts   WP admin-ajax results + unit detail pages
+    rentbt.ts      Brick + Timber via wp-json property-search feed (JSON)
     mock.ts        28-listing dev dataset with 2 lifecycle phases
   ingest/
     upsert.ts      merge rules, price/content-change events, precision guards
     runner.ts      robots -> adapter -> upserts -> status -> stale -> dupes ->
                    scam -> geocode -> SourceRun record
+    verify.ts      adapter verification (fixture/live) -> PASS/PARTIAL/FAIL/SKIPPED
+    digest.ts      deterministic saved-search digest (new / price-drop / dropped)
   config/sources.ts  the seed registry (URLs, politeness params, status notes)
   db/            drizzle schema + client (WAL, auto-migrate)
   app/           Next.js pages + JSON API routes
   components/    map, panel, cards, detail modal, source dashboard
-scripts/         seed-sources / seed-mock / ingest CLIs
+scripts/         seed / ingest / verify / backfill / digest / daily / schedule CLIs
 tests/           vitest suites + tests/helpers.ts (in-memory DB + stub adapter)
-fixtures/        recorded HTML from real sources (tests never hit the network)
+fixtures/        recorded HTML/JSON from real sources (tests never hit the network)
 ```
 
 ### Data model (SQLite, portable to Postgres)
@@ -170,11 +230,15 @@ fixtures/        recorded HTML from real sources (tests never hit the network)
 - **user_listing_states** — your status per listing: `saved | hidden |
   contacted | not_a_fit | maybe | toured | applied | rented_elsewhere |
   suspicious` + note.
-- **saved_searches** — named `SavedSearchCriteria` JSON (schema + deterministic
-  matcher exist; alerting is deliberately not built yet).
+- **saved_searches** — named `SavedSearchCriteria` JSON, evaluated by the
+  deterministic matcher and the digest.
+- **saved_search_matches** — one row per (search, listing) with first-matched /
+  notified / still-matching bookkeeping, so the digest surfaces only genuinely
+  new matches and price drops.
+- **digest_runs** — audit record for each digest.
 - **geocode_cache** — permanent per-address cache (negative results included) so
   no address is ever geocoded twice.
-- **duplicate_groups** — group id + signals that formed it.
+- **duplicate_groups** — group id, confidence, reasons, members, primary.
 
 ## Sources
 
@@ -186,11 +250,12 @@ dashboard). Current state, verified live 2026-07-02:
 | --- | --- | --- |
 | `craigslist_sf` | enabled_working | **PASS** (live + fixtures) |
 | `rentsfnow` | enabled_working | **PASS** (live + fixtures) |
+| `brick_and_timber` | enabled_working | **PASS** (live + fixtures) |
 | `mock_sf` | disabled_reference_only (dev data) | runs via `seed:mock` |
 | `zillow_sf`, `apartments_com_sf` | disabled_reference_only | SKIPPED by design |
-| `structure_properties`, `gaetani_real_estate` | disabled_needs_adapter (AppFolio, JS-rendered; JSON endpoint 401s) | SKIPPED |
+| `structure_properties` | disabled_needs_adapter (classic AppFolio widget, **currently zero inventory**) | SKIPPED |
+| `gaetani_real_estate` | disabled_needs_adapter (AppFolio v2 UI, currently empty) | SKIPPED |
 | `mosser_living` | disabled_needs_adapter (WordPress, listings render client-side) | SKIPPED |
-| `brick_and_timber` | disabled_needs_adapter (rentbt.com — WordPress + RentCafe, JS browse page) | SKIPPED |
 | `trinity_sf` | disabled_needs_review (availability page not located; own SF link 404s) | SKIPPED |
 | `lapham_company` | disabled_blocked_or_not_practical (inventory is East Bay, not SF) | SKIPPED |
 | `ballast_investments` | disabled_needs_review (no public listing page identified) | SKIPPED |
@@ -201,6 +266,7 @@ dashboard). Current state, verified live 2026-07-02:
 | --- | --- | --- |
 | **Craigslist SF** (`craigslist_sf`) | ✅ working, enabled | The search URL serves a static no-JS fallback of ~360 newest results (`li.cl-static-search-result`). Non-SF results (Oakland etc., incl. "South San Francisco") are filtered by location text. Detail pages are classic server-rendered HTML: coordinates + accuracy, address (`.mapaddress`), labeled attributes (pets, laundry, parking, housing type), availability, photos (`imgList`), posted/updated times, description. Detail pages are fetched **only for new or price-changed postings**, capped by `maxDetailPagesPerRun` (default 50/run). robots.txt (checked at run time and recorded) currently disallows only `/reply`, `/fb/`, `/suggest`, `/flag`, `/mf`, `/mailflag`, `/eaf` — not search or posting pages. |
 | **RentSFNow** (`rentsfnow`) | ✅ working, enabled | WordPress site whose own search UI POSTs to `/wp-admin/admin-ajax.php` (`action=wpas_ajax_load`); we send the same request filtered to San Francisco and get server-rendered cards with explicit `current_page`/`last_page` markers (trustworthy pagination) plus building-level coordinates from the embedded map-markers array. Unit detail pages add sqft, description, amenities, photo gallery. Detail fetches use the same only-new-or-changed rule. |
+| **Brick + Timber** (`brick_and_timber`) | ✅ working, enabled | SF property manager at rentbt.com. The browse page is a JS-rendered WordPress + RentCafe app, but it's backed by a clean public REST feed (`/wp-json/property-search/v1/data/`) returning every available unit as structured JSON in **one request** — price, beds/baths/sqft, unit, building address, **exact coordinates**, neighborhood, amenities, concessions, full photo gallery, application URL. The adapter uses that directly (no browser, no pagination, no detail pages). The feed includes East Bay units; the adapter filters to SF by building city. Single complete response → missing-listing tracking runs safely; exact coords → no geocoding needed. |
 | **Mock SF** (`mock_sf`) | ✅ dev-only, disabled | 28 realistic listings exercising every edge case (missing fields, broken photo URLs, no-coordinate listings, concessions, duplicates, a scam-pattern listing, pet/laundry/parking variety). `seed:mock` runs it through the real pipeline in two phases so price-drop events, the missing chain, and "new today" states are produced by real machinery, not fixtures. |
 
 ### Seeded but disabled (audited 2026-07-02)
@@ -208,9 +274,13 @@ dashboard). Current state, verified live 2026-07-02:
 - **Zillow / Apartments.com** — reference-only by design (`permissionStatus:
   reference_only_do_not_fetch`). Heavy anti-automation; not a sane foundation
   for a polite personal scraper. Use manually in a browser to cross-check.
-- **Structure Properties / Gaetani** (AppFolio) — pages reachable, cards
-  render client-side, widget JSON endpoint 401s. Needs a Playwright-based
-  `appfolio_js` adapter; one adapter would cover every AppFolio PM.
+- **Structure Properties** (AppFolio) — rendered with Playwright and confirmed
+  the classic "snowfolio" widget, but it currently shows "no available
+  properties" (zero inventory). A parser can't be verified against an empty
+  page, so the adapter is deferred until it (or another classic-widget SF
+  AppFolio PM) has live units. The Playwright infra is ready for that moment.
+- **Gaetani** (AppFolio) — uses AppFolio's newer v2 UI (different markup from
+  Structure) and is also currently empty.
 - **Mosser** — WordPress; SF page renders listings client-side only.
 - **Brick + Timber** — actually lives at rentbt.com (WordPress + RentCafe);
   browse page is JS-rendered, listings CPT not exposed via wp-json. Real
@@ -368,17 +438,20 @@ parser without re-fetching anything.
 
 ## Tests
 
-`npm test` — 130+ tests, all offline (recorded fixtures in `fixtures/`):
+`npm test` — 150+ tests, all offline (recorded fixtures in `fixtures/`):
 parsers, hashing, URL canonicalization, neighborhoods (including the
 South-San-Francisco trap), stale lifecycle + the failed/partial-run guard +
 the `--no-stale-updates` flag, dedupe signals with confidence tiers and
 unit-number guards, repost tagging, primary-listing selection, the adapter
 contract, verification reports (PASS/PARTIAL/FAIL/SKIPPED, including
-fixture-mode verification of both real adapters end to end), scam heuristics,
-saved-search matching, geocode caching + fallback precision, price-history
-recording (baseline, changes, no redundant rows, unparseable prices), and
-backfill idempotency (repeat runs: no duplicates, firstSeenAt and history
-preserved). `npm run test:adapters` runs just the adapter fixture suites.
+fixture-mode verification of all three real adapters end to end), scam
+heuristics, saved-search matching, the digest (idempotent new-match reporting,
+price-drop and dropped-out detection, user-exclusion), geocode caching +
+fallback precision, price-history recording (baseline, changes, no redundant
+rows, unparseable prices), backfill idempotency (repeat runs: no duplicates,
+firstSeenAt and history preserved), and the Playwright renderer (against a
+local data: URL — auto-skips if Chromium isn't installed). `npm run
+test:adapters` runs just the adapter fixture suites.
 
 ## Known limitations
 
@@ -397,8 +470,13 @@ preserved). `npm run test:adapters` runs just the adapter fixture suites.
 - Effective-price math assumes a 12-month term when amortizing "N weeks/months
   free" (raw concession text always preserved).
 - Single-user, no auth, local SQLite — by design.
-- Scheduled runs aren't wired up; run manually or via cron/launchd on
-  `npm run ingest -- --all`.
+- The digest surfaces matches but does not send them anywhere — reading the
+  report (or wiring your own delivery) is manual, by design.
+- Brick + Timber is premium inventory; most units sit well above typical
+  saved-search price ceilings, so a narrow search may match few or none of
+  them — that's correct, not a bug.
+- AppFolio adapters (Structure, Gaetani) are deferred until those PMs have live
+  inventory; the Playwright infra to build them is in place.
 
 ## Adding a new source adapter
 
@@ -418,15 +496,17 @@ preserved). `npm run test:adapters` runs just the adapter fixture suites.
 
 ## Next steps
 
-1. **Scheduled ingestion + saved-search digest** — cron/launchd wrapper around
-   `ingest --all` (the verified daily loop), then a digest of new/changed
-   matches using the existing deterministic matcher and verification reports
-   to catch silent breakage.
+1. **Digest delivery** — the digest writes a local report today. Add an opt-in
+   delivery you control (write to a file the UI reads, or a manual "email me
+   this" button), keeping the "never auto-contact anyone" rule intact.
 2. **AppFolio adapter via Playwright** (`structure_properties`,
-   `gaetani_real_estate`; the same session likely unlocks Mosser and
-   rentbt.com) — the registry audit shows every remaining SF PM needs JS.
-3. **Claude enrichment layer** — the long-term direction: match explanations,
-   amenity extraction from messy descriptions, scam-signal reasoning, dedupe
-   adjudication of medium/low-confidence groups, and "questions to ask the
-   landlord", operating on `rawPayload`/events/price history via a Managed
-   Agent or scheduled workflow.
+   `gaetani_real_estate`) once they have inventory — the rendering
+   infrastructure is built and wired to `needsJavaScript`; only the parser
+   (classic snowfolio for Structure, v2 for Gaetani) remains, to be written
+   against live markup.
+3. **Claude enrichment layer** — the long-term direction, still deliberately
+   unbuilt: match explanations, amenity extraction from messy descriptions,
+   scam-signal reasoning, dedupe adjudication of medium/low-confidence groups,
+   and "questions to ask the landlord", operating on `rawPayload` / events /
+   price history via a Managed Agent or scheduled workflow. This introduces the
+   Claude API (keys + per-call cost), so it needs an explicit go-ahead.

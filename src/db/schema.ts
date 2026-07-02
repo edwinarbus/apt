@@ -314,6 +314,56 @@ export const priceHistory = sqliteTable(
 
 export type PriceHistoryRow = typeof priceHistory.$inferSelect;
 
+/**
+ * Which listings currently match which saved search. One row per
+ * (savedSearch, listing). `notifiedAt` is null until a digest has reported
+ * the match, so the next digest can surface only genuinely new matches
+ * without re-announcing everything. `stillMatching` lets a match linger as a
+ * historical record after a listing stops matching (price rose, went stale)
+ * without deleting the row.
+ */
+export const savedSearchMatches = sqliteTable(
+  "saved_search_matches",
+  {
+    id: text("id").primaryKey(),
+    savedSearchId: text("saved_search_id")
+      .notNull()
+      .references(() => savedSearches.id),
+    listingId: text("listing_id")
+      .notNull()
+      .references(() => listings.id),
+    firstMatchedAt: text("first_matched_at").notNull(),
+    lastMatchedAt: text("last_matched_at").notNull(),
+    /** when a digest last reported this match (null = never reported) */
+    notifiedAt: text("notified_at"),
+    /** price when the match was last reported, to detect drops on known matches */
+    notifiedPriceMonthly: real("notified_price_monthly"),
+    stillMatching: integer("still_matching", { mode: "boolean" }).notNull().default(true),
+    distanceKm: real("distance_km"),
+    unknowns: text("unknowns", { mode: "json" }).$type<string[]>(),
+  },
+  (t) => [
+    uniqueIndex("saved_search_matches_unique").on(t.savedSearchId, t.listingId),
+    index("saved_search_matches_search_idx").on(t.savedSearchId, t.stillMatching),
+  ],
+);
+
+/** Audit record for each digest run. */
+export const digestRuns = sqliteTable("digest_runs", {
+  id: text("id").primaryKey(),
+  createdAt: text("created_at").notNull(),
+  savedSearchesEvaluated: integer("saved_searches_evaluated").notNull().default(0),
+  listingsEvaluated: integer("listings_evaluated").notNull().default(0),
+  newMatches: integer("new_matches").notNull().default(0),
+  priceDropMatches: integer("price_drop_matches").notNull().default(0),
+  droppedMatches: integer("dropped_matches").notNull().default(0),
+  dryRun: integer("dry_run", { mode: "boolean" }).notNull().default(false),
+  reportPath: text("report_path"),
+});
+
+export type SavedSearchMatchRow = typeof savedSearchMatches.$inferSelect;
+export type DigestRunRow = typeof digestRuns.$inferSelect;
+
 export type SourceRow = typeof sources.$inferSelect;
 export type NewSourceRow = typeof sources.$inferInsert;
 export type SourceRunRow = typeof sourceRuns.$inferSelect;

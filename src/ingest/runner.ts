@@ -13,7 +13,8 @@ import {
 } from "@/db/schema";
 import { getAdapter } from "@/adapters/registry";
 import type { KnownListing } from "@/adapters/types";
-import { PoliteFetcher } from "@/core/fetcher";
+import { PoliteFetcher, type TextFetcher } from "@/core/fetcher";
+import { PlaywrightFetcher } from "@/core/playwright-fetcher";
 import { validateAdapterResult } from "@/core/contract";
 import { parsePrice } from "@/core/normalize";
 import { checkRobots } from "@/core/robots";
@@ -137,11 +138,16 @@ export async function runSource(
   const startedAtMs = Date.now();
   const startedAt = new Date(startedAtMs).toISOString();
   const runId = newId("run");
-  const fetcher = new PoliteFetcher({
+  // JS-rendered sources get a browser-backed fetcher (rendering only the
+  // pages that need it; robots.txt and server-rendered pages stay plain HTTP).
+  const fetcherOpts = {
     requestDelayMs: source.requestDelayMs,
     timeoutMs: source.timeoutMs,
     retryCount: source.retryCount,
-  });
+  };
+  const fetcher: TextFetcher = source.needsJavaScript
+    ? new PlaywrightFetcher(fetcherOpts)
+    : new PoliteFetcher(fetcherOpts);
 
   // --- robots.txt (recorded on the source; disallowed sources are skipped) ---
   if (!opts.skipRobotsCheck && source.listingUrl && source.adapterType !== "mock") {
@@ -186,6 +192,7 @@ export async function runSource(
         createdAt: nowIso(),
       })
       .run();
+    await fetcher.close?.();
     return { ...skippedSummary(source, reason), runId };
   }
 
@@ -657,6 +664,8 @@ export async function runSource(
       createdAt: finishedAt,
     })
     .run();
+
+  await fetcher.close?.();
 
   return {
     sourceId: source.id,

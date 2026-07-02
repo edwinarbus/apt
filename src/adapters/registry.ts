@@ -1,6 +1,7 @@
 import type { SourceAdapter } from "./types";
 import { craigslistAdapter } from "./craigslist";
 import { rentSfNowAdapter } from "./rentsfnow";
+import { rentBtAdapter } from "./rentbt";
 import { mockAdapter } from "./mock";
 
 /**
@@ -26,4 +27,5 @@ export function registeredAdapterTypes(): string[] {
 
 registerAdapter(craigslistAdapter);
 registerAdapter(rentSfNowAdapter);
+registerAdapter(rentBtAdapter);
 registerAdapter(mockAdapter);

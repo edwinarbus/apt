@@ -12,6 +12,7 @@ import {
   type FetchTraceEntry,
   type TextFetcher,
 } from "@/core/fetcher";
+import { PlaywrightFetcher } from "@/core/playwright-fetcher";
 import { checkRobots } from "@/core/robots";
 import { validateAdapterResult, type ContractStats } from "@/core/contract";
 import { shouldProcessStaleUpdates } from "@/core/stale";
@@ -124,6 +125,8 @@ export function fixtureRoutesFor(
         },
         { match: () => true, file: "rsn-detail.html" },
       ];
+    case "rentbt":
+      return [{ match: () => true, file: "bt-api.json" }];
     case "mock":
       return []; // mock adapter performs no fetches
     default:
@@ -209,11 +212,14 @@ export async function verifySource(
     }
     fetcher = new FixtureFetcher(routes);
   } else {
-    fetcher = new PoliteFetcher({
+    const fetcherOpts = {
       requestDelayMs: source.requestDelayMs,
       timeoutMs: source.timeoutMs,
       retryCount: source.retryCount,
-    });
+    };
+    fetcher = source.needsJavaScript
+      ? new PlaywrightFetcher(fetcherOpts)
+      : new PoliteFetcher(fetcherOpts);
   }
 
   const errors: string[] = [];
@@ -289,6 +295,8 @@ export async function verifySource(
       `adapter threw: ${err instanceof Error ? err.message : String(err)}`,
     );
     result = null;
+  } finally {
+    await fetcher.close?.();
   }
 
   let stats: ContractStats | null = null;

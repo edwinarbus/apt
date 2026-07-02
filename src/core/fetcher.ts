@@ -33,16 +33,37 @@ export interface FetchTraceEntry {
 }
 
 /**
+ * Options for a single fetch. `render` asks a rendering-capable fetcher
+ * (PlaywrightFetcher) to load the URL in a browser and return the rendered
+ * DOM after the wait condition; fetchers without a browser ignore it and do a
+ * plain HTTP GET.
+ */
+export interface FetchInit {
+  method?: string;
+  body?: string;
+  headers?: Record<string, string>;
+  render?: {
+    /** wait until this CSS selector appears before capturing the DOM */
+    waitForSelector?: string;
+    /** extra settle time after load (ms) */
+    settleMs?: number;
+    timeoutMs?: number;
+    /** scroll the page to the bottom in steps to trigger lazy-loaded content */
+    scrollToLoad?: boolean;
+  };
+}
+
+/**
  * What adapters actually depend on. PoliteFetcher is the live implementation;
- * verification uses a fixture-backed implementation to run adapters offline.
+ * PlaywrightFetcher adds browser rendering; verification uses a fixture-backed
+ * implementation to run adapters offline. `close` releases any resources
+ * (e.g. a headless browser) and is called by the runner/verifier after a run.
  */
 export interface TextFetcher {
   requestsMade: number;
   trace: FetchTraceEntry[];
-  fetchText(
-    url: string,
-    init?: { method?: string; body?: string; headers?: Record<string, string> },
-  ): Promise<FetchResult>;
+  fetchText(url: string, init?: FetchInit): Promise<FetchResult>;
+  close?(): Promise<void>;
 }
 
 export const DEFAULT_USER_AGENT =
@@ -57,10 +78,7 @@ export class PoliteFetcher implements TextFetcher {
 
   constructor(private opts: FetcherOptions) {}
 
-  async fetchText(
-    url: string,
-    init?: { method?: string; body?: string; headers?: Record<string, string> },
-  ): Promise<FetchResult> {
+  async fetchText(url: string, init?: FetchInit): Promise<FetchResult> {
     const attempts = Math.max(1, this.opts.retryCount + 1);
     let last: FetchResult | null = null;
     for (let attempt = 1; attempt <= attempts; attempt++) {
@@ -95,10 +113,7 @@ export class PoliteFetcher implements TextFetcher {
     this.lastRequestAt = Date.now();
   }
 
-  private async attempt(
-    url: string,
-    init?: { method?: string; body?: string; headers?: Record<string, string> },
-  ): Promise<FetchResult> {
+  private async attempt(url: string, init?: FetchInit): Promise<FetchResult> {
     const started = Date.now();
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.opts.timeoutMs);

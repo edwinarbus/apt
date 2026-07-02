@@ -19,7 +19,10 @@
     "sources:verify:live": "tsx scripts/verify-sources.ts --live --enabled-only",
     "listings:backfill": "tsx scripts/backfill.ts",
     "fixtures:refresh": "tsx scripts/refresh-fixtures.ts",
-    "test:adapters": "vitest run tests/adapters-craigslist.test.ts tests/adapters-rentsfnow.test.ts"
+    "digest": "tsx scripts/digest.ts",
+    "daily": "tsx scripts/daily.ts",
+    "schedule:install": "tsx scripts/install-schedule.ts",
+    "test:adapters": "vitest run tests/adapters-craigslist.test.ts tests/adapters-rentsfnow.test.ts tests/adapters-rentbt.test.ts"
   },
   "dependencies": {
     "better-sqlite3": "^12.11.1",
@@ -39,6 +42,7 @@
     "drizzle-kit": "^0.31.10",
     "eslint": "^9",
     "eslint-config-next": "16.2.10",
+    "playwright": "^1.61.1",
     "tailwindcss": "^4",
     "tsx": "^4.22.4",
     "typescript": "^5",
