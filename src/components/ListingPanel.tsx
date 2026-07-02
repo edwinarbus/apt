@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import type { ListingSummary } from "@/lib/api-types";
-import type { SortKey } from "./AppShell";
+import type { MatchInfo, SortKey } from "./AppShell";
 import {
   fmtBaths,
   fmtBeds,
@@ -15,12 +15,16 @@ import { PhotoImg } from "./PhotoImg";
 
 export function ListingPanel({
   listings,
+  reasons,
+  searchActive,
   selectedId,
   onSelect,
   sort,
   onSortChange,
 }: {
   listings: ListingSummary[];
+  reasons?: Map<string, MatchInfo>;
+  searchActive?: boolean;
   selectedId: string | null;
   onSelect: (id: string) => void;
   sort: SortKey;
@@ -31,10 +35,13 @@ export function ListingPanel({
       <div className="flex items-center justify-between border-b border-line px-4 py-2.5">
         <div>
           <span className="text-sm font-semibold">
-            {listings.length} listing{listings.length === 1 ? "" : "s"}
+            {listings.length} {searchActive ? "match" : "listing"}
+            {listings.length === 1 ? "" : searchActive ? "es" : "s"}
           </span>
           <p className="text-[11px] text-faint">
-            Verify availability &amp; terms with the source before acting.
+            {searchActive
+              ? "Ranked by AI · verify details with the source before acting."
+              : "Verify availability & terms with the source before acting."}
           </p>
         </div>
         <select
@@ -42,7 +49,7 @@ export function ListingPanel({
           onChange={(e) => onSortChange(e.target.value as SortKey)}
           className="rounded-full border border-line bg-surface px-3 py-1.5 text-[12px] text-muted outline-none"
         >
-          <option value="newest">Newest first</option>
+          <option value="newest">{searchActive ? "Best match" : "Newest first"}</option>
           <option value="price_asc">Price: low to high</option>
           <option value="price_desc">Price: high to low</option>
         </select>
@@ -50,7 +57,9 @@ export function ListingPanel({
       <div className="panel-scroll min-h-0 flex-1 overflow-y-auto px-3 py-3">
         {listings.length === 0 ? (
           <p className="px-2 py-8 text-center text-sm text-faint">
-            Nothing matches the current filters.
+            {searchActive
+              ? "No listings matched your search. Try rephrasing, widening the radius, or “Show hidden & gone”."
+              : "Nothing matches the current view."}
           </p>
         ) : (
           <ul className="flex flex-col gap-2.5">
@@ -58,6 +67,7 @@ export function ListingPanel({
               <ListingCard
                 key={l.id}
                 listing={l}
+                match={reasons?.get(l.id)}
                 selected={l.id === selectedId}
                 onSelect={() => onSelect(l.id)}
               />
@@ -71,10 +81,12 @@ export function ListingPanel({
 
 function ListingCard({
   listing: l,
+  match,
   selected,
   onSelect,
 }: {
   listing: ListingSummary;
+  match?: MatchInfo;
   selected: boolean;
   onSelect: () => void;
 }) {
@@ -129,6 +141,14 @@ function ListingCard({
                 {fmtMoney(l.lastPriceChange.oldPrice)}
               </span>
             )}
+            {match && (
+              <span
+                className="ml-auto rounded-full bg-accent-soft/60 px-1.5 py-0.5 text-[10px] font-semibold text-accent-deep"
+                title="AI match score"
+              >
+                {Math.round(match.score)}
+              </span>
+            )}
           </div>
           <p className="truncate text-[13px] leading-snug font-medium text-ink" title={l.title}>
             {l.title}
@@ -137,9 +157,15 @@ function ListingCard({
             {fmtBeds(l.bedrooms)} · {fmtBaths(l.bathrooms)}
             {l.squareFeet ? ` · ${l.squareFeet.toLocaleString()} sqft` : ""} · {location}
           </p>
-          <div className="mt-1">
-            <BadgeRow badges={l.badges} max={3} />
-          </div>
+          {match ? (
+            <p className="mt-1 line-clamp-2 text-[11.5px] leading-snug text-accent-deep/90">
+              ✦ {match.reason}
+            </p>
+          ) : (
+            <div className="mt-1">
+              <BadgeRow badges={l.badges} max={3} />
+            </div>
+          )}
           <p className="mt-auto pt-1 text-[11px] text-faint">
             {l.sourceName} · checked {relativeTime(l.lastSeenAt)}
           </p>

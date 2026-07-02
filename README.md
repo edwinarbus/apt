@@ -21,11 +21,15 @@ for one person's apartment hunt — nothing more.
 > enrich`, Haiku) for structured amenity/pet/laundry facts, "verify before
 > contacting" notes, landlord questions, and a risk second opinion; and **photo
 > vision** (`npm run vision`, Haiku) that reads each listing's images into
-> searchable visual features so you can do natural-language visual search
-> ("hardwood floors and bay windows"). They require your own `ANTHROPIC_API_KEY`
-> and never override the original listing (still the source of truth). The core
-> pipeline — ingestion, dedupe, scam heuristics, matching, and the digest —
-> remains **fully deterministic** and works with no API key at all.
+> searchable visual features. On top of those sits the headline UI: a
+> **natural-language AI search** (Sonnet 5) — one big text box (with a voice mic)
+> where you type "studio with sunny bay windows within a 5-min walk to a park, in
+> the Marina, in-unit laundry and hardwood floors" and Claude ranks the matches,
+> blending its own SF neighborhood knowledge with each listing's data,
+> description, and vision analysis. All of this requires your own
+> `ANTHROPIC_API_KEY` and never overrides the original listing (still the source
+> of truth). The core pipeline — ingestion, dedupe, scam heuristics, matching,
+> and the digest — remains **fully deterministic** and works with no API key at all.
 
 ---
 
@@ -251,12 +255,11 @@ It returns, validated against `src/vision/schema.ts`:
 - neutral **notes** for anything verifiable in the images (e.g. a visible
   watermark) — never a fraud accusation
 
-Those become a denormalized search blob that powers the map's **"✦ In photos"**
-box: type `hardwood floors and bay windows` and it keeps listings whose photos
-show **both**. Matching is offline and deterministic — the query is parsed into
-phrases (`and` / commas / `with`) that must all be present, with an all-words
-fallback (`src/lib/visual-search.ts`); no embeddings, no per-keystroke API calls.
-Only listings you've run `npm run vision` on can match.
+Those become a denormalized search blob (features + summary + rooms) and the
+promoted `features` tags, which feed the [AI search](#ai-search-natural-language)
+as one of its four signals — so a query like "hardwood floors and bay windows"
+matches on what the photos actually show. Listings you've run `npm run vision`
+on rank on their visual features; the rest fall back to text + data.
 
 ```bash
 npm run vision -- --dry-run          # what would be analyzed — no key, no spend
@@ -295,8 +298,46 @@ npm run vision -- --all --cost-cap 5 # everything, but stop near $5
   listing, keyed by hash + schema version + model — droppable without touching
   listing data.
 - **Testable without the network:** each layer talks to Claude through a small
-  client interface (`EnrichmentClient` / `VisionClient`); every AI test injects a
-  fake client, so the suite stays 100% offline.
+  client interface (`EnrichmentClient` / `VisionClient` / `SearchClient`); every
+  AI test injects a fake client, so the suite stays 100% offline.
+
+## AI search (natural language)
+
+The primary way to find a place: one big text box (with a **mic** — browser
+speech, no key) where you describe what you want in plain English —
+
+> studio with sunny bay windows within a 5-min walk to a park, in the Marina,
+> in-unit laundry and hardwood floors
+
+— and Claude finds and ranks the matches, each with a one-line "why". It blends
+**four signals**: the model's own **SF neighborhood/geography knowledge** (which
+areas count as "the Marina", where the parks and transit are, rough walk times),
+the listing's **structured data**, its **description**, and its **photo-vision
+features**. Results render on the map + list ordered by an AI match score, with
+the parsed criteria shown as chips ("Understood as: …").
+
+**Location.** On load the app asks for your browser location (default **10-mi**
+radius, adjustable) and uses it as a hard distance filter; deny it and search
+just runs city-wide.
+
+**How it runs** (`POST /api/search`, `src/search/`):
+1. Assemble active, non-hidden candidates (within radius), each a compact
+   profile: data + amenities + vision features/summary + a description snippet
+   (+ distance from you).
+2. Locally pre-rank by query-term overlap and **cap to 60** — this keeps it one
+   fast, reliable model call instead of dumping 600 listings into the prompt
+   (which was both slow and prone to truncation).
+3. Claude (**Sonnet 5**) ranks those, returning `{interpretation, intentChips,
+   matches:[{id, score, reason}]}`; hallucinated ids are dropped and scores clamped.
+
+**Model / cost / speed.** `$APT_SEARCH_MODEL` (default `claude-sonnet-5`, the
+quality choice). A search is one call (~1–3¢) and takes ~15–30s — it's genuinely
+reading and reasoning over ~60 listings. Set `APT_SEARCH_MODEL=claude-haiku-4-5`
+for a much faster, cheaper search that's a little less sharp on geography. Needs
+`ANTHROPIC_API_KEY` (same `.env.local`); voice uses the browser's built-in Web
+Speech API, so no extra key. Proximity ("5-min walk to a park") is the model's
+honest estimate from general SF knowledge — named in the reason, not a routed
+measurement.
 
 ## Architecture
 
@@ -339,9 +380,13 @@ src/
     schema.ts      Zod vision schema + searchText builder + versioning
     client.ts      VisionClient interface, image-URL blocks, injection-guarded prompt
     vision.ts      photoHash-aware selection + image capping + write orchestration
+  search/       AI natural-language search (Claude ranks; pipeline-independent)
+    schema.ts      Zod output schema + CandidateProfile (the 4-signal profile)
+    client.ts      SearchClient interface + neighborhood-aware ranking prompt (streamed)
+    search.ts      candidate assembly (radius/vision) + local pre-rank cap + orchestration
   lib/
-    ai-cost.ts     shared per-model token→USD estimation (enrich + vision)
-    visual-search.ts  offline natural-language matching over vision search text
+    ai-cost.ts     shared per-model token→USD estimation (enrich / vision / search)
+    load-env.ts    .env.local loader for the CLI scripts
     api-types.ts   wire types shared between API routes and client components
   config/sources.ts  the seed registry (URLs, politeness params, status notes)
   db/            drizzle schema + client (WAL, auto-migrate)
@@ -402,7 +447,7 @@ fixtures/        recorded HTML/JSON from real sources (tests never hit the netwo
 - **listing_vision** — optional AI vision layer, one row per listing: `model`,
   `schemaVersion`, `photoHashAtVision` (re-analyze only when photos change),
   `imageCount`, `visualSummary`, promoted `features`, a denormalized lowercased
-  `searchText` (what the "✦ In photos" search matches), the full `data` JSON,
+  `searchText` (a signal the AI search ranks on), the full `data` JSON,
   token counts + `costUsd`, and `error`. Also separate and safe to drop.
 
 ## Sources
@@ -561,10 +606,12 @@ protected-class proxies.
   contacted, missing/stale), price labels at higher zooms, approximate
   locations ghosted, legend bottom-left. Right panel: photo cards with price
   (effective price when concessions parse), beds/baths/sqft, neighborhood,
-  badges, source attribution, and last-checked time. Filters: text, price
-  range, beds, laundry, neighborhoods, dogs/cats, suspicious-only, show-hidden,
-  show-gone, and an **"✦ In photos" natural-language visual search** over the
-  AI vision features ("hardwood floors and bay windows"). Click a card or marker
+  badges, source attribution, last-checked time, and — when a search is active —
+  its **AI match score and one-line reason**. The top bar is one big
+  **natural-language search box** (with a browser-speech mic): describe what you
+  want and Claude ranks the matches (see [AI search](#ai-search-natural-language)),
+  ordered by match score; a location chip (browser geolocation + adjustable
+  radius) and a show-hidden/gone toggle sit beneath it. Click a card or marker
   for the detail modal: gallery, badge row,
   user-status actions (saved/maybe/contacted/toured/applied/not-a-fit/hidden/
   suspicious), a **verify-before-acting callout**, suspicious-signal list, an
@@ -608,7 +655,7 @@ parser without re-fetching anything.
 
 ## Tests
 
-`npm test` — 201 tests, all offline (recorded fixtures in `fixtures/`):
+`npm test` — 206 tests, all offline (recorded fixtures in `fixtures/`):
 parsers, hashing, URL canonicalization, neighborhoods (including the
 South-San-Francisco trap), stale lifecycle + the failed/partial-run guard +
 the `--no-stale-updates` flag, dedupe signals with confidence tiers and
@@ -620,13 +667,14 @@ price-drop and dropped-out detection, user-exclusion), geocode caching +
 fallback precision, price-history recording (baseline, changes, no redundant
 rows, unparseable prices), backfill idempotency (repeat runs: no duplicates,
 firstSeenAt and history preserved), the Playwright renderer (against a local
-data: URL — auto-skips if Chromium isn't installed), and the AI layers — enrichment
-(schema parsing/validation, cost estimation, untrusted-input wrapping) and
-vision (schema parsing, search-text building, image dedupe/http-filter/cap,
-photoHash-aware selection), each with idempotent re-runs + cost-cap +
-failure-recording via injected fake clients — plus the offline visual-search
-matcher (AND phrase semantics, all-words fallback, empty/None handling). `npm
-run test:adapters` runs just the adapter fixture suites.
+data: URL — auto-skips if Chromium isn't installed), and the AI layers —
+enrichment (schema parsing/validation, cost estimation, untrusted-input
+wrapping), vision (schema parsing, grounded-context building, image
+dedupe/http-filter/cap, photoHash-aware selection), and search (haversine
+distance, radius + view-state candidate assembly, the local relevance
+pre-rank/cap, hallucinated-id guarding and score clamping) — each talking to
+Claude through an injected fake client, so the suite never touches the network.
+`npm run test:adapters` runs just the adapter fixture suites.
 
 ## Known limitations
 

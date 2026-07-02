@@ -85,6 +85,32 @@ export interface ListingsResponse {
   generatedAt: string;
 }
 
+/** AI natural-language search (POST /api/search). */
+export interface SearchRequestBody {
+  query: string;
+  location?: { lat: number; lng: number } | null;
+  radiusMi?: number | null;
+  includeHiddenGone?: boolean;
+}
+
+export interface SearchMatch {
+  id: string;
+  /** 0–100 overall fit from the model */
+  score: number;
+  /** one-sentence why, citing the matching signals */
+  reason: string;
+}
+
+export interface SearchResponse {
+  query: string;
+  interpretation: string;
+  intentChips: string[];
+  matches: SearchMatch[];
+  candidateCount: number;
+  model: string;
+  error: string | null;
+}
+
 export interface ListingEventPayload {
   id: string;
   eventType: string;

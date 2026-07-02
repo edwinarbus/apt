@@ -1,24 +1,43 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { BadgeKind, ListingSummary, ListingsResponse } from "@/lib/api-types";
+import type {
+  BadgeKind,
+  ListingSummary,
+  ListingsResponse,
+  SearchResponse,
+} from "@/lib/api-types";
 import { computeBadges } from "@/lib/badges";
-import { matchesVisualQuery } from "@/lib/visual-search";
 import type { UserListingStatus } from "@/core/types";
-import { FilterBar, type Filters, DEFAULT_FILTERS } from "./FilterBar";
+import { SearchBar, type LocationStatus } from "./SearchBar";
 import { MapView } from "./MapView";
 import { ListingPanel } from "./ListingPanel";
 import { ListingDetail } from "./ListingDetail";
 
 export type SortKey = "newest" | "price_asc" | "price_desc";
+export interface MatchInfo {
+  score: number;
+  reason: string;
+}
 
 export function AppShell() {
   const [listings, setListings] = useState<ListingSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [sort, setSort] = useState<SortKey>("newest");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+
+  // Search state
+  const [query, setQuery] = useState("");
+  const [search, setSearch] = useState<SearchResponse | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [showHiddenGone, setShowHiddenGone] = useState(false);
+
+  // Location state
+  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [locationStatus, setLocationStatus] = useState<LocationStatus>("idle");
+  const [radiusMi, setRadiusMi] = useState(10);
 
   useEffect(() => {
     fetch("/api/listings")
@@ -30,63 +49,105 @@ export function AppShell() {
       .catch((e) => setError(e.message));
   }, []);
 
-  const filtered = useMemo(() => {
+  const requestLocation = useCallback(() => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setLocationStatus("unavailable");
+      return;
+    }
+    setLocationStatus("prompting");
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        setLocationStatus("granted");
+      },
+      () => setLocationStatus("denied"),
+      { timeout: 8000, maximumAge: 300_000 },
+    );
+  }, []);
+
+  // Ask for location on load (default radius 10mi); the user can also trigger it.
+  useEffect(() => {
+    // Requesting geolocation is a genuine mount side effect, not derived state.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    requestLocation();
+  }, [requestLocation]);
+
+  const doSearch = useCallback(async () => {
+    const q = query.trim();
+    if (!q) {
+      setSearch(null);
+      setSearchError(null);
+      return;
+    }
+    setSearching(true);
+    setSearchError(null);
+    try {
+      const res = await fetch("/api/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query: q,
+          location: locationStatus === "granted" ? location : null,
+          radiusMi: locationStatus === "granted" ? radiusMi : null,
+          includeHiddenGone: showHiddenGone,
+        }),
+      });
+      const data = (await res.json()) as SearchResponse;
+      if (data.error) {
+        setSearchError(data.error);
+        setSearch(null);
+      } else {
+        setSearch(data);
+      }
+    } catch (e) {
+      setSearchError(e instanceof Error ? e.message : String(e));
+      setSearch(null);
+    } finally {
+      setSearching(false);
+    }
+  }, [query, location, locationStatus, radiusMi, showHiddenGone]);
+
+  const clearSearch = useCallback(() => {
+    setQuery("");
+    setSearch(null);
+    setSearchError(null);
+  }, []);
+
+  const reasonById = useMemo(() => {
+    const m = new Map<string, MatchInfo>();
+    if (search) for (const mt of search.matches) m.set(mt.id, { score: mt.score, reason: mt.reason });
+    return m;
+  }, [search]);
+
+  const displayed = useMemo(() => {
     if (!listings) return [];
-    const q = filters.query.trim().toLowerCase();
-    const result = listings.filter((l) => {
-      if (!filters.showHidden && (l.userStatus === "hidden" || l.userStatus === "not_a_fit")) {
-        return false;
-      }
-      if (
-        !filters.showUnavailable &&
-        (l.staleStatus === "likely_unavailable" || l.listingStatus !== "active")
-      ) {
-        return false;
-      }
-      const price = l.priceEffectiveMonthly ?? l.priceMonthly;
-      if (filters.minPrice != null && (price == null || price < filters.minPrice)) return false;
-      if (filters.maxPrice != null && (price == null || price > filters.maxPrice)) return false;
-      if (filters.minBeds != null && (l.bedrooms == null || l.bedrooms < filters.minBeds)) {
-        return false;
-      }
-      if (filters.dogs && l.dogsAllowed !== true) return false;
-      if (filters.cats && l.catsAllowed !== true) return false;
-      if (filters.laundry !== "any") {
-        if (filters.laundry === "in_unit" && l.laundryNormalized !== "in_unit") return false;
-        if (
-          filters.laundry === "any_laundry" &&
-          l.laundryNormalized !== "in_unit" &&
-          l.laundryNormalized !== "in_building"
-        ) {
-          return false;
-        }
-      }
-      if (filters.neighborhoods.length > 0) {
-        if (!l.neighborhood || !filters.neighborhoods.includes(l.neighborhood)) return false;
-      }
-      if (filters.verifyOnly && l.scamRiskLevel === "none") return false;
-      if (q) {
-        const hay = `${l.title} ${l.neighborhood ?? ""} ${l.addressRaw ?? ""} ${l.sourceName}`.toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-      if (filters.visualQuery.trim() && !matchesVisualQuery(l.visualSearchText, filters.visualQuery)) {
-        return false;
-      }
-      return true;
-    });
     const price = (l: ListingSummary) =>
       l.priceEffectiveMonthly ?? l.priceMonthly ?? Number.MAX_SAFE_INTEGER;
-    if (sort === "price_asc") result.sort((a, b) => price(a) - price(b));
-    else if (sort === "price_desc") result.sort((a, b) => price(b) - price(a));
-    else result.sort((a, b) => (a.firstSeenAt < b.firstSeenAt ? 1 : -1));
-    return result;
-  }, [listings, filters, sort]);
 
-  const neighborhoods = useMemo(() => {
-    const set = new Set<string>();
-    for (const l of listings ?? []) if (l.neighborhood) set.add(l.neighborhood);
-    return [...set].sort();
-  }, [listings]);
+    let result: ListingSummary[];
+    if (search) {
+      const byId = new Map(listings.map((l) => [l.id, l]));
+      result = search.matches
+        .map((mt) => byId.get(mt.id))
+        .filter((l): l is ListingSummary => l != null);
+    } else {
+      result = listings.filter((l) => {
+        if (!showHiddenGone && (l.userStatus === "hidden" || l.userStatus === "not_a_fit")) {
+          return false;
+        }
+        if (!showHiddenGone && (l.staleStatus === "likely_unavailable" || l.listingStatus !== "active")) {
+          return false;
+        }
+        return true;
+      });
+    }
+
+    if (sort === "price_asc") return [...result].sort((a, b) => price(a) - price(b));
+    if (sort === "price_desc") return [...result].sort((a, b) => price(b) - price(a));
+    // default: search → keep score order; browse → newest first
+    if (search) return result;
+    return [...result].sort((a, b) => (a.firstSeenAt < b.firstSeenAt ? 1 : -1));
+  }, [listings, search, showHiddenGone, sort]);
 
   const select = useCallback((id: string | null, openDetail = true) => {
     setSelectedId(id);
@@ -116,22 +177,32 @@ export function AppShell() {
     [],
   );
 
-  const selected = filtered.find((l) => l.id === selectedId) ?? null;
+  const selected = listings?.find((l) => l.id === selectedId) ?? null;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <FilterBar
-        filters={filters}
-        onChange={setFilters}
-        neighborhoods={neighborhoods}
-        shownCount={filtered.length}
+      <SearchBar
+        query={query}
+        onQueryChange={setQuery}
+        onSearch={doSearch}
+        onClear={clearSearch}
+        searching={searching}
+        searchError={searchError}
+        search={search}
+        resultCount={displayed.length}
         totalCount={listings?.length ?? 0}
-        loading={listings === null && !error}
+        location={location}
+        locationStatus={locationStatus}
+        onRequestLocation={requestLocation}
+        radiusMi={radiusMi}
+        onRadiusChange={setRadiusMi}
+        showHiddenGone={showHiddenGone}
+        onToggleHiddenGone={() => setShowHiddenGone((v) => !v)}
       />
       <div className="flex min-h-0 flex-1">
         <div className="relative min-w-0 flex-1">
           <MapView
-            listings={filtered}
+            listings={displayed}
             selectedId={selectedId}
             onSelect={(id) => select(id)}
           />
@@ -145,14 +216,15 @@ export function AppShell() {
             <Overlay>
               <p className="font-display text-lg font-semibold">No listings yet</p>
               <p className="mt-2 max-w-sm text-sm leading-relaxed text-muted">
-                Seed demo data with <Code>npm run seed:mock</Code> or ingest real
-                SF sources with <Code>npm run ingest -- --all</Code>, then reload.
+                Ingest real SF sources with <Code>npm run ingest -- --all</Code>, then reload.
               </p>
             </Overlay>
           )}
         </div>
         <ListingPanel
-          listings={filtered}
+          listings={displayed}
+          reasons={reasonById}
+          searchActive={search != null}
           selectedId={selectedId}
           onSelect={(id) => select(id)}
           sort={sort}
