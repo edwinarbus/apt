@@ -523,6 +523,7 @@ export function MapView({
   const onSelectRef = useRef(onSelect);
   const onHoodSelectRef = useRef(onHoodSelect);
   const selectedHoodRef = useRef<string | null>(null);
+  const prevHoodRef = useRef<string | null>(null);
   const hoveredHoodRef = useRef<string | null>(null);
   const lockMarkerRef = useRef<maplibregl.Marker | null>(null);
   const scanMarkerRef = useRef<maplibregl.Marker | null>(null);
@@ -1041,8 +1042,15 @@ export function MapView({
       return;
     }
 
-    sonarMarkerRef.current?.remove();
+    // Fade the previous sweep out gracefully rather than yanking it off-map.
+    const prevSonar = sonarMarkerRef.current;
     sonarMarkerRef.current = null;
+    if (prevSonar) {
+      const el = prevSonar.getElement();
+      el.style.transition = "opacity 0.3s ease";
+      el.style.opacity = "0";
+      window.setTimeout(() => prevSonar.remove(), 320);
+    }
     if (searching && !reduced) {
       sonarMarkerRef.current = new maplibregl.Marker({ element: makeSonarElement() })
         .setLngLat(center)
@@ -1128,77 +1136,112 @@ export function MapView({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
+    const prevHood = prevHoodRef.current;
+    prevHoodRef.current = selectedHood;
     selectedHoodRef.current = selectedHood;
     const reduced = prefersReducedMotion();
+    const motionOk = !reduced && document.visibilityState !== "hidden";
     const hood = hoodByName(selectedHood);
+    const RISE_START = 0.35;
 
-    try {
-      map.setFilter("hood-selected-line", [
-        "==", ["get", "name"], selectedHood ?? "__none__",
-      ]);
+    // Toggle the hood-mode layer set (lifted satellite plateau, reveal mask,
+    // outline emphasis, dots↔thumbnails). Split out so the descent can defer it
+    // to the end of the fall instead of yanking the imagery before it lowers.
+    const applyLayers = (activeHood: string | null) => {
+      map.setFilter("hood-selected-line", ["==", ["get", "name"], activeHood ?? "__none__"]);
       (map.getSource("hood-reveal") as GeoJSONSource | undefined)?.setData(
-        hoodRevealMask(selectedHood),
+        hoodRevealMask(activeHood),
       );
-      map.setLayoutProperty("hood-satellite", "visibility", selectedHood ? "visible" : "none");
-      map.setLayoutProperty("hood-reveal-mask", "visibility", selectedHood ? "visible" : "none");
-      map.setPaintProperty("hoods-line", "line-opacity", selectedHood ? 0.22 : 0.45);
+      map.setLayoutProperty("hood-satellite", "visibility", activeHood ? "visible" : "none");
+      map.setLayoutProperty("hood-reveal-mask", "visibility", activeHood ? "visible" : "none");
+      map.setPaintProperty("hoods-line", "line-opacity", activeHood ? 0.22 : 0.45);
       // The broad glow smears down the raised cliff face — hide it while lifted.
-      map.setPaintProperty("hoods-line-glow", "line-opacity", selectedHood ? 0 : 0.1);
-      map.setPaintProperty("hoods-label", "text-opacity", selectedHood ? 0.4 : 0.8);
-      // Thumbnails replace dots inside a lifted hood.
-      const dotVis = selectedHood ? "none" : "visible";
+      map.setPaintProperty("hoods-line-glow", "line-opacity", activeHood ? 0 : 0.1);
+      map.setPaintProperty("hoods-label", "text-opacity", activeHood ? 0.4 : 0.8);
+      const dotVis = activeHood ? "none" : "visible";
       for (const id of ["points", "clusters", "cluster-count", "point-price"]) {
         map.setLayoutProperty(id, "visibility", dotVis);
       }
-      if (!selectedHood) {
-        map.setLayoutProperty(
-          "match-pulse",
-          "visibility",
-          searchActiveRef.current && !reduced ? "visible" : "none",
-        );
+      map.setLayoutProperty(
+        "match-pulse",
+        "visibility",
+        !activeHood && searchActiveRef.current && !reduced ? "visible" : "none",
+      );
+    };
+
+    if (riseRafRef.current != null) {
+      cancelAnimationFrame(riseRafRef.current);
+      riseRafRef.current = null;
+    }
+
+    try {
+      if (selectedHood) {
+        // ── THE LIFT ── rebuild terrain from the boosted DEM so the whole
+        // neighborhood — imagery, streets, buildings, markers — physically
+        // rises out of the map as a plateau, then ramp exaggeration up.
+        applyLayers(selectedHood);
+        swapTerrain(map, selectedHood, motionOk ? RISE_START : TERRAIN_EXAGGERATION);
+        refreshThumbsRef.current();
+        if (motionOk) {
+          const start = performance.now();
+          const DELAY = 260; // let the re-encoded tiles begin loading first
+          const DURATION = 1200;
+          const rise = (t: number) => {
+            const k = Math.max(0, Math.min(1, (t - start - DELAY) / DURATION));
+            const eased = 1 - Math.pow(1 - k, 3);
+            // Mutate the live Terrain instance + repaint instead of calling
+            // map.setTerrain() every frame — that reconstructs the whole terrain
+            // engine (new Terrain + RenderToTexture) per frame and drops the lift
+            // to ~9fps. In-place exaggeration ramps at ~60fps.
+            const terrain = map.terrain as { exaggeration: number } | undefined;
+            if (!terrain) return;
+            terrain.exaggeration = RISE_START + (TERRAIN_EXAGGERATION - RISE_START) * eased;
+            map.triggerRepaint();
+            if (k < 1 && selectedHoodRef.current === selectedHood) {
+              riseRafRef.current = requestAnimationFrame(rise);
+            }
+          };
+          riseRafRef.current = requestAnimationFrame(rise);
+        }
       } else {
-        map.setLayoutProperty("match-pulse", "visibility", "none");
+        // ── THE DESCENT ── keep the plateau + imagery up and ramp exaggeration
+        // back down, THEN restore the flat browse terrain — so the neighborhood
+        // visibly settles instead of snapping flat.
+        const terrain = map.terrain as { exaggeration: number } | undefined;
+        if (motionOk && prevHood && terrain) {
+          const startExag = terrain.exaggeration || TERRAIN_EXAGGERATION;
+          const start = performance.now();
+          const DURATION = 720;
+          const fall = (t: number) => {
+            if (selectedHoodRef.current !== null) return; // re-selected mid-fall
+            const k = Math.max(0, Math.min(1, (t - start) / DURATION));
+            const eased = k * k * (3 - 2 * k); // smoothstep
+            const tr = map.terrain as { exaggeration: number } | undefined;
+            if (tr) {
+              tr.exaggeration = startExag + (RISE_START - startExag) * eased;
+              map.triggerRepaint();
+            }
+            if (k < 1) {
+              riseRafRef.current = requestAnimationFrame(fall);
+            } else {
+              applyLayers(null);
+              swapTerrain(map, null, TERRAIN_EXAGGERATION);
+              refreshThumbsRef.current();
+            }
+          };
+          riseRafRef.current = requestAnimationFrame(fall);
+        } else {
+          applyLayers(null);
+          swapTerrain(map, null, TERRAIN_EXAGGERATION);
+          refreshThumbsRef.current();
+        }
       }
     } catch {
       return;
     }
 
-    // THE LIFT: rebuild terrain from the boosted DEM so the whole neighborhood
-    // — imagery, streets, buildings, markers — physically rises out of the map
-    // as a plateau with sheer texture-stretched sides.
-    if (riseRafRef.current != null) {
-      cancelAnimationFrame(riseRafRef.current);
-      riseRafRef.current = null;
-    }
-    const animate = selectedHood != null && !reduced && document.visibilityState !== "hidden";
-    // Start the boosted terrain low, then ramp exaggeration up so it visibly rises.
-    const RISE_START = 0.35;
-    swapTerrain(map, selectedHood, animate ? RISE_START : TERRAIN_EXAGGERATION);
-    refreshThumbsRef.current();
-    if (animate) {
-      const start = performance.now();
-      const DELAY = 260; // let the re-encoded tiles begin loading first
-      const DURATION = 1200;
-      const rise = (t: number) => {
-        const k = Math.max(0, Math.min(1, (t - start - DELAY) / DURATION));
-        const eased = 1 - Math.pow(1 - k, 3);
-        // Mutate the live Terrain instance + repaint instead of calling
-        // map.setTerrain() every frame — that reconstructs the whole terrain
-        // engine (new Terrain + RenderToTexture) per frame and drops the lift
-        // to ~9fps. In-place exaggeration ramps at ~60fps.
-        const terrain = map.terrain as { exaggeration: number } | undefined;
-        if (!terrain) return;
-        terrain.exaggeration = RISE_START + (TERRAIN_EXAGGERATION - RISE_START) * eased;
-        map.triggerRepaint();
-        if (k < 1 && selectedHoodRef.current === selectedHood) {
-          riseRafRef.current = requestAnimationFrame(rise);
-        }
-      };
-      riseRafRef.current = requestAnimationFrame(rise);
-    }
-
-    // Camera: swoop into the hood at a low, three-quarter angle that shows the
-    // raised block from the side; or back out to the city frame.
+    // Camera choreography (runs concurrently with the terrain motion): swoop
+    // into the hood at a low three-quarter angle, or ease back to the city frame.
     if (selectedHood && hood) {
       const [[w, s], [e, n]] = multiPolygonBounds(hood.geometry.coordinates);
       const cam = map.cameraForBounds(
@@ -1209,18 +1252,14 @@ export function MapView({
         { padding: { top: 240, left: 120, right: 120, bottom: 160 }, bearing: -22, maxZoom: 14.2 },
       );
       if (cam) {
-        if (reduced || document.visibilityState === "hidden") {
-          map.jumpTo({ ...cam, pitch: 66 });
-        } else {
-          map.flyTo({ ...cam, pitch: 66, duration: 2100, curve: 1.4 });
-        }
+        if (!motionOk) map.jumpTo({ ...cam, pitch: 66 });
+        else map.flyTo({ ...cam, pitch: 66, duration: 2100, curve: 1.4 });
       }
     } else if (!selectedHood && !searchActiveRef.current) {
       const home = { center: SF_CENTER as [number, number], zoom: 12.5, pitch: 55, bearing: -14 };
-      if (reduced || document.visibilityState === "hidden") map.jumpTo(home);
+      if (!motionOk) map.jumpTo(home);
       else map.flyTo({ ...home, duration: 1400, curve: 1.3 });
     }
-
   }, [selectedHood]);
 
   /* ---------- Target mode (search results) ---------- */

@@ -139,6 +139,7 @@ body {
 .map-sonar {
   width: 300px; height: 300px;
   pointer-events: none;
+  animation: fade-in 0.45s ease both;
 }
 .map-sonar > * { position: absolute; inset: 0; border-radius: 50%; }
 .map-sonar .edge { border: 1px solid color-mix(in srgb, var(--color-accent) 14%, transparent); }

@@ -106,11 +106,11 @@ export function ListingDetail({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-[2px]"
+      className="animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-[2px]"
       onClick={onClose}
     >
       <div
-        className="flex max-h-[93vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg border border-line bg-surface shadow-[0_24px_70px_rgba(0,0,0,0.6)]"
+        className="animate-rise-in flex max-h-[93vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg border border-line bg-surface shadow-[0_24px_70px_rgba(0,0,0,0.6)]"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="panel-scroll min-h-0 flex-1 overflow-y-auto">
