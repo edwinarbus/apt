@@ -51,7 +51,6 @@ export type SourceSystem =
   | "rentsfnow"
   | "direct_html"
   | "direct_js"
-  | "mock"
   | "unknown";
 
 export type SourcePriority =

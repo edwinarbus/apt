@@ -11,7 +11,7 @@ import {
  *
  *   npm run ingest -- --all                 run every enabled source
  *   npm run ingest -- --source craigslist_sf
- *   npm run ingest -- --source mock_sf     (explicit id runs even if disabled)
+ *   npm run ingest -- --source mosser_living (explicit id runs even if disabled)
  *   flags: --no-geocode  disable network geocoding (neighborhood fallback still applies)
  */
 

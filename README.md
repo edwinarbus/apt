@@ -12,9 +12,10 @@ for one person's apartment hunt — nothing more.
 > Phase one built the data pipeline + map UI. Phase two hardened it: adapter
 > verification, idempotent backfill, confidence-scored dedupe, canonical URLs,
 > structured price history, and a source-health dashboard. Phase three added
-> the scheduled daily loop with a deterministic saved-search digest, a third
-> working SF adapter (Brick + Timber, via its own JSON feed), and reusable
-> Playwright rendering infrastructure for JS-only sources. A future phase may
+> the scheduled daily loop with a deterministic saved-search digest and
+> Playwright rendering infrastructure for JS-only sources. The app now runs on
+> **real data only** (mock removed) across **four working SF adapters**
+> (Craigslist, RentSFNow, Brick + Timber, Mosser Living). A future phase may
 > add Claude-based enrichment (daily summaries, match explanations, scam
 > analysis); the schema and runner were designed so an agent can operate on top
 > of them, but **nothing AI-related is built or wired up yet** — the digest and
@@ -37,11 +38,15 @@ for one person's apartment hunt — nothing more.
 
 ```bash
 npm install
-npm run seed:sources     # upsert the SF source registry (12 sources)
-npm run seed:mock        # optional: realistic demo data through the real pipeline
-npm run ingest -- --all  # ingest every enabled source (Craigslist + RentSFNow)
+npx playwright install chromium  # only if you'll enable a JS-rendered source; not needed for the 4 working ones
+npm run seed:sources     # upsert the SF source registry (11 sources)
+npm run seed:searches    # optional: example saved searches for the digest
+npm run ingest -- --all  # ingest every enabled source (Craigslist, RentSFNow, Mosser, Brick + Timber)
 npm run dev              # open http://localhost:3000
 ```
+
+All listings are real. There is no mock/demo data — the app runs entirely on
+live SF sources.
 
 The database file (and `drizzle/` migrations) are created automatically on
 first use. `data/` is gitignored.
@@ -52,7 +57,7 @@ first use. `data/` is gitignored.
 | --- | --- |
 | `npm run dev` | dev server (map UI at `/`, source dashboard at `/sources`) |
 | `npm run seed:sources` | upsert source registry from `src/config/sources.ts` (preserves your enable/disable toggles; `--reset-enabled` restores seed defaults) |
-| `npm run seed:mock` | run the mock adapter through the real pipeline 4× to simulate price drops, disappearances, and new listings; adds example user statuses + a saved search |
+| `npm run seed:searches` | upsert example saved searches so the digest has something to evaluate (edit `scripts/seed-searches.ts` for your own) |
 | `npm run ingest -- --all` | run all enabled sources, print a per-source summary |
 | `npm run ingest -- --source craigslist_sf` | run one source (explicit id runs even if disabled) |
 | `npm run ingest -- --all --no-geocode` | skip network geocoding (neighborhood-centroid fallback still applies) |
@@ -180,7 +185,7 @@ src/
     craigslist.ts  static search page + detail pages
     rentsfnow.ts   WP admin-ajax results + unit detail pages
     rentbt.ts      Brick + Timber via wp-json property-search feed (JSON)
-    mock.ts        28-listing dev dataset with 2 lifecycle phases
+    mosser.ts      Mosser Living via RentPress embedded data-floorplans blobs
   ingest/
     upsert.ts      merge rules, price/content-change events, precision guards
     runner.ts      robots -> adapter -> upserts -> status -> stale -> dupes ->
@@ -251,12 +256,11 @@ dashboard). Current state, verified live 2026-07-02:
 | `craigslist_sf` | enabled_working | **PASS** (live + fixtures) |
 | `rentsfnow` | enabled_working | **PASS** (live + fixtures) |
 | `brick_and_timber` | enabled_working | **PASS** (live + fixtures) |
-| `mock_sf` | disabled_reference_only (dev data) | runs via `seed:mock` |
+| `mosser_living` | enabled_working | **PASS** (live + fixtures) |
 | `zillow_sf`, `apartments_com_sf` | disabled_reference_only | SKIPPED by design |
 | `structure_properties` | disabled_needs_adapter (classic AppFolio widget, **currently zero inventory**) | SKIPPED |
 | `gaetani_real_estate` | disabled_needs_adapter (AppFolio v2 UI, currently empty) | SKIPPED |
-| `mosser_living` | disabled_needs_adapter (WordPress, listings render client-side) | SKIPPED |
-| `trinity_sf` | disabled_needs_review (availability page not located; own SF link 404s) | SKIPPED |
+| `trinity_sf` | disabled_needs_review (public site exposes no machine-readable availability, even rendered) | SKIPPED |
 | `lapham_company` | disabled_blocked_or_not_practical (inventory is East Bay, not SF) | SKIPPED |
 | `ballast_investments` | disabled_needs_review (no public listing page identified) | SKIPPED |
 
@@ -267,7 +271,7 @@ dashboard). Current state, verified live 2026-07-02:
 | **Craigslist SF** (`craigslist_sf`) | ✅ working, enabled | The search URL serves a static no-JS fallback of ~360 newest results (`li.cl-static-search-result`). Non-SF results (Oakland etc., incl. "South San Francisco") are filtered by location text. Detail pages are classic server-rendered HTML: coordinates + accuracy, address (`.mapaddress`), labeled attributes (pets, laundry, parking, housing type), availability, photos (`imgList`), posted/updated times, description. Detail pages are fetched **only for new or price-changed postings**, capped by `maxDetailPagesPerRun` (default 50/run). robots.txt (checked at run time and recorded) currently disallows only `/reply`, `/fb/`, `/suggest`, `/flag`, `/mf`, `/mailflag`, `/eaf` — not search or posting pages. |
 | **RentSFNow** (`rentsfnow`) | ✅ working, enabled | WordPress site whose own search UI POSTs to `/wp-admin/admin-ajax.php` (`action=wpas_ajax_load`); we send the same request filtered to San Francisco and get server-rendered cards with explicit `current_page`/`last_page` markers (trustworthy pagination) plus building-level coordinates from the embedded map-markers array. Unit detail pages add sqft, description, amenities, photo gallery. Detail fetches use the same only-new-or-changed rule. |
 | **Brick + Timber** (`brick_and_timber`) | ✅ working, enabled | SF property manager at rentbt.com. The browse page is a JS-rendered WordPress + RentCafe app, but it's backed by a clean public REST feed (`/wp-json/property-search/v1/data/`) returning every available unit as structured JSON in **one request** — price, beds/baths/sqft, unit, building address, **exact coordinates**, neighborhood, amenities, concessions, full photo gallery, application URL. The adapter uses that directly (no browser, no pagination, no detail pages). The feed includes East Bay units; the adapter filters to SF by building city. Single complete response → missing-listing tracking runs safely; exact coords → no geocoding needed. |
-| **Mock SF** (`mock_sf`) | ✅ dev-only, disabled | 28 realistic listings exercising every edge case (missing fields, broken photo URLs, no-coordinate listings, concessions, duplicates, a scam-pattern listing, pet/laundry/parking variety). `seed:mock` runs it through the real pipeline in two phases so price-drop events, the missing chain, and "new today" states are produced by real machinery, not fixtures. |
+| **Mosser Living** (`mosser_living`) | ✅ working, enabled | Large SF property manager on a RentPress (WordPress) stack. One `wp-json` call lists the ~60 SF properties (filtered by the "San Francisco" city taxonomy term), and each property page embeds a complete `data-floorplans='[...]'` JSON blob in its raw HTML — per-floorplan rent/beds/baths/sqft/availability/photos plus the property's address, **exact coordinates**, neighborhood, amenities, pet policy, and contact info. Plain HTTP, no browser. Listings are **floorplan-level** (each available floorplan = one listing); the floorplan name is used as the unit discriminator so distinct floorplans at one building aren't mistaken for duplicates. Fetches the SF property pages each run (capped by `maxDetailPagesPerRun`, default 80); complete set → missing-listing tracking runs safely. Feed spans SF/Oakland/LA; filtered to SF. |
 
 ### Seeded but disabled (audited 2026-07-02)
 
@@ -281,12 +285,11 @@ dashboard). Current state, verified live 2026-07-02:
   AppFolio PM) has live units. The Playwright infra is ready for that moment.
 - **Gaetani** (AppFolio) — uses AppFolio's newer v2 UI (different markup from
   Structure) and is also currently empty.
-- **Mosser** — WordPress; SF page renders listings client-side only.
-- **Brick + Timber** — actually lives at rentbt.com (WordPress + RentCafe);
-  browse page is JS-rendered, listings CPT not exposed via wp-json. Real
-  per-listing pages exist at `/listing/<id>` — a future adapter candidate.
-- **Trinity SF** — homepage's own SF-apartments link 404s; availability page
-  not located yet.
+- **Trinity SF** — re-investigated including a Playwright render: the homepage
+  and neighborhood pages expose no availability or pricing even when rendered
+  (only a hy.ly chat widget), and there's no JSON feed. Its live availability
+  lives in a separate leasing system not reachable from the public site. No
+  adapter is feasible until that source is found.
 - **Lapham** — reachable and even server-rendered, but current inventory is
   Oakland/Berkeley/Danville, not SF. Not practical for this tool.
 - **Ballast** — no public listing page identified.
@@ -386,9 +389,9 @@ beds/baths, sqft, $/sqft, neighborhoods, pets, laundry, parking, available-by
 date, radius from a point, include/exclude keywords) and returns `failed`
 criteria and `unknowns` separately — a listing that matches everything known
 but has an unknown pet policy says so instead of silently passing or failing.
-User-hidden / not-a-fit / rented-elsewhere listings are ineligible. One example
-saved search is seeded by `seed:mock`. No alerts and no AI scoring yet — by
-design; matching only uses concrete user preferences, never demographic or
+User-hidden / not-a-fit / rented-elsewhere listings are ineligible. Example
+saved searches are seeded by `seed:searches`. No AI scoring — by design;
+matching only uses concrete user preferences, never demographic or
 protected-class proxies.
 
 ## UI
@@ -438,13 +441,13 @@ parser without re-fetching anything.
 
 ## Tests
 
-`npm test` — 150+ tests, all offline (recorded fixtures in `fixtures/`):
+`npm test` — 160+ tests, all offline (recorded fixtures in `fixtures/`):
 parsers, hashing, URL canonicalization, neighborhoods (including the
 South-San-Francisco trap), stale lifecycle + the failed/partial-run guard +
 the `--no-stale-updates` flag, dedupe signals with confidence tiers and
 unit-number guards, repost tagging, primary-listing selection, the adapter
 contract, verification reports (PASS/PARTIAL/FAIL/SKIPPED, including
-fixture-mode verification of all three real adapters end to end), scam
+fixture-mode verification of all four real adapters end to end), scam
 heuristics, saved-search matching, the digest (idempotent new-match reporting,
 price-drop and dropped-out detection, user-exclusion), geocode caching +
 fallback precision, price-history recording (baseline, changes, no redundant

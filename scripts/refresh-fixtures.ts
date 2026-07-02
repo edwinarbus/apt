@@ -103,18 +103,56 @@ async function refreshRentBt(): Promise<void> {
   save("bt-api.json", res.text);
 }
 
+async function refreshMosser(): Promise<void> {
+  const db = createDb();
+  const source = db.select().from(sources).where(eq(sources.id, "mosser_living")).get();
+  const baseUrl = source?.baseUrl ?? "https://www.mosserliving.com";
+  const fetcher = new PoliteFetcher({
+    requestDelayMs: source?.requestDelayMs ?? 1500,
+    timeoutMs: source?.timeoutMs ?? 25000,
+    retryCount: 1,
+  });
+  const cityRes = await fetcher.fetchText(`${baseUrl}/wp-json/wp/v2/city?per_page=100`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!cityRes.ok) throw new Error(`city fetch failed: ${cityRes.error}`);
+  save("mosser-city.json", cityRes.text);
+  const sfId = (JSON.parse(cityRes.text) as Array<{ id: number; name: string }>).find(
+    (c) => /^san francisco$/i.test((c.name ?? "").trim()),
+  )?.id;
+  if (!sfId) throw new Error("no San Francisco city term");
+  const listRes = await fetcher.fetchText(
+    `${baseUrl}/wp-json/wp/v2/rentpress_property?city=${sfId}&per_page=100&_fields=link`,
+    { headers: { Accept: "application/json" } },
+  );
+  if (!listRes.ok) throw new Error(`property list fetch failed: ${listRes.error}`);
+  save("mosser-sf-props.json", listRes.text);
+  const links = (JSON.parse(listRes.text) as Array<{ link: string }>).map((p) => p.link);
+  if (!links.length) throw new Error("no SF property links");
+  // Record two representative property pages (first with multiple floorplans).
+  const single = await fetcher.fetchText(links[0]);
+  if (single.ok) save("mosser-property-single.html", single.text);
+  if (links[1]) {
+    const multi = await fetcher.fetchText(links[1]);
+    if (multi.ok) save("mosser-property-multi.html", multi.text);
+  }
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const sourceIdx = args.indexOf("--source");
   const sourceId = sourceIdx >= 0 ? args[sourceIdx + 1] : null;
   if (!sourceId) {
-    console.log("usage: npm run fixtures:refresh -- --source <craigslist_sf|rentsfnow|brick_and_timber>");
+    console.log(
+      "usage: npm run fixtures:refresh -- --source <craigslist_sf|rentsfnow|brick_and_timber|mosser_living>",
+    );
     process.exit(1);
   }
   console.log(`Refreshing fixtures for ${sourceId} from the live source…`);
   if (sourceId === "craigslist_sf") await refreshCraigslist();
   else if (sourceId === "rentsfnow") await refreshRentSfNow();
   else if (sourceId === "brick_and_timber") await refreshRentBt();
+  else if (sourceId === "mosser_living") await refreshMosser();
   else {
     console.error(`no fixture recipe for ${sourceId}`);
     process.exit(1);

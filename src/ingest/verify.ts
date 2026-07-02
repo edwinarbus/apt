@@ -51,9 +51,12 @@ export interface VerificationReport {
   durationMs: number;
 }
 
-/** Cap live verification detail fetches — verification is a probe, not a crawl. */
+// Live verification is a light probe, so it caps detail fetches. Fixtures are
+// local and free, so fixture verification fetches everything (it needs the
+// full set to judge pagination for sources whose "detail" pages ARE their
+// listings, like Mosser's per-property fetches).
 const LIVE_VERIFY_DETAIL_CAP = 8;
-const FIXTURE_VERIFY_DETAIL_CAP = 3;
+const FIXTURE_VERIFY_DETAIL_CAP = 500;
 
 /**
  * Warnings that are disclosures of known, by-design behavior rather than
@@ -62,7 +65,17 @@ const FIXTURE_VERIFY_DETAIL_CAP = 3;
 const INFORMATIONAL_WARNING_PATTERNS = [
   /static search page returned \d+ results, near its ~360 cap/,
   /detail budget exhausted/, // verification imposes its own small cap
+  /property budget exhausted/, // Mosser: verification's live cap, not a defect
 ];
+
+/**
+ * When pagination is incomplete ONLY because verification's own cap stopped it
+ * short (a "budget exhausted" note is present), that's a deliberate sample —
+ * not a source/adapter problem — so it should not demote the verdict.
+ */
+function paginationIncompleteIsJustSampling(notes: string[]): boolean {
+  return notes.some((n) => /budget exhausted/.test(n));
+}
 
 /** Serve recorded fixtures to adapters so verification can run offline. */
 export class FixtureFetcher implements TextFetcher {
@@ -127,8 +140,19 @@ export function fixtureRoutesFor(
       ];
     case "rentbt":
       return [{ match: () => true, file: "bt-api.json" }];
-    case "mock":
-      return []; // mock adapter performs no fetches
+    case "mosser":
+      return [
+        {
+          match: (url) => url.includes("/wp-json/wp/v2/city"),
+          file: "mosser-city.json",
+        },
+        {
+          match: (url) => url.includes("rentpress_property"),
+          file: "mosser-sf-props.json",
+        },
+        { match: (url) => /415-pierce/.test(url), file: "mosser-property-multi.html" },
+        { match: () => true, file: "mosser-property-single.html" },
+      ];
     default:
       return null;
   }
@@ -228,7 +252,7 @@ export async function verifySource(
   const checks: string[] = [];
 
   // Live mode: check robots first (read-only unless saving).
-  if (mode === "live" && source.listingUrl && source.adapterType !== "mock") {
+  if (mode === "live" && source.listingUrl) {
     const listingPath = new URL(source.listingUrl).pathname || "/";
     const robots = await checkRobots(
       fetcher,
@@ -355,9 +379,20 @@ export async function verifySource(
       warnings.push(`${result.detailFetchFailures} detail page fetches failed`);
     }
 
+    // Pagination that's incomplete only because verification capped the fetch
+    // (a "budget exhausted" note) is a deliberate sample, not a defect.
+    const paginationOkOrSampled =
+      paginationCompleted !== false ||
+      paginationIncompleteIsJustSampling(notes);
+    if (paginationCompleted === false && paginationIncompleteIsJustSampling(notes)) {
+      notes.push(
+        "pagination shown as incomplete only because verification sampled a subset; a full run fetches the complete set",
+      );
+    }
+
     if (errors.length > 0) {
       status = "FAIL";
-    } else if (paginationCompleted === false || warnings.length > 0) {
+    } else if (!paginationOkOrSampled || warnings.length > 0) {
       status = "PARTIAL";
     } else {
       status = "PASS";

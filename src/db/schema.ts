@@ -18,7 +18,7 @@ export const sources = sqliteTable("sources", {
   id: text("id").primaryKey(), // slug, e.g. "craigslist_sf"
   name: text("name").notNull(),
   sourceSystem: text("source_system").notNull(),
-  adapterType: text("adapter_type").notNull(), // "craigslist" | "rentsfnow" | "mock" | "none"
+  adapterType: text("adapter_type").notNull(), // "craigslist" | "rentsfnow" | "rentbt" | "mosser" | "none"
   priority: text("priority").notNull().default("normal"),
   enabled: integer("enabled", { mode: "boolean" }).notNull().default(false),
 

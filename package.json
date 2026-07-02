@@ -13,7 +13,7 @@
     "db:generate": "drizzle-kit generate",
     "db:studio": "drizzle-kit studio",
     "seed:sources": "tsx scripts/seed-sources.ts",
-    "seed:mock": "tsx scripts/seed-mock.ts",
+    "seed:searches": "tsx scripts/seed-searches.ts",
     "ingest": "tsx scripts/ingest.ts",
     "sources:verify": "tsx scripts/verify-sources.ts",
     "sources:verify:live": "tsx scripts/verify-sources.ts --live --enabled-only",
@@ -22,7 +22,7 @@
     "digest": "tsx scripts/digest.ts",
     "daily": "tsx scripts/daily.ts",
     "schedule:install": "tsx scripts/install-schedule.ts",
-    "test:adapters": "vitest run tests/adapters-craigslist.test.ts tests/adapters-rentsfnow.test.ts tests/adapters-rentbt.test.ts"
+    "test:adapters": "vitest run tests/adapters-craigslist.test.ts tests/adapters-rentsfnow.test.ts tests/adapters-rentbt.test.ts tests/adapters-mosser.test.ts"
   },
   "dependencies": {
     "better-sqlite3": "^12.11.1",

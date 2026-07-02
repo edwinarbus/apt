@@ -150,7 +150,7 @@ export async function runSource(
     : new PoliteFetcher(fetcherOpts);
 
   // --- robots.txt (recorded on the source; disallowed sources are skipped) ---
-  if (!opts.skipRobotsCheck && source.listingUrl && source.adapterType !== "mock") {
+  if (!opts.skipRobotsCheck && source.listingUrl) {
     const lastChecked = source.robotsCheckedAt
       ? Date.parse(source.robotsCheckedAt)
       : 0;

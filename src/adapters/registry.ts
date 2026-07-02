@@ -2,7 +2,7 @@ import type { SourceAdapter } from "./types";
 import { craigslistAdapter } from "./craigslist";
 import { rentSfNowAdapter } from "./rentsfnow";
 import { rentBtAdapter } from "./rentbt";
-import { mockAdapter } from "./mock";
+import { mosserAdapter } from "./mosser";
 
 /**
  * Adapter registry, keyed by a source's `adapterType`. Sources whose adapter
@@ -28,4 +28,4 @@ export function registeredAdapterTypes(): string[] {
 registerAdapter(craigslistAdapter);
 registerAdapter(rentSfNowAdapter);
 registerAdapter(rentBtAdapter);
-registerAdapter(mockAdapter);
+registerAdapter(mosserAdapter);
