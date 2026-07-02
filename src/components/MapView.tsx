@@ -40,7 +40,7 @@ const HOOD = "#3fd0ff";
 const HOOD_BRIGHT = "#7ce4ff";
 const HALO = "#081120";
 /** How far a selected neighborhood is raised out of the map (baked into the DEM). */
-const HOOD_BOOST_M = 520;
+const HOOD_BOOST_M = 105;
 const TERRAIN_EXAGGERATION = 1.35;
 
 const CLUSTER_COLOR_BROWSE = [
@@ -1222,6 +1222,8 @@ export function MapView({
       map.setLayoutProperty("hood-satellite", "visibility", selectedHood ? "visible" : "none");
       map.setLayoutProperty("hood-reveal-mask", "visibility", selectedHood ? "visible" : "none");
       map.setPaintProperty("hoods-line", "line-opacity", selectedHood ? 0.22 : 0.45);
+      // The broad glow smears down the raised cliff face — hide it while lifted.
+      map.setPaintProperty("hoods-line-glow", "line-opacity", selectedHood ? 0 : 0.1);
       map.setPaintProperty("hoods-label", "text-opacity", selectedHood ? 0.4 : 0.8);
       // Thumbnails replace dots inside a lifted hood.
       const dotVis = selectedHood ? "none" : "visible";
