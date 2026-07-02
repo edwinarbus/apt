@@ -92,6 +92,61 @@ function hoodByName(name: string | null): HoodFeature | undefined {
   return name ? HOODS.find((f) => f.properties.name === name) : undefined;
 }
 
+/** Signed shoelace area (used to pick the largest polygon per hood). */
+function ringArea(ring: [number, number][]): number {
+  let a = 0;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    a += ring[j][0] * ring[i][1] - ring[i][0] * ring[j][1];
+  }
+  return a / 2;
+}
+
+/** Area-weighted centroid of a ring, with a vertex-average fallback. */
+function ringCentroid(ring: [number, number][]): [number, number] {
+  let a = 0,
+    cx = 0,
+    cy = 0;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const f = ring[j][0] * ring[i][1] - ring[i][0] * ring[j][1];
+    a += f;
+    cx += (ring[j][0] + ring[i][0]) * f;
+    cy += (ring[j][1] + ring[i][1]) * f;
+  }
+  if (Math.abs(a) < 1e-12) {
+    const s = ring.reduce((p, c) => [p[0] + c[0], p[1] + c[1]], [0, 0]);
+    return [s[0] / ring.length, s[1] / ring.length];
+  }
+  return [cx / (3 * a), cy / (3 * a)];
+}
+
+/** One label point per neighborhood, at the centroid of its largest polygon. */
+function hoodLabelPoints(): GeoJSON.FeatureCollection {
+  return {
+    type: "FeatureCollection",
+    features: HOODS.map((h) => {
+      let bestRing: [number, number][] | null = null;
+      let bestArea = -1;
+      for (const poly of h.geometry.coordinates) {
+        const ring = poly[0] as [number, number][] | undefined;
+        if (!ring) continue;
+        const area = Math.abs(ringArea(ring));
+        if (area > bestArea) {
+          bestArea = area;
+          bestRing = ring;
+        }
+      }
+      return {
+        type: "Feature" as const,
+        properties: { name: h.properties.name },
+        geometry: {
+          type: "Point" as const,
+          coordinates: bestRing ? ringCentroid(bestRing) : [0, 0],
+        },
+      };
+    }),
+  };
+}
+
 function hoodRevealMask(name: string | null): GeoJSON.Feature {
   const holes: [number, number][][] = [];
   const hood = hoodByName(name);
@@ -650,6 +705,9 @@ export function MapView({
           data: hoodsData as GeoJSON.FeatureCollection,
           promoteId: "name",
         });
+        // One label anchor per hood (a MultiPolygon otherwise gets a label on
+        // every piece — piers, breakwaters — so Marina/North Beach repeated).
+        map.addSource("hood-labels", { type: "geojson", data: hoodLabelPoints() });
         map.addLayer({
           id: "hoods-fill",
           type: "fill",
@@ -685,7 +743,7 @@ export function MapView({
         map.addLayer({
           id: "hoods-label",
           type: "symbol",
-          source: "hoods",
+          source: "hood-labels",
           layout: {
             "text-field": ["upcase", ["get", "name"]],
             "text-font": ["Noto Sans Bold"],
@@ -876,14 +934,26 @@ export function MapView({
             onSelectRef.current(id);
           }
         });
-        map.on("click", "hoods-fill", (e) => {
-          const hits = map.queryRenderedFeatures(e.point, {
-            layers: ["points", "clusters"],
-          });
-          if (hits.length > 0) return;
-          const name = e.features?.[0]?.properties?.name as string | undefined;
-          if (!name) return;
-          onHoodSelectRef.current(selectedHoodRef.current === name ? null : name);
+        // A single map-level handler for neighborhoods so it also fires on the
+        // black area outside SF (no hood-fill there). In city view a click
+        // isolates the clicked hood; while a hood is isolated, a click anywhere
+        // that isn't that hood (another hood, the plateau's surroundings, the
+        // masked ocean) releases it. Listing hits are handled by their own
+        // layers / the HTML thumbnail markers, so bail on those.
+        map.on("click", (e) => {
+          if (
+            map.queryRenderedFeatures(e.point, { layers: ["points", "clusters"] }).length > 0
+          ) {
+            return;
+          }
+          const clicked = map.queryRenderedFeatures(e.point, { layers: ["hoods-fill"] })[0]
+            ?.properties?.name as string | undefined;
+          const sel = selectedHoodRef.current;
+          if (sel) {
+            if (clicked !== sel) onHoodSelectRef.current(null);
+          } else if (clicked) {
+            onHoodSelectRef.current(clicked);
+          }
         });
         map.on("mousemove", "hoods-fill", (e) => {
           const name = e.features?.[0]?.properties?.name as string | undefined;
