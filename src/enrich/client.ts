@@ -26,7 +26,7 @@ export interface EnrichmentClient {
   enrichOne(input: EnrichmentInput): Promise<EnrichmentCallResult>;
 }
 
-export const DEFAULT_ENRICH_MODEL = "claude-sonnet-5";
+export const DEFAULT_ENRICH_MODEL = "claude-haiku-4-5";
 
 /**
  * System prompt. Stable across every listing so it caches (the volatile

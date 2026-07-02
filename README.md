@@ -18,7 +18,7 @@ for one person's apartment hunt — nothing more.
 > (Craigslist, RentSFNow, Brick + Timber, Mosser Living). The latest phases add
 > two **optional Claude AI layers**, both off by default and kept entirely
 > separate from the deterministic pipeline: **text enrichment** (`npm run
-> enrich`, Sonnet 5) for structured amenity/pet/laundry facts, "verify before
+> enrich`, Haiku) for structured amenity/pet/laundry facts, "verify before
 > contacting" notes, landlord questions, and a risk second opinion; and **photo
 > vision** (`npm run vision`, Haiku) that reads each listing's images into
 > searchable visual features so you can do natural-language visual search
@@ -76,7 +76,7 @@ first use. `data/` is gitignored.
 | `npm run digest` | compute the saved-search digest, write a report, mark matches notified; flags: `--dry-run` (repeatable preview), `--json` |
 | `npm run daily` | the scheduled loop: ingest all enabled sources, then compute the digest |
 | `npm run schedule:install` | write a macOS launchd plist (and print the cron line) to run `npm run daily` on a schedule; flags: `--hour`, `--minute` |
-| `npm run enrich -- --dry-run` | **optional AI (Sonnet 5)** — preview which listings would be text-enriched (no key or spend); drop `--dry-run` to call Claude. Flags: `--limit <n>` (default 25), `--all`, `--source-listing <id>`, `--cost-cap <usd>`, `--force`, `--include-inactive`. Needs `ANTHROPIC_API_KEY`. See [AI layers](#ai-layers-optional). |
+| `npm run enrich -- --dry-run` | **optional AI (Haiku)** — preview which listings would be text-enriched (no key or spend); drop `--dry-run` to call Claude. Flags: `--limit <n>` (default 25), `--all`, `--source-listing <id>`, `--cost-cap <usd>`, `--force`, `--include-inactive`. Needs `ANTHROPIC_API_KEY`. See [AI layers](#ai-layers-optional). |
 | `npm run vision -- --dry-run` | **optional AI vision (Haiku)** — preview which listings' photos would be analyzed into searchable features (no key or spend); drop `--dry-run` to call Claude. Same flags as `enrich` plus `--max-images <n>` (default 6). See [AI layers](#ai-layers-optional). |
 | `npm test` / `npm run test:adapters` | full vitest suite / just the adapter fixture tests (all offline) |
 | `npm run typecheck` / `npm run lint` | strict TS + ESLint |
@@ -176,7 +176,7 @@ Everything above is deterministic and needs no API key. On top of it sit two
 by default, and neither ever changes a deterministic field or the original
 listing (still the source of truth):
 
-- **Text enrichment** — `npm run enrich`, Claude **Sonnet 5** — structured facts
+- **Text enrichment** — `npm run enrich`, Claude **Haiku** — structured facts
   + "verify before contacting" + questions + a risk second opinion, from the
   listing text.
 - **Photo vision** — `npm run vision`, Claude **Haiku** — searchable visual
@@ -211,8 +211,8 @@ npm run enrich -- --source-listing lst_… --force   # re-enrich one listing
 npm run enrich -- --all --cost-cap 5   # everything, but stop near $5
 ```
 
-- **Model:** `$APT_ENRICH_MODEL` (default `claude-sonnet-5`).
-  `APT_ENRICH_MODEL=claude-haiku-4-5` is cheaper still if you want it.
+- **Model:** `$APT_ENRICH_MODEL` (default `claude-haiku-4-5` — cheap and capable
+  for this bounded extraction). `APT_ENRICH_MODEL=claude-sonnet-5` for a stronger pass.
 - **Cheap to re-run:** keyed on the listing's content hash, so only new/changed
   listings (plus schema-version or error retries) are re-enriched; unchanged
   ones are skipped. Each run reports tokens + estimated USD and honors `--cost-cap`.
@@ -659,7 +659,7 @@ run test:adapters` runs just the adapter fixture suites.
    (classic snowfolio for Structure, v2 for Gaetani) remains, to be written
    against live markup.
 3. **Claude AI layers** — ✅ built (see [AI layers](#ai-layers-optional)): text
-   **enrichment** (`npm run enrich`, Sonnet 5) and **photo vision** +
+   **enrichment** (`npm run enrich`, Haiku) and **photo vision** +
    natural-language visual search (`npm run vision`, Haiku), both opt-in and
    isolated behind injected client interfaces.
 4. **Managed agent for new listings** — the intended next step. Today `npm run

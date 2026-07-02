@@ -12,9 +12,9 @@ import { enrichListings, formatEnrichSummary } from "@/enrich/enricher";
  *   npm run enrich -- --force              re-enrich even if unchanged
  *   npm run enrich -- --all                no per-run limit (enrich every eligible listing)
  *
- * Model: $APT_ENRICH_MODEL (default claude-sonnet-5). For this high-volume,
- * bounded extraction task, `APT_ENRICH_MODEL=claude-haiku-4-5` is cheaper still.
- * Requires ANTHROPIC_API_KEY (or an `ant auth login` profile).
+ * Model: $APT_ENRICH_MODEL (default claude-haiku-4-5 — cheap and capable for
+ * this high-volume, bounded extraction; set APT_ENRICH_MODEL=claude-sonnet-5
+ * for a stronger pass). Requires ANTHROPIC_API_KEY (or an `ant auth login` profile).
  */
 
 function numFlag(args: string[], name: string): number | undefined {
