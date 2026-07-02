@@ -330,6 +330,14 @@ just runs city-wide.
 3. Claude (**Sonnet 5**) ranks those, returning `{interpretation, intentChips,
    matches:[{id, score, reason}]}`; hallucinated ids are dropped and scores clamped.
 
+The route **streams NDJSON progress** (candidates assembled → shortlist →
+model reading → output growing → final result), and the UI renders it as a
+live analysis feed — real pipeline events with animated checkmarks and a
+reasoning ticker (plus a card-shuffle of illustrated dogs while you wait),
+then results stagger in with per-listing score rings. Works in Safari too —
+verified end-to-end on the WebKit engine (speech input degrades gracefully
+where the browser doesn't offer it).
+
 **Model / cost / speed.** `$APT_SEARCH_MODEL` (default `claude-sonnet-5`, the
 quality choice). A search is one call (~1–3¢) and takes ~15–30s — it's genuinely
 reading and reasoning over ~60 listings. Set `APT_SEARCH_MODEL=claude-haiku-4-5`
@@ -655,7 +663,7 @@ parser without re-fetching anything.
 
 ## Tests
 
-`npm test` — 206 tests, all offline (recorded fixtures in `fixtures/`):
+`npm test` — 207 tests, all offline (recorded fixtures in `fixtures/`):
 parsers, hashing, URL canonicalization, neighborhoods (including the
 South-San-Francisco trap), stale lifecycle + the failed/partial-run guard +
 the `--no-stale-updates` flag, dedupe signals with confidence tiers and

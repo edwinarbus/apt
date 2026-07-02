@@ -181,4 +181,12 @@ describe("runSearch", () => {
     expect(r.error).toBe("boom");
     expect(r.matches).toHaveLength(0);
   });
+
+  it("emits live progress events (assemble → prerank) for the streaming UI", async () => {
+    const events: string[] = [];
+    await runSearch(db, new FakeSearchClient(), { query: "x" }, (e) => {
+      events.push(e.type === "stage" ? e.stage : e.type);
+    });
+    expect(events).toEqual(["assemble", "prerank"]); // model events come from the live client
+  });
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   BadgeKind,
   ListingSummary,
@@ -10,9 +10,19 @@ import type {
 import { computeBadges } from "@/lib/badges";
 import type { UserListingStatus } from "@/core/types";
 import { SearchBar, type LocationStatus } from "./SearchBar";
+import { EMPTY_PROGRESS, type SearchProgressState } from "./SearchProgress";
 import { MapView } from "./MapView";
 import { ListingPanel } from "./ListingPanel";
 import { ListingDetail } from "./ListingDetail";
+
+/** One NDJSON line from /api/search. */
+type SearchStreamEvent =
+  | { type: "stage"; stage: "assemble"; candidates: number }
+  | { type: "stage"; stage: "prerank"; kept: number }
+  | { type: "stage"; stage: "model_start"; model: string }
+  | { type: "delta"; chars: number }
+  | { type: "done"; result: SearchResponse }
+  | { type: "error"; error: string };
 
 export type SortKey = "newest" | "price_asc" | "price_desc";
 export interface MatchInfo {
@@ -32,7 +42,9 @@ export function AppShell() {
   const [search, setSearch] = useState<SearchResponse | null>(null);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<SearchProgressState>(EMPTY_PROGRESS);
   const [showHiddenGone, setShowHiddenGone] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
 
   // Location state
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
@@ -79,12 +91,18 @@ export function AppShell() {
       setSearchError(null);
       return;
     }
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
     setSearching(true);
     setSearchError(null);
+    setSearch(null);
+    setProgress(EMPTY_PROGRESS);
     try {
       const res = await fetch("/api/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           query: q,
           location: locationStatus === "granted" ? location : null,
@@ -92,25 +110,63 @@ export function AppShell() {
           includeHiddenGone: showHiddenGone,
         }),
       });
-      const data = (await res.json()) as SearchResponse;
-      if (data.error) {
-        setSearchError(data.error);
-        setSearch(null);
-      } else {
-        setSearch(data);
+      if (!res.body) throw new Error(`API error ${res.status}`);
+
+      // Consume the NDJSON stream: live stage/delta events, then done|error.
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let finished = false;
+      const handle = (event: SearchStreamEvent) => {
+        if (event.type === "stage") {
+          setProgress((p) =>
+            event.stage === "assemble"
+              ? { ...p, candidates: event.candidates }
+              : event.stage === "prerank"
+                ? { ...p, kept: event.kept }
+                : { ...p, model: event.model },
+          );
+        } else if (event.type === "delta") {
+          setProgress((p) => ({ ...p, chars: event.chars }));
+        } else if (event.type === "done") {
+          finished = true;
+          setSearch(event.result);
+        } else if (event.type === "error") {
+          finished = true;
+          setSearchError(event.error);
+        }
+      };
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let nl;
+        while ((nl = buffer.indexOf("\n")) !== -1) {
+          const line = buffer.slice(0, nl).trim();
+          buffer = buffer.slice(nl + 1);
+          if (line) handle(JSON.parse(line) as SearchStreamEvent);
+        }
       }
+      if (buffer.trim()) handle(JSON.parse(buffer.trim()) as SearchStreamEvent);
+      if (!finished) setSearchError("search stream ended unexpectedly");
     } catch (e) {
-      setSearchError(e instanceof Error ? e.message : String(e));
-      setSearch(null);
+      if (!(e instanceof DOMException && e.name === "AbortError")) {
+        setSearchError(e instanceof Error ? e.message : String(e));
+        setSearch(null);
+      }
     } finally {
-      setSearching(false);
+      if (abortRef.current === controller) {
+        setSearching(false);
+      }
     }
   }, [query, location, locationStatus, radiusMi, showHiddenGone]);
 
   const clearSearch = useCallback(() => {
+    abortRef.current?.abort();
     setQuery("");
     setSearch(null);
     setSearchError(null);
+    setSearching(false);
   }, []);
 
   const reasonById = useMemo(() => {
@@ -225,6 +281,9 @@ export function AppShell() {
           listings={displayed}
           reasons={reasonById}
           searchActive={search != null}
+          searching={searching}
+          progress={progress}
+          hasLocation={locationStatus === "granted"}
           selectedId={selectedId}
           onSelect={(id) => select(id)}
           sort={sort}

@@ -1,6 +1,10 @@
 import type { Db } from "@/db/client";
 import { listings, listingVision, userListingStates } from "@/db/schema";
-import { estimateCostUsd, type SearchClient } from "./client";
+import {
+  estimateCostUsd,
+  type SearchClient,
+  type SearchProgressHandler,
+} from "./client";
 import type { CandidateProfile } from "./schema";
 
 export interface SearchGeo {
@@ -185,9 +189,12 @@ export async function runSearch(
   db: Db,
   client: SearchClient,
   opts: SearchOptions,
+  onProgress?: SearchProgressHandler,
 ): Promise<SearchResult> {
   const allCandidates = assembleCandidates(db, opts);
+  onProgress?.({ type: "stage", stage: "assemble", candidates: allCandidates.length });
   const ranked = prerankAndCap(opts.query, allCandidates, opts.maxRank ?? DEFAULT_MAX_RANK);
+  onProgress?.({ type: "stage", stage: "prerank", kept: ranked.length });
   const base: SearchResult = {
     interpretation: "",
     intentChips: [],
@@ -201,7 +208,7 @@ export async function runSearch(
     return { ...base, interpretation: "No listings to search (try widening your radius or filters)." };
   }
 
-  const result = await client.search(opts.query, ranked);
+  const result = await client.search(opts.query, ranked, onProgress);
   base.costUsd = estimateCostUsd(result.model, result.usage);
   base.model = result.model;
   if (!result.data) {

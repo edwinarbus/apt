@@ -23,11 +23,14 @@ export function Header() {
 
   return (
     <header className="flex h-14 shrink-0 items-center gap-6 border-b border-line bg-paper/95 px-5">
-      <div className="flex items-baseline gap-2.5">
-        <span className="font-display text-[22px] font-semibold tracking-tight text-accent">
+      <div className="flex items-center gap-2.5">
+        <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-accent to-accent-deep font-display text-[15px] font-bold text-white shadow-sm">
+          A
+        </span>
+        <span className="font-display text-[22px] font-semibold tracking-tight text-ink">
           Apt
         </span>
-        <span className="hidden text-[13px] text-muted sm:block">
+        <span className="hidden self-center text-[13px] text-muted sm:block">
           San Francisco apartment scout
         </span>
       </div>

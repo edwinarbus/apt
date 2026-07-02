@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import type { ListingSummary } from "@/lib/api-types";
 import type { MatchInfo, SortKey } from "./AppShell";
+import { SearchProgress, type SearchProgressState } from "./SearchProgress";
 import {
   fmtBaths,
   fmtBeds,
@@ -17,6 +18,9 @@ export function ListingPanel({
   listings,
   reasons,
   searchActive,
+  searching,
+  progress,
+  hasLocation,
   selectedId,
   onSelect,
   sort,
@@ -25,6 +29,9 @@ export function ListingPanel({
   listings: ListingSummary[];
   reasons?: Map<string, MatchInfo>;
   searchActive?: boolean;
+  searching?: boolean;
+  progress?: SearchProgressState;
+  hasLocation?: boolean;
   selectedId: string | null;
   onSelect: (id: string) => void;
   sort: SortKey;
@@ -35,12 +42,15 @@ export function ListingPanel({
       <div className="flex items-center justify-between border-b border-line px-4 py-2.5">
         <div>
           <span className="text-sm font-semibold">
-            {listings.length} {searchActive ? "match" : "listing"}
-            {listings.length === 1 ? "" : searchActive ? "es" : "s"}
+            {searching
+              ? "Matching…"
+              : `${listings.length} ${searchActive ? "match" : "listing"}${
+                  listings.length === 1 ? "" : searchActive ? "es" : "s"
+                }`}
           </span>
           <p className="text-[11px] text-faint">
-            {searchActive
-              ? "Ranked by AI · verify details with the source before acting."
+            {searchActive || searching
+              ? "Ranked by AI · verify with the source before acting."
               : "Verify availability & terms with the source before acting."}
           </p>
         </div>
@@ -55,7 +65,9 @@ export function ListingPanel({
         </select>
       </div>
       <div className="panel-scroll min-h-0 flex-1 overflow-y-auto px-3 py-3">
-        {listings.length === 0 ? (
+        {searching ? (
+          <SearchProgress progress={progress ?? { candidates: null, kept: null, model: null, chars: 0 }} hasLocation={!!hasLocation} />
+        ) : listings.length === 0 ? (
           <p className="px-2 py-8 text-center text-sm text-faint">
             {searchActive
               ? "No listings matched your search. Try rephrasing, widening the radius, or “Show hidden & gone”."
@@ -63,11 +75,13 @@ export function ListingPanel({
           </p>
         ) : (
           <ul className="flex flex-col gap-2.5">
-            {listings.map((l) => (
+            {listings.map((l, i) => (
               <ListingCard
                 key={l.id}
                 listing={l}
                 match={reasons?.get(l.id)}
+                animateIn={searchActive}
+                index={i}
                 selected={l.id === selectedId}
                 onSelect={() => onSelect(l.id)}
               />
@@ -79,14 +93,36 @@ export function ListingPanel({
   );
 }
 
+/** Small conic-gradient ring visualizing the 0–100 AI match score. */
+function ScoreRing({ score }: { score: number }) {
+  const pct = Math.max(0, Math.min(100, score));
+  return (
+    <span
+      className="animate-pop-in relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
+      style={{
+        background: `conic-gradient(var(--color-accent) ${pct * 3.6}deg, var(--color-line) 0deg)`,
+      }}
+      title={`AI match score: ${Math.round(pct)}/100`}
+    >
+      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-surface text-[11px] font-bold text-accent-deep tabular-nums">
+        {Math.round(pct)}
+      </span>
+    </span>
+  );
+}
+
 function ListingCard({
   listing: l,
   match,
+  animateIn,
+  index,
   selected,
   onSelect,
 }: {
   listing: ListingSummary;
   match?: MatchInfo;
+  animateIn?: boolean;
+  index: number;
   selected: boolean;
   onSelect: () => void;
 }) {
@@ -109,21 +145,25 @@ function ListingCard({
       .join(" · ") || PRECISION_LABELS[l.geocodePrecision];
 
   return (
-    <li ref={ref}>
+    <li
+      ref={ref}
+      className={animateIn ? "animate-fade-up" : undefined}
+      style={animateIn ? { animationDelay: `${Math.min(index, 12) * 70}ms` } : undefined}
+    >
       <button
         type="button"
         onClick={onSelect}
-        className={`group flex w-full gap-3 rounded-xl border bg-surface p-2.5 text-left shadow-sm transition-all hover:shadow-md ${
+        className={`group flex w-full gap-3 rounded-xl border bg-surface p-2.5 text-left shadow-sm transition-all duration-200 hover:-translate-y-[1px] hover:shadow-md ${
           selected ? "border-accent ring-2 ring-accent/25" : "border-line hover:border-faint"
         } ${dimmed ? "opacity-55" : ""}`}
       >
         <PhotoImg
           src={l.primaryPhotoUrl}
           alt={l.title}
-          className="h-[92px] w-[118px] shrink-0 rounded-lg object-cover"
+          className="h-[96px] w-[118px] shrink-0 rounded-lg object-cover"
         />
         <div className="flex min-w-0 flex-1 flex-col">
-          <div className="flex items-baseline gap-1.5">
+          <div className="flex items-center gap-1.5">
             <span className="font-display text-[17px] font-semibold tracking-tight">
               {fmtMoney(price)}
             </span>
@@ -142,11 +182,8 @@ function ListingCard({
               </span>
             )}
             {match && (
-              <span
-                className="ml-auto rounded-full bg-accent-soft/60 px-1.5 py-0.5 text-[10px] font-semibold text-accent-deep"
-                title="AI match score"
-              >
-                {Math.round(match.score)}
+              <span className="ml-auto">
+                <ScoreRing score={match.score} />
               </span>
             )}
           </div>
@@ -158,8 +195,8 @@ function ListingCard({
             {l.squareFeet ? ` · ${l.squareFeet.toLocaleString()} sqft` : ""} · {location}
           </p>
           {match ? (
-            <p className="mt-1 line-clamp-2 text-[11.5px] leading-snug text-accent-deep/90">
-              ✦ {match.reason}
+            <p className="mt-1.5 line-clamp-3 rounded-lg bg-accent-soft/45 px-2 py-1.5 text-[11.5px] leading-snug text-accent-deep/95">
+              <span className="mr-0.5">✦</span> {match.reason}
             </p>
           ) : (
             <div className="mt-1">

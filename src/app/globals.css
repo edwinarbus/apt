@@ -25,6 +25,146 @@ body {
   font-feature-settings: "cv11", "ss01";
 }
 
+/* ---------- Motion ---------- */
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes pop-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  70% {
+    transform: scale(1.04);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes shimmer {
+  from {
+    background-position: -200% 0;
+  }
+  to {
+    background-position: 200% 0;
+  }
+}
+@keyframes dot-bounce {
+  0%,
+  80%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.45;
+  }
+  40% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+/* Card shuffle: each card rises to the front, tilts, and settles back. */
+@keyframes card-shuffle {
+  0%,
+  100% {
+    transform: translateX(0) rotate(var(--tilt, 0deg)) scale(1);
+  }
+  12% {
+    transform: translateX(46px) translateY(-8px) rotate(7deg) scale(1.07);
+  }
+  24% {
+    transform: translateX(0) rotate(var(--tilt, 0deg)) scale(1);
+  }
+}
+@keyframes tail-wag {
+  0%,
+  100% {
+    transform: rotate(-14deg);
+  }
+  50% {
+    transform: rotate(16deg);
+  }
+}
+@keyframes glow-ring {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(191, 78, 44, 0.16);
+  }
+  50% {
+    box-shadow: 0 0 0 7px rgba(191, 78, 44, 0.06);
+  }
+}
+
+.animate-fade-up {
+  animation: fade-up 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.animate-fade-in {
+  animation: fade-in 0.4s ease both;
+}
+.animate-pop-in {
+  animation: pop-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.animate-glow {
+  animation: glow-ring 2.6s ease-in-out infinite;
+}
+.shimmer-text {
+  background: linear-gradient(
+    90deg,
+    var(--color-muted) 40%,
+    var(--color-accent) 50%,
+    var(--color-muted) 60%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: shimmer 2.2s linear infinite;
+}
+.thinking-dot {
+  animation: dot-bounce 1.2s ease-in-out infinite;
+}
+.shuffle-card {
+  animation: card-shuffle 3.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+.wag {
+  transform-origin: 15% 85%;
+  animation: tail-wag 0.7s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-up,
+  .animate-fade-in,
+  .animate-pop-in,
+  .animate-glow,
+  .shimmer-text,
+  .thinking-dot,
+  .shuffle-card,
+  .wag {
+    animation: none !important;
+  }
+  .shimmer-text {
+    -webkit-text-fill-color: currentColor;
+    color: var(--color-muted);
+    background: none;
+  }
+}
+
 /* Slim, quiet scrollbars for the listing panel */
 .panel-scroll::-webkit-scrollbar {
   width: 8px;

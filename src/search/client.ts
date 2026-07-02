@@ -16,9 +16,22 @@ export interface SearchCallResult {
   model: string;
 }
 
+/** Live progress emitted while a search runs, for a streaming UI. */
+export type SearchProgressEvent =
+  | { type: "stage"; stage: "assemble"; candidates: number }
+  | { type: "stage"; stage: "prerank"; kept: number }
+  | { type: "stage"; stage: "model_start"; model: string }
+  | { type: "delta"; chars: number };
+
+export type SearchProgressHandler = (event: SearchProgressEvent) => void;
+
 export interface SearchClient {
   model: string;
-  search(query: string, candidates: CandidateProfile[]): Promise<SearchCallResult>;
+  search(
+    query: string,
+    candidates: CandidateProfile[],
+    onProgress?: SearchProgressHandler,
+  ): Promise<SearchCallResult>;
 }
 
 /** Search is quality-critical and low-volume, so a strong reasoning model by default. */
@@ -132,7 +145,11 @@ export class AnthropicSearchClient implements SearchClient {
     return this.clientPromise;
   }
 
-  async search(query: string, candidates: CandidateProfile[]): Promise<SearchCallResult> {
+  async search(
+    query: string,
+    candidates: CandidateProfile[],
+    onProgress?: SearchProgressHandler,
+  ): Promise<SearchCallResult> {
     let client;
     try {
       client = await this.getClient();
@@ -155,6 +172,14 @@ export class AnthropicSearchClient implements SearchClient {
         ],
         messages: [{ role: "user", content: buildSearchPrompt(query, candidates) }],
       });
+      onProgress?.({ type: "stage", stage: "model_start", model: this.model });
+      if (onProgress) {
+        let emitted = 0;
+        stream.on("text", (delta) => {
+          emitted += delta.length;
+          onProgress({ type: "delta", chars: emitted });
+        });
+      }
       const res = await stream.finalMessage();
       const u = res.usage;
       usage.inputTokens += u.input_tokens ?? 0;
