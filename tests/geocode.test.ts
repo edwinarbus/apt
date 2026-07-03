@@ -6,6 +6,7 @@ import type { Db } from "@/db/client";
 import {
   geocodeAddress,
   neighborhoodFallback,
+  normalizeStreetOrdinals,
   type GeocodeProvider,
 } from "@/core/geocode";
 import { makeListing, seedStubSource, stubSuccess, testDb } from "./helpers";
@@ -46,6 +47,19 @@ describe("geocodeAddress caching", () => {
     expect(await geocodeAddress(db, "nowhere at all", provider)).toBeNull();
     expect(await geocodeAddress(db, "nowhere at all", provider)).toBeNull();
     expect(calls).toBe(1);
+  });
+});
+
+describe("normalizeStreetOrdinals", () => {
+  it("converts spelled-out ordinal street names to digit form", () => {
+    expect(normalizeStreetOrdinals("2235 Third St")).toBe("2235 3rd St");
+    expect(normalizeStreetOrdinals("1051 Third Street")).toBe("1051 3rd Street");
+    expect(normalizeStreetOrdinals("1200 Ninth Avenue")).toBe("1200 9th Avenue");
+    expect(normalizeStreetOrdinals("45 Nineteenth Ave")).toBe("45 19th Ave");
+  });
+  it("leaves numeric and non-ordinal addresses unchanged", () => {
+    expect(normalizeStreetOrdinals("2235 3rd St")).toBe("2235 3rd St");
+    expect(normalizeStreetOrdinals("100 Main St")).toBe("100 Main St");
   });
 });
 

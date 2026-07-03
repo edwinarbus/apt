@@ -30,13 +30,34 @@ const SF_VIEWBOX = "-122.55,37.85,-122.33,37.69";
 
 let lastNominatimCall = 0;
 
+const ORDINAL_WORDS: Record<string, string> = {
+  first: "1st", second: "2nd", third: "3rd", fourth: "4th", fifth: "5th",
+  sixth: "6th", seventh: "7th", eighth: "8th", ninth: "9th", tenth: "10th",
+  eleventh: "11th", twelfth: "12th", thirteenth: "13th", fourteenth: "14th",
+  fifteenth: "15th", sixteenth: "16th", seventeenth: "17th", eighteenth: "18th",
+  nineteenth: "19th", twentieth: "20th",
+};
+
+/**
+ * Turn spelled-out ordinal street names into their digit form for geocoding:
+ * SF has "Third Street", "Ninth Avenue", etc., but OpenStreetMap indexes them
+ * as "3rd Street" / "9th Avenue" — the word form returns no result. Only the
+ * geocoder query is normalized; the stored/display address is left as written.
+ */
+export function normalizeStreetOrdinals(address: string): string {
+  return address.replace(
+    /\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|twentieth)\b/gi,
+    (m) => ORDINAL_WORDS[m.toLowerCase()] ?? m,
+  );
+}
+
 export const nominatimProvider: GeocodeProvider = async (address) => {
   const wait = 1100 - (Date.now() - lastNominatimCall);
   if (wait > 0) await new Promise((r) => setTimeout(r, wait));
   lastNominatimCall = Date.now();
 
   const url = new URL("https://nominatim.openstreetmap.org/search");
-  url.searchParams.set("q", `${address}, San Francisco, CA`);
+  url.searchParams.set("q", `${normalizeStreetOrdinals(address)}, San Francisco, CA`);
   url.searchParams.set("format", "jsonv2");
   url.searchParams.set("limit", "1");
   url.searchParams.set("countrycodes", "us");
