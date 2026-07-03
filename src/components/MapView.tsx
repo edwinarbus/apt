@@ -704,13 +704,16 @@ export function MapView({
           console.warn("[apt map] sky unavailable", err);
         }
 
-        // SF-only mask
+        // SF-only mask — fully opaque so NOTHING outside San Francisco shows
+        // (no streets, labels, buildings, or terrain relief). Moved above the
+        // base map, hillshade and buildings at the end of load so it truly
+        // covers them; only the SF hoods (its holes) remain visible.
         map.addSource("outside-sf", { type: "geojson", data: outsideSfMask() });
         map.addLayer({
           id: "outside-sf-mask",
           type: "fill",
           source: "outside-sf",
-          paint: { "fill-color": PAPER, "fill-opacity": 0.94 },
+          paint: { "fill-color": PAPER, "fill-opacity": 1 },
         });
 
         // Lift assets (hidden until a hood is isolated): satellite imagery on the
@@ -991,6 +994,15 @@ export function MapView({
         }
         map.on("moveend", () => refreshThumbsRef.current());
         map.on("zoomend", () => refreshThumbsRef.current());
+
+        // Lift the SF mask above the base map, buildings, satellite and terrain
+        // (but below the hood outlines/labels/markers) so nothing outside SF —
+        // streets, labels, buildings, hillshade — is ever visible.
+        try {
+          map.moveLayer("outside-sf-mask", "hoods-fill");
+        } catch (err) {
+          console.warn("[apt map] mask reorder failed", err);
+        }
 
         loadedRef.current = true;
         setMapLoaded(true);
