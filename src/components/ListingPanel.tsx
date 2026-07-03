@@ -114,7 +114,7 @@ export function ListingPanel({
             )}
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
-            {onOpenScout && <AutopilotButton badge={scoutBadge} onClick={onOpenScout} />}
+            {onOpenScout && <PorterButton badge={scoutBadge} onClick={onOpenScout} />}
             {onToggleSuspicious && (
               <SuspiciousToggle hideSuspicious={hideSuspicious} onToggle={onToggleSuspicious} />
             )}
@@ -138,7 +138,7 @@ export function ListingPanel({
               type="button"
               onClick={onSaveSearch}
               disabled={searchSaved}
-              title={searchSaved ? "Autopilot is watching this search" : "Save & put this search on Autopilot"}
+              title={searchSaved ? "Porter is watching this search" : "Save & put this search on Porter"}
               className={`flex shrink-0 items-center gap-1 rounded-md border px-2 py-1 text-[11.5px] font-medium transition-colors ${
                 searchSaved
                   ? "border-good/40 bg-good/10 text-good"
@@ -228,14 +228,14 @@ export function SuspiciousToggle({
   );
 }
 
-/** Icon entry to Autopilot / watched searches, with a new-match dot. */
-export function AutopilotButton({ badge, onClick }: { badge?: number; onClick: () => void }) {
+/** Icon entry to Porter / watched searches, with a new-match dot. */
+export function PorterButton({ badge, onClick }: { badge?: number; onClick: () => void }) {
   return (
     <div className="group relative">
       <button
         type="button"
         onClick={onClick}
-        aria-label="Autopilot — watched searches & applications"
+        aria-label="Porter — watched searches & applications"
         className="relative flex h-[26px] w-[26px] items-center justify-center rounded-md border border-line text-muted transition-colors hover:border-line-strong hover:text-ink"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -252,7 +252,7 @@ export function AutopilotButton({ badge, onClick }: { badge?: number; onClick: (
         role="tooltip"
         className="pointer-events-none absolute top-full right-0 z-50 mt-2 hidden w-max max-w-[214px] rounded-md border border-line-strong bg-elevated px-2.5 py-1.5 text-[11.5px] leading-snug text-muted shadow-[0_10px_28px_rgba(0,0,0,0.55)] group-hover:block"
       >
-        Autopilot — applies to new matches for you
+        Porter — applies to new matches for you
       </span>
     </div>
   );

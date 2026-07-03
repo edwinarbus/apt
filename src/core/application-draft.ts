@@ -1,5 +1,5 @@
 /**
- * Compose a rental application for a listing — the core of Autopilot's
+ * Compose a rental application for a listing — the core of Porter's
  * auto-apply. It builds the message + recipient; the app hands it to the user's
  * email client (a one-tap `mailto:` Send) so the human is always the sender.
  * This module has no transport of its own — it never sends anything itself.

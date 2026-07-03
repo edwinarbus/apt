@@ -34,7 +34,7 @@ export interface SavedSearchCriteria {
   /** The raw natural-language query this search was saved from (UX/provenance). */
   query?: string;
   /**
-   * When true, Autopilot prepares a ready-to-send application for each NEW
+   * When true, Porter prepares a ready-to-send application for each NEW
    * listing that matches, queued for the user to send in one tap.
    */
   autoApply?: boolean;

@@ -6,18 +6,18 @@ import { fmtMoney, relativeTime } from "@/lib/format";
 import { PhotoImg } from "./PhotoImg";
 
 /**
- * Autopilot — the managed agent's surface. Its core job is auto-applying:
+ * Porter — the managed agent's surface. Its core job is auto-applying:
  * every night it reviews new listings for the user's watched searches and
  * writes a ready-to-send application for each match. This panel foregrounds
  * those applications (one tap sends from the user's email) and lists the
- * searches Autopilot watches.
+ * searches Porter watches.
  */
 function mailtoHref(a: ApplicationDraftDto): string | null {
   if (!a.to || a.channel !== "email") return null;
   return `mailto:${a.to}?subject=${encodeURIComponent(a.subject)}&body=${encodeURIComponent(a.body)}`;
 }
 
-export function AutopilotPanel({
+export function PorterPanel({
   listings,
   onClose,
   onSelect,
@@ -77,7 +77,7 @@ export function AutopilotPanel({
             </svg>
           </span>
           <div className="relative min-w-0 flex-1">
-            <h2 className="text-[16px] font-semibold text-ink">Autopilot</h2>
+            <h2 className="text-[16px] font-semibold text-ink">Porter</h2>
             <p className="text-[12.5px] text-muted">
               Applies to new matches for you · runs nightly
               {lastRunAt && <> · last run {relativeTime(lastRunAt)}</>}
@@ -109,7 +109,7 @@ export function AutopilotPanel({
           ) : applications.length === 0 ? (
             <p className="rounded-lg border border-line bg-elevated/40 px-3 py-5 text-center text-[12.5px] leading-relaxed text-faint">
               Turn on <span className="font-medium text-muted">Auto-apply</span> when you save a
-              search, and Autopilot will write an application for every new match — ready here to
+              search, and Porter will write an application for every new match — ready here to
               send in one tap.
             </p>
           ) : (
@@ -159,7 +159,7 @@ export function AutopilotPanel({
           )}
 
           {/* How it works */}
-          <h3 className="mt-6 mb-2 text-[13px] font-semibold text-ink">How Autopilot works</h3>
+          <h3 className="mt-6 mb-2 text-[13px] font-semibold text-ink">How Porter works</h3>
           <ul className="flex flex-col gap-2.5">
             {[
               ["Scans every night", "Pulls new listings from all your sources, then enriches and photo-analyzes them."],
@@ -177,7 +177,7 @@ export function AutopilotPanel({
 
           <p className="mt-4 rounded-lg border border-line bg-elevated/30 px-3 py-2.5 text-[11.5px] leading-relaxed text-faint">
             Runs locally on the nightly pipeline, or in the cloud via Claude Managed Agents
-            (<code className="rounded-sm border border-line bg-elevated px-1 py-0.5 text-[10.5px] text-muted">npm run autopilot:deploy</code>).
+            (<code className="rounded-sm border border-line bg-elevated px-1 py-0.5 text-[10.5px] text-muted">npm run porter:deploy</code>).
           </p>
         </div>
       </div>

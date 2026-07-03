@@ -8,7 +8,7 @@ import { AnthropicVisionClient } from "@/vision/client";
 
 /**
  * The scheduled daily loop — the single entry point a cron/launchd job (or the
- * overnight Autopilot managed agent) runs to pick up new listings overnight:
+ * overnight Porter managed agent) runs to pick up new listings overnight:
  *
  *   ingest every enabled source  →  enrich new/changed  →  vision new/changed
  *   →  saved-search digest

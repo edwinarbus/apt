@@ -64,9 +64,9 @@ export function SaveSearchDialog({
             </svg>
           </span>
           <div className="min-w-0 flex-1">
-            <h2 className="text-[16px] font-semibold text-ink">Put this search on Autopilot</h2>
+            <h2 className="text-[16px] font-semibold text-ink">Put this search on Porter</h2>
             <p className="text-[12.5px] text-muted">
-              Autopilot checks every night and applies to new matches for you.
+              Porter checks every night and applies to new matches for you.
             </p>
           </div>
           <button
@@ -123,7 +123,7 @@ export function SaveSearchDialog({
                 Auto-apply to new matches
               </span>
               <span className="mt-0.5 block text-[12px] leading-relaxed text-muted">
-                Autopilot writes an application for every new match, ready in your queue.
+                Porter writes an application for every new match, ready in your queue.
                 <span className="text-faint"> Send it in one tap.</span>
               </span>
             </span>

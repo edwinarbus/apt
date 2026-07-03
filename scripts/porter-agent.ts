@@ -2,27 +2,27 @@ import "@/lib/load-env";
 import Anthropic from "@anthropic-ai/sdk";
 
 /**
- * Provision the overnight "Autopilot" Claude Managed Agent (beta) that picks up
+ * Provision the overnight "Porter" Claude Managed Agent (beta) that picks up
  * new listings every night, ranks them against the saved criteria, writes a
  * report, and DRAFTS (never sends) outreach.
  *
  * Architecture — a self-hosted sandbox, because Apt's data is local:
  *   • Agent loop (the judgment) runs on Anthropic's orchestration layer.
  *   • Tool execution (bash/files) runs in a container YOU control via the
- *     local worker (`npm run autopilot:worker`), so the agent runs the real
+ *     local worker (`npm run porter:worker`), so the agent runs the real
  *     `npm run daily` pipeline against your local data/apt.db and stages
  *     drafts on your machine. Nothing leaves your environment.
  *   • A scheduled deployment fires a session every night at 3am PT.
  *
  * This is create-once setup, not request-path code: it creates an environment,
  * an agent, and a scheduled deployment, then prints their IDs. Reuse them on
- * later runs via APT_AUTOPILOT_ENV_ID / APT_AUTOPILOT_AGENT_ID.
+ * later runs via APT_PORTER_ENV_ID / APT_PORTER_AGENT_ID.
  *
- *   npm run autopilot:deploy                 dry run — print the plan, call nothing
- *   npm run autopilot:deploy -- --deploy     actually create (billable; beta access)
+ *   npm run porter:deploy                 dry run — print the plan, call nothing
+ *   npm run porter:deploy -- --deploy     actually create (billable; beta access)
  *
  * Requires ANTHROPIC_API_KEY with Managed Agents beta access. After deploying,
- * run `npm run autopilot:worker` (keep it running, e.g. via launchd) so the nightly
+ * run `npm run porter:worker` (keep it running, e.g. via launchd) so the nightly
  * session has a worker to execute its tools.
  */
 
@@ -30,7 +30,7 @@ const CRON = "0 3 * * *"; // 03:00 daily
 const TIMEZONE = "America/Los_Angeles";
 const MODEL = "claude-opus-4-8";
 
-const AUTOPILOT_SYSTEM = `You are "Autopilot", the overnight research assistant for a PERSONAL, non-commercial San Francisco apartment-hunting tool. You run once a night in a sandbox that has the Apt repository, its local SQLite database (data/apt.db), and an ANTHROPIC_API_KEY.
+const PORTER_SYSTEM = `You are "Porter", the overnight research assistant for a PERSONAL, non-commercial San Francisco apartment-hunting tool. You run once a night in a sandbox that has the Apt repository, its local SQLite database (data/apt.db), and an ANTHROPIC_API_KEY.
 
 Each night:
 1. PICK UP NEW LISTINGS: run \`npm run daily\` — it ingests every enabled source, then enriches and vision-analyzes the new/changed listings, and builds the saved-search digest. If a step fails, note it and continue with what succeeded.
@@ -47,7 +47,7 @@ Hard rules — follow all:
 - Prefer running the existing npm scripts over re-implementing the pipeline. Keep reports concise and factual.`;
 
 const NIGHTLY_MESSAGE =
-  "Run tonight's Autopilot: pick up new listings (npm run daily), rank what's new against my saved searches, and for every new match on an auto-apply search prepare a complete, ready-to-send application in my queue (never send it yourself). Write the digest to data/reports/ and summarize what you found.";
+  "Run tonight's Porter: pick up new listings (npm run daily), rank what's new against my saved searches, and for every new match on an auto-apply search prepare a complete, ready-to-send application in my queue (never send it yourself). Write the digest to data/reports/ and summarize what you found.";
 
 async function main() {
   const deploy = process.argv.includes("--deploy");
@@ -60,7 +60,7 @@ async function main() {
     process.exit(1);
   }
 
-  console.log("Autopilot — overnight managed agent\n");
+  console.log("Porter — overnight managed agent\n");
   console.log(`  schedule : ${CRON}  (${TIMEZONE})  → 3:00am daily`);
   console.log(`  model    : ${MODEL}`);
   console.log(`  sandbox  : self-hosted (tools run on your local worker)`);
@@ -69,10 +69,10 @@ async function main() {
   if (!deploy) {
     console.log("Dry run — nothing was created. Re-run with --deploy to provision:");
     console.log("  1. a self-hosted environment (env_…)");
-    console.log("  2. the Autopilot agent (agent_…)");
+    console.log("  2. the Porter agent (agent_…)");
     console.log("  3. a scheduled deployment firing nightly (depl_…)");
     console.log("\nThen keep a worker running so the nightly session can execute tools:");
-    console.log("  npm run autopilot:worker");
+    console.log("  npm run porter:worker");
     return;
   }
 
@@ -80,10 +80,10 @@ async function main() {
 
   // Reuse existing resources if their IDs are provided (create once, reference
   // by ID — don't spin up duplicates on every run).
-  let environmentId = process.env.APT_AUTOPILOT_ENV_ID ?? null;
+  let environmentId = process.env.APT_PORTER_ENV_ID ?? null;
   if (!environmentId) {
     const environment = await client.beta.environments.create({
-      name: "apt-autopilot",
+      name: "apt-porter",
       config: { type: "self_hosted" },
     });
     environmentId = environment.id;
@@ -92,12 +92,12 @@ async function main() {
     console.log(`reusing environment ${environmentId}`);
   }
 
-  let agentId = process.env.APT_AUTOPILOT_AGENT_ID ?? null;
+  let agentId = process.env.APT_PORTER_AGENT_ID ?? null;
   if (!agentId) {
     const agent = await client.beta.agents.create({
-      name: "Autopilot",
+      name: "Porter",
       model: MODEL,
-      system: AUTOPILOT_SYSTEM,
+      system: PORTER_SYSTEM,
       tools: [{ type: "agent_toolset_20260401" }],
     });
     agentId = agent.id;
@@ -107,7 +107,7 @@ async function main() {
   }
 
   const deployment = await client.beta.deployments.create({
-    name: "Autopilot — nightly",
+    name: "Porter — nightly",
     agent: agentId,
     environment_id: environmentId,
     initial_events: [
@@ -121,10 +121,10 @@ async function main() {
   if (upcoming.length) console.log(`next runs: ${upcoming.slice(0, 3).join(", ")}`);
   console.log(
     "\nSave these for reuse:\n" +
-      `  export APT_AUTOPILOT_ENV_ID=${environmentId}\n` +
-      `  export APT_AUTOPILOT_AGENT_ID=${agentId}\n` +
+      `  export APT_PORTER_ENV_ID=${environmentId}\n` +
+      `  export APT_PORTER_AGENT_ID=${agentId}\n` +
       "\nNow keep a worker running so the nightly session can execute its tools:\n" +
-      "  npm run autopilot:worker\n" +
+      "  npm run porter:worker\n" +
       "\nTest it now without waiting for 3am:\n" +
       `  the deployment can be run manually from the API (deployments.run(${deployment.id})).`,
   );

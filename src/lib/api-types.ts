@@ -111,7 +111,7 @@ export interface SearchResponse {
   error: string | null;
 }
 
-/** A rental application Autopilot has prepared for a match, ready to send. */
+/** A rental application Porter has prepared for a match, ready to send. */
 export interface ApplicationDraftDto {
   listingId: string;
   listingTitle: string | null;
@@ -138,7 +138,7 @@ export interface SavedSearchDto {
   newMatchCount: number;
   /** ids of the freshest new matches (for the "while you were away" surface) */
   newMatchIds: string[];
-  /** for auto-apply searches, applications Autopilot has prepared for new matches */
+  /** for auto-apply searches, applications Porter has prepared for new matches */
   applications: ApplicationDraftDto[];
 }
 

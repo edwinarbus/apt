@@ -15,9 +15,9 @@ import type { UserListingStatus } from "@/core/types";
 import { SearchBar, type LocationStatus } from "./SearchBar";
 import { EMPTY_PROGRESS, type SearchProgressState } from "./SearchProgress";
 import { MapView } from "./MapView";
-import { AutopilotButton, ListingPanel, SortSelect, listingCountLabel } from "./ListingPanel";
+import { PorterButton, ListingPanel, SortSelect, listingCountLabel } from "./ListingPanel";
 import { ListingDetail } from "./ListingDetail";
-import { AutopilotPanel } from "./AutopilotPanel";
+import { PorterPanel } from "./PorterPanel";
 import { SaveSearchDialog } from "./SaveSearchDialog";
 import { WelcomeBackModal } from "./WelcomeBackModal";
 import type { SavedSearchDto } from "@/lib/api-types";
@@ -506,7 +506,7 @@ export function AppShell() {
       )}
 
       {scoutOpen && (
-        <AutopilotPanel
+        <PorterPanel
           listings={listings ?? []}
           onClose={() => setScoutOpen(false)}
           onSelect={(id) => select(id)}
@@ -617,7 +617,7 @@ function MobileDrawer({
             </button>
           )}
           {open && <SortSelect sort={sort} searchActive={searchActive} onSortChange={onSortChange} />}
-          {open && onOpenScout && <AutopilotButton badge={scoutBadge} onClick={onOpenScout} />}
+          {open && onOpenScout && <PorterButton badge={scoutBadge} onClick={onOpenScout} />}
           <button
             type="button"
             onClick={onToggle}
