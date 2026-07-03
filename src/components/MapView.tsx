@@ -171,6 +171,7 @@ function hoodRevealMask(name: string | null): GeoJSON.Feature {
  * header, so a direct fetch is blocked and the canvas re-encode fails. */
 const DEM_PROXY = "/api/dem";
 const demTileCache = new Map<string, ArrayBuffer>();
+const demTileInflight = new Map<string, Promise<ArrayBuffer>>();
 let demProtocolRegistered = false;
 
 function tile2lat(y: number, z: number): number {
@@ -178,14 +179,27 @@ function tile2lat(y: number, z: number): number {
   return (180 / Math.PI) * Math.atan(Math.sinh(n));
 }
 
-function registerDemProtocol() {
-  if (demProtocolRegistered) return;
-  demProtocolRegistered = true;
-  maplibregl.addProtocol("aptdem", async (params) => {
-    const m = /^aptdem:\/\/([^/]*)\/(\d+)\/(\d+)\/(\d+)\.png$/.exec(params.url);
-    if (!m) throw new Error(`bad aptdem url: ${params.url}`);
-    const cached = demTileCache.get(params.url);
-    if (cached) return { data: cached };
+function lat2tileY(lat: number, z: number): number {
+  const rad = (lat * Math.PI) / 180;
+  return Math.floor(
+    ((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * 2 ** z,
+  );
+}
+
+/**
+ * Fetch + boost one aptdem tile, memoized. Shared by the map protocol and the
+ * lift preloader (below), with in-flight dedup so a preload and the terrain
+ * source requesting the same tile don't both re-encode it.
+ */
+function processDemTile(url: string): Promise<ArrayBuffer> {
+  const cached = demTileCache.get(url);
+  if (cached) return Promise.resolve(cached);
+  const inflight = demTileInflight.get(url);
+  if (inflight) return inflight;
+
+  const job = (async () => {
+    const m = /^aptdem:\/\/([^/]*)\/(\d+)\/(\d+)\/(\d+)\.png$/.exec(url);
+    if (!m) throw new Error(`bad aptdem url: ${url}`);
     const hoodName = decodeURIComponent(m[1]);
     const z = Number(m[2]);
     const x = Number(m[3]);
@@ -197,8 +211,8 @@ function registerDemProtocol() {
 
     const hood = hoodName === "none" ? undefined : hoodByName(hoodName);
     if (!hood) {
-      demTileCache.set(params.url, buf);
-      return { data: buf };
+      demTileCache.set(url, buf);
+      return buf;
     }
     // Skip tiles that don't overlap the hood at all.
     const n = 2 ** z;
@@ -208,8 +222,8 @@ function registerDemProtocol() {
     const latS = tile2lat(y + 1, z);
     const [[bw, bs], [be, bn]] = multiPolygonBounds(hood.geometry.coordinates);
     if (lngE < bw || lngW > be || latN < bs || latS > bn) {
-      demTileCache.set(params.url, buf);
-      return { data: buf };
+      demTileCache.set(url, buf);
+      return buf;
     }
 
     try {
@@ -260,16 +274,104 @@ function registerDemProtocol() {
       );
       if (!blob) throw new Error("toBlob null");
       const out = await blob.arrayBuffer();
-      demTileCache.set(params.url, out);
-      return { data: out };
+      demTileCache.set(url, out);
+      return out;
     } catch (err) {
       // Never let a re-encode failure error the whole terrain source: fall back
       // to the true-elevation tile so the map stays intact.
       console.warn("[apt map] dem boost re-encode failed; using raw tile", err);
-      demTileCache.set(params.url, buf);
-      return { data: buf };
+      demTileCache.set(url, buf);
+      return buf;
     }
+  })();
+
+  demTileInflight.set(url, job);
+  return job.finally(() => demTileInflight.delete(url));
+}
+
+function registerDemProtocol() {
+  if (demProtocolRegistered) return;
+  demProtocolRegistered = true;
+  maplibregl.addProtocol("aptdem", async (params) => ({
+    data: await processDemTile(params.url),
+  }));
+}
+
+const SAT_TILE_URL = (z: number, x: number, y: number) =>
+  `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`;
+
+/** Tile x/y range covering a hood's bbox at a zoom, clamped to the world. */
+function hoodTileRange(
+  hood: HoodFeature,
+  zoom: number,
+): Array<[number, number, number]> {
+  const [[bw, bs], [be, bn]] = multiPolygonBounds(hood.geometry.coordinates);
+  const n = 2 ** zoom;
+  const xMin = Math.max(0, Math.floor(((bw + 180) / 360) * n));
+  const xMax = Math.min(n - 1, Math.floor(((be + 180) / 360) * n));
+  const yMin = Math.max(0, lat2tileY(bn, zoom));
+  const yMax = Math.min(n - 1, lat2tileY(bs, zoom));
+  const out: Array<[number, number, number]> = [];
+  for (let x = xMin; x <= xMax; x++) {
+    for (let y = yMin; y <= yMax; y++) out.push([zoom, x, y]);
+  }
+  return out;
+}
+
+function warmImage(url: string): Promise<void> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve();
+    img.onerror = () => resolve();
+    img.referrerPolicy = "no-referrer";
+    img.src = url;
   });
+}
+
+/** Run best-effort jobs with a concurrency cap; never rejects. */
+async function runLimited(jobs: Array<() => Promise<unknown>>, limit: number) {
+  let i = 0;
+  const worker = async () => {
+    while (i < jobs.length) {
+      const job = jobs[i++];
+      try {
+        await job();
+      } catch {
+        /* preload is best-effort */
+      }
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(limit, jobs.length) }, worker),
+  );
+}
+
+/**
+ * Warm the boosted DEM tiles (canvas re-encode) and Esri satellite tiles a
+ * lifted neighborhood needs, so the visible rise doesn't stutter while they
+ * stream in. Best-effort and bounded; resolves when warm (or the set is empty).
+ */
+async function preloadHoodLift(hoodName: string): Promise<void> {
+  const hood = hoodByName(hoodName);
+  if (!hood) return;
+  const jobs: Array<() => Promise<unknown>> = [];
+  // Boosted DEM: the source is capped at z12, so warm z10–12.
+  for (const z of [10, 11, 12]) {
+    for (const [zz, x, y] of hoodTileRange(hood, z)) {
+      const url = `aptdem://${encodeURIComponent(hoodName)}/${zz}/${x}/${y}.png`;
+      jobs.push(() => processDemTile(url));
+    }
+  }
+  // Satellite imagery revealed on the plateau, at the swoop's end zoom.
+  const satJobs: Array<() => Promise<unknown>> = [];
+  for (const z of [13, 14]) {
+    for (const [zz, x, y] of hoodTileRange(hood, z)) {
+      satJobs.push(() => warmImage(SAT_TILE_URL(zz, x, y)));
+    }
+  }
+  // Bail on pathologically large sets rather than hammering the network.
+  if (jobs.length + satJobs.length > 130) return;
+  await runLimited([...jobs, ...satJobs], 8);
 }
 
 function demTilesUrl(hoodName: string | null): string {
@@ -1148,12 +1250,19 @@ export function MapView({
     // outline emphasis, dots↔thumbnails). Split out so the descent can defer it
     // to the end of the fall instead of yanking the imagery before it lowers.
     const applyLayers = (activeHood: string | null) => {
+      // Selected outline: hide it while lifted. A bright boundary line draped
+      // over the raised block jags/smears down the vertical cliff faces (the
+      // "bleed"); the physically raised plateau is highlight enough on its own.
       map.setFilter("hood-selected-line", ["==", ["get", "name"], activeHood ?? "__none__"]);
+      map.setPaintProperty("hood-selected-line", "line-opacity", activeHood ? 0 : 0.95);
       (map.getSource("hood-reveal") as GeoJSONSource | undefined)?.setData(
         hoodRevealMask(activeHood),
       );
       map.setLayoutProperty("hood-satellite", "visibility", activeHood ? "visible" : "none");
       map.setLayoutProperty("hood-reveal-mask", "visibility", activeHood ? "visible" : "none");
+      // Drop the selected hood from the flat outline grid too, so its own
+      // boundary doesn't drape the cliff; neighbors keep their subtle lines.
+      map.setFilter("hoods-line", activeHood ? ["!=", ["get", "name"], activeHood] : null);
       map.setPaintProperty("hoods-line", "line-opacity", activeHood ? 0.22 : 0.45);
       // The broad glow smears down the raised cliff face — hide it while lifted.
       map.setPaintProperty("hoods-line-glow", "line-opacity", activeHood ? 0 : 0.1);
@@ -1183,25 +1292,35 @@ export function MapView({
         swapTerrain(map, selectedHood, motionOk ? RISE_START : TERRAIN_EXAGGERATION);
         refreshThumbsRef.current();
         if (motionOk) {
-          const start = performance.now();
-          const DELAY = 260; // let the re-encoded tiles begin loading first
           const DURATION = 1200;
-          const rise = (t: number) => {
-            const k = Math.max(0, Math.min(1, (t - start - DELAY) / DURATION));
-            const eased = 1 - Math.pow(1 - k, 3);
-            // Mutate the live Terrain instance + repaint instead of calling
-            // map.setTerrain() every frame — that reconstructs the whole terrain
-            // engine (new Terrain + RenderToTexture) per frame and drops the lift
-            // to ~9fps. In-place exaggeration ramps at ~60fps.
-            const terrain = map.terrain as { exaggeration: number } | undefined;
-            if (!terrain) return;
-            terrain.exaggeration = RISE_START + (TERRAIN_EXAGGERATION - RISE_START) * eased;
-            map.triggerRepaint();
-            if (k < 1 && selectedHoodRef.current === selectedHood) {
-              riseRafRef.current = requestAnimationFrame(rise);
-            }
+          const MAX_WAIT = 900; // start anyway if the network stalls
+          let started = false;
+          const startRamp = () => {
+            if (started || selectedHoodRef.current !== selectedHood) return;
+            started = true;
+            const start = performance.now();
+            const rise = (t: number) => {
+              const k = Math.max(0, Math.min(1, (t - start) / DURATION));
+              const eased = 1 - Math.pow(1 - k, 3);
+              // Mutate the live Terrain instance + repaint instead of calling
+              // map.setTerrain() every frame — that reconstructs the whole terrain
+              // engine (new Terrain + RenderToTexture) per frame and drops the lift
+              // to ~9fps. In-place exaggeration ramps at ~60fps.
+              const terrain = map.terrain as { exaggeration: number } | undefined;
+              if (!terrain) return;
+              terrain.exaggeration = RISE_START + (TERRAIN_EXAGGERATION - RISE_START) * eased;
+              map.triggerRepaint();
+              if (k < 1 && selectedHoodRef.current === selectedHood) {
+                riseRafRef.current = requestAnimationFrame(rise);
+              }
+            };
+            riseRafRef.current = requestAnimationFrame(rise);
           };
-          riseRafRef.current = requestAnimationFrame(rise);
+          // Warm the boosted DEM + satellite tiles first, then ramp — so the
+          // visible rise is hitch-free instead of stuttering as tiles stream in.
+          // The cap keeps a slow network from holding the lift hostage.
+          preloadHoodLift(selectedHood).then(startRamp, startRamp);
+          window.setTimeout(startRamp, MAX_WAIT);
         }
       } else {
         // ── THE DESCENT ── keep the plateau + imagery up and ramp exaggeration
