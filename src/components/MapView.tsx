@@ -415,8 +415,8 @@ function makePhotoCardElement(
     img.referrerPolicy = "no-referrer";
     img.loading = "lazy";
     img.decoding = "async";
-    img.width = 148;
-    img.height = 82;
+    img.width = 210;
+    img.height = 112;
     img.onerror = () => frame.classList.add("no-photo");
     img.src = l.primaryPhotoUrl;
     frame.appendChild(img);
