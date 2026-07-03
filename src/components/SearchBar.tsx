@@ -26,9 +26,14 @@ function getSpeechCtor(): SpeechRecognitionCtor | null {
 
 export type LocationStatus = "idle" | "prompting" | "granted" | "denied" | "unavailable";
 
-const RADII = [1, 2, 5, 10, 25];
 const PLACEHOLDER = "Search apartments — try “studios near Japantown”";
 
+/**
+ * The app header: the brand mark and the search field are one bar. Everything
+ * else (location, radius, hidden toggle, isolated-hood chip) was removed as
+ * chrome — search runs SF-wide, and an isolated neighborhood is cleared by
+ * clicking the map or pressing Escape.
+ */
 export function SearchBar({
   query,
   onQueryChange,
@@ -37,15 +42,6 @@ export function SearchBar({
   searching,
   searchError,
   search,
-  location,
-  locationStatus,
-  onRequestLocation,
-  radiusMi,
-  onRadiusChange,
-  showHiddenGone,
-  onToggleHiddenGone,
-  selectedHood,
-  onClearHood,
 }: {
   query: string;
   onQueryChange: (q: string) => void;
@@ -54,15 +50,6 @@ export function SearchBar({
   searching: boolean;
   searchError: string | null;
   search: SearchResponse | null;
-  location: { lat: number; lng: number } | null;
-  locationStatus: LocationStatus;
-  onRequestLocation: () => void;
-  radiusMi: number;
-  onRadiusChange: (mi: number) => void;
-  showHiddenGone: boolean;
-  onToggleHiddenGone: () => void;
-  selectedHood: string | null;
-  onClearHood: () => void;
 }) {
   const [listening, setListening] = useState(false);
   const [micSupported, setMicSupported] = useState(false);
@@ -114,17 +101,33 @@ export function SearchBar({
   };
 
   const hasSearch = search != null;
-  const locGranted = locationStatus === "granted" && location != null;
-  const locLabel =
-    locationStatus === "prompting" ? "Locating…"
-    : locGranted ? "Near you"
-    : locationStatus === "denied" ? "SF center"
-    : "Use location";
 
   return (
-    <div className="flex flex-col overflow-hidden rounded-lg border border-line bg-surface/95 shadow-[0_8px_28px_rgba(0,0,0,0.4)]">
-      {/* Primary input */}
-      <div className="flex items-center gap-2 px-2.5 py-2">
+    <div className="overflow-hidden rounded-xl border border-line bg-surface/92 shadow-[0_10px_34px_rgba(0,0,0,0.46)] backdrop-blur-md">
+      <div className="flex items-center gap-2.5 px-3 py-2">
+        {/* Brand mark */}
+        <div className="flex shrink-0 items-center gap-1.5">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+            <path
+              d="M12 21c4.2-4.6 7-8 7-11a7 7 0 1 0-14 0c0 3 2.8 6.4 7 11Z"
+              fill="var(--color-accent)"
+              fillOpacity="0.16"
+              stroke="var(--color-accent)"
+              strokeWidth="1.6"
+              strokeLinejoin="round"
+            />
+            <circle cx="12" cy="10" r="2.4" fill="var(--color-accent)" />
+          </svg>
+          <span
+            className="text-[19px] leading-none font-bold tracking-[-0.02em] text-ink"
+            style={{ fontFamily: "var(--font-brand)" }}
+          >
+            Apt
+          </span>
+        </div>
+
+        <span aria-hidden className="h-5 w-px shrink-0 bg-line" />
+
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden className="shrink-0 text-faint">
           <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.8" />
           <path d="M20 20l-3.5-3.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
@@ -138,6 +141,18 @@ export function SearchBar({
           spellCheck={false}
           className="max-h-24 min-h-[24px] flex-1 resize-none self-center bg-transparent py-1 text-[14px] leading-snug text-ink outline-none placeholder:text-faint"
         />
+        {(hasSearch || query) && (
+          <button
+            type="button"
+            onClick={onClear}
+            aria-label="Clear search"
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-faint transition-colors hover:bg-elevated hover:text-muted"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+              <path d="M6 6l12 12M18 6L6 18" />
+            </svg>
+          </button>
+        )}
         {micSupported && (
           <button
             type="button"
@@ -175,85 +190,10 @@ export function SearchBar({
         </button>
       </div>
 
-      {/* Controls */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-line px-2.5 py-1.5 text-[12px] text-muted">
-        <button
-          type="button"
-          onClick={onRequestLocation}
-          disabled={locationStatus === "prompting"}
-          className={`inline-flex items-center gap-1.5 transition-colors ${
-            locGranted ? "text-ink" : "hover:text-ink"
-          }`}
-          title={locGranted ? "Search anchored near you" : "Anchor search to your location"}
-        >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden>
-            <circle cx="12" cy="10" r="3" stroke="currentColor" strokeWidth="1.8" />
-            <path d="M12 21c4-4.5 7-8 7-11a7 7 0 1 0-14 0c0 3 3 6.5 7 11Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-          </svg>
-          {locLabel}
-        </button>
-        <label className="inline-flex items-center gap-1.5">
-          <span className="text-faint">Radius</span>
-          <select
-            value={radiusMi}
-            onChange={(e) => onRadiusChange(Number(e.target.value))}
-            disabled={!locGranted}
-            className="rounded border border-line bg-elevated px-1.5 py-0.5 text-ink outline-none focus:border-line-strong disabled:opacity-40"
-          >
-            {RADII.map((r) => (
-              <option key={r} value={r}>{r} mi</option>
-            ))}
-          </select>
-        </label>
-        <button
-          type="button"
-          onClick={onToggleHiddenGone}
-          aria-pressed={showHiddenGone}
-          className={`transition-colors ${showHiddenGone ? "text-ink" : "text-muted hover:text-ink"}`}
-          title="Include hidden, not-a-fit, and likely-unavailable listings"
-        >
-          {showHiddenGone ? "✓ " : ""}Show hidden
-        </button>
-        {selectedHood && (
-          <button
-            type="button"
-            onClick={onClearHood}
-            className="inline-flex items-center gap-1 rounded border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-[11.5px] font-medium text-accent transition-colors hover:bg-accent/15"
-            title="Clear isolated neighborhood"
-          >
-            {selectedHood}
-            <span aria-hidden className="text-accent/70">✕</span>
-          </button>
-        )}
-        {(hasSearch || query) && (
-          <button
-            type="button"
-            onClick={onClear}
-            className="ml-auto text-faint transition-colors hover:text-muted"
-          >
-            Clear
-          </button>
-        )}
-      </div>
-
       {searchError && (
-        <p className="animate-fade-up border-t border-alert/25 bg-alert/8 px-2.5 py-1.5 text-[12px] text-alert">
+        <p className="animate-fade-up border-t border-alert/25 bg-alert/8 px-3 py-1.5 text-[12px] text-alert">
           {searchError}
         </p>
-      )}
-
-      {/* Parsed filters — clean chips, no model/prose. */}
-      {hasSearch && !searchError && search!.intentChips.length > 0 && (
-        <div className="animate-fade-up flex flex-wrap items-center gap-1 border-t border-line px-2.5 py-2">
-          {search!.intentChips.map((chip) => (
-            <span
-              key={chip}
-              className="rounded border border-line-strong bg-elevated px-1.5 py-0.5 text-[11.5px] text-muted"
-            >
-              {chip}
-            </span>
-          ))}
-        </div>
       )}
     </div>
   );

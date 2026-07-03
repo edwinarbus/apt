@@ -1,12 +1,20 @@
 import type { Metadata, Viewport } from "next";
-import { IBM_Plex_Mono, Inter } from "next/font/google";
+import { IBM_Plex_Mono, Inter, Space_Grotesk } from "next/font/google";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./globals.css";
-import { Header } from "@/components/Header";
 
 const inter = Inter({
   variable: "--font-inter",
   subsets: ["latin"],
+  display: "swap",
+});
+
+// The brand wordmark ("Apt") — a distinct geometric display face so the mark
+// reads as a considered logo, not just bold UI text.
+const spaceGrotesk = Space_Grotesk({
+  variable: "--font-brand",
+  subsets: ["latin"],
+  weight: ["500", "600", "700"],
   display: "swap",
 });
 
@@ -19,7 +27,7 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Apt Scout — SF rental radar",
+  title: "Apt — SF rental radar",
   description:
     "Private San Francisco rental radar. Monitors sources, normalizes and dedupes listings, tracks price and availability. Always verify with the original listing.",
 };
@@ -40,11 +48,10 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${plexMono.variable} h-full antialiased`}
+      className={`${inter.variable} ${plexMono.variable} ${spaceGrotesk.variable} h-full antialiased`}
     >
-      <body className="flex h-[100dvh] min-h-0 flex-col overflow-hidden">
-        <Header />
-        <main className="min-h-0 flex-1">{children}</main>
+      <body className="h-[100dvh] min-h-0 overflow-hidden">
+        <main className="h-full min-h-0">{children}</main>
       </body>
     </html>
   );

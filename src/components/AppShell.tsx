@@ -45,13 +45,15 @@ export function AppShell() {
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [progress, setProgress] = useState<SearchProgressState>(EMPTY_PROGRESS);
-  const [showHiddenGone, setShowHiddenGone] = useState(false);
+  // Hidden/unavailable listings stay filtered out (the toggle was removed as
+  // chrome); search still anchors to the browser location when it's granted.
+  const showHiddenGone = false;
+  const radiusMi = 10;
   const abortRef = useRef<AbortController | null>(null);
 
   // Location state
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locationStatus, setLocationStatus] = useState<LocationStatus>("idle");
-  const [radiusMi, setRadiusMi] = useState(10);
 
   // Neighborhood isolate (click a hood polygon on the map)
   const [selectedHood, setSelectedHood] = useState<string | null>(null);
@@ -303,9 +305,9 @@ export function AppShell() {
         />
       </div>
 
-      {/* Command module — pinned top-left, kept clear of the results rail */}
+      {/* App header — brand + search, one bar; kept clear of the results rail */}
       <div className="pointer-events-none absolute top-3 right-3 left-3 z-20 md:right-[404px]">
-        <div className="pointer-events-auto max-w-[520px]">
+        <div className="pointer-events-auto">
           <SearchBar
             query={query}
             onQueryChange={setQuery}
@@ -314,15 +316,6 @@ export function AppShell() {
             searching={searching}
             searchError={searchError}
             search={search}
-            location={location}
-            locationStatus={locationStatus}
-            onRequestLocation={requestLocation}
-            radiusMi={radiusMi}
-            onRadiusChange={setRadiusMi}
-            showHiddenGone={showHiddenGone}
-            onToggleHiddenGone={() => setShowHiddenGone((v) => !v)}
-            selectedHood={selectedHood}
-            onClearHood={() => setSelectedHood(null)}
           />
         </div>
       </div>

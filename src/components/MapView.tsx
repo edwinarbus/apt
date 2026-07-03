@@ -39,7 +39,7 @@ const ACCENT = "#47aede"; // interaction: selection, search targets, scan
 const HOOD = "#4a90b8"; // neighborhood geometry — controlled steel-cyan
 const HALO = "#06090f"; // marker stroke = background, for a crisp cut-out edge
 /** How far a selected neighborhood is raised out of the map (baked into the DEM). */
-const HOOD_BOOST_M = 105;
+const HOOD_BOOST_M = 88;
 const TERRAIN_EXAGGERATION = 1.35;
 
 // Clusters are aggregates of mixed status → neutral graphite, denser = lighter.
@@ -250,15 +250,11 @@ function processDemTile(url: string): Promise<ArrayBuffer> {
         }
       }
       mctx.fill("evenodd");
-      // Feather the boost INWARD only: the boost is full in the interior and
-      // ramps to zero AT the polygon edge, so the sides are a smooth slope (no
-      // sawtooth) and the satellite→dark reveal lands on flat ground.
-      mctx.globalCompositeOperation = "destination-out";
-      mctx.filter = "blur(2.5px)";
-      mctx.lineWidth = 4;
-      mctx.stroke();
-      mctx.globalCompositeOperation = "source-over";
-      mctx.filter = "none";
+      // Hard-edged mask (no inward feather): the boost is applied at full value
+      // right up to the polygon boundary, so the neighborhood reads as a slab
+      // cleanly cut out and lifted — a near-vertical wall, not a tapered skirt.
+      // The exact top edge is defined by the satellite reveal mask + the
+      // highlight outline, so the crisp cut stays polygon-accurate.
       const mask = mctx.getImageData(0, 0, 256, 256).data;
 
       for (let i = 0; i < d.length; i += 4) {
@@ -860,7 +856,7 @@ export function MapView({
           source: "hoods",
           filter: ["==", ["get", "name"], "__none__"],
           layout: { "line-join": "round" },
-          paint: { "line-color": "#59c8f2", "line-width": 8, "line-opacity": 0, "line-blur": 5 },
+          paint: { "line-color": "#6bd0f0", "line-width": 6, "line-opacity": 0, "line-blur": 4 },
         });
         map.addLayer({
           id: "hood-selected-line",
@@ -1145,9 +1141,13 @@ export function MapView({
     // dots off (the hood's listings show as pills that ride the plateau), the
     // outline hidden — the raised block is the highlight.
     const applyLayers = (activeHood: string | null) => {
-      map.setFilter("hood-selected-line", ["==", ["get", "name"], activeHood ?? "__none__"]);
-      map.setPaintProperty("hood-selected-line", "line-opacity", 0);
-      map.setPaintProperty("hood-selected-glow", "line-opacity", 0);
+      const hoodFilter = ["==", ["get", "name"], activeHood ?? "__none__"] as never;
+      // Highlight the cut edge: a bright rim + soft glow that drapes onto the
+      // raised top edge of the lifted slab, tracing the clean cut-out.
+      map.setFilter("hood-selected-line", hoodFilter);
+      map.setFilter("hood-selected-glow", hoodFilter);
+      map.setPaintProperty("hood-selected-line", "line-opacity", activeHood ? 0.95 : 0);
+      map.setPaintProperty("hood-selected-glow", "line-opacity", activeHood ? 0.6 : 0);
       (map.getSource("hood-reveal") as GeoJSONSource | undefined)?.setData(hoodRevealMask(activeHood));
       map.setLayoutProperty("hood-satellite", "visibility", activeHood ? "visible" : "none");
       map.setLayoutProperty("hood-reveal-mask", "visibility", activeHood ? "visible" : "none");
