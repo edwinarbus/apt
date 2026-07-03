@@ -5,7 +5,7 @@ import {
   parsePrice,
   parseSquareFeet,
 } from "@/core/normalize";
-import { matchNeighborhood } from "@/core/neighborhoods";
+import { isSfLocation } from "@/core/neighborhoods";
 import type { NormalizedListing } from "@/core/types";
 import type { AdapterContext, AdapterRunResult, SourceAdapter } from "./types";
 import { emptyRunResult } from "./types";
@@ -40,14 +40,37 @@ function stripHtml(html: string): string {
   return decodeEntities(html.replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
 }
 
-/** The listing rent is only on the server-rendered detail page (`rent_amt`). */
-function extractRentFromDetail(html: string): number | null {
-  const m =
+/**
+ * Rent, beds, and baths live only on the server-rendered detail page — the WP
+ * API omits them. Rent is in `rent_amt`; beds/baths are in the Easy Property
+ * Listings meta block (`<span title="Bedrooms" …><span class="icon-value">3…`),
+ * which is authoritative and handles half-baths ("1.5"). The agency's own office
+ * page has none of these, so a null price is the signal that a post isn't a real
+ * rental.
+ */
+function extractDetailFacts(html: string): {
+  rent: number | null;
+  beds: number | null;
+  baths: number | null;
+} {
+  const rentM =
     html.match(/rent_amt"[^>]*>\s*\$?\s*([\d,]+)/i) ??
     html.match(/class="[^"]*\bprice\b[^"]*"[^>]*>\s*\$?\s*([\d,]+)/i);
-  if (!m) return null;
-  const n = parsePrice(m[1]);
-  return n != null && n >= 800 && n <= 40000 ? n : null;
+  let rent = rentM ? parsePrice(rentM[1]) : null;
+  if (rent != null && (rent < 800 || rent > 40000)) rent = null;
+
+  const metaNum = (label: string): number | null => {
+    const m = html.match(
+      new RegExp(
+        `title="${label}"[^>]*>\\s*<span[^>]*class="icon-value"[^>]*>\\s*([\\d.]+)`,
+        "i",
+      ),
+    );
+    if (!m) return null;
+    const n = Number(m[1]);
+    return Number.isFinite(n) && n >= 0 && n < 20 ? n : null;
+  };
+  return { rent, beds: metaNum("Bedrooms"), baths: metaNum("Bathrooms") };
 }
 
 interface RentalPost {
@@ -64,6 +87,14 @@ interface RentalPost {
 export function buildListingFromRental(post: RentalPost): NormalizedListing | null {
   const link = post.link?.trim();
   if (!link || post.status === "trash") return null;
+
+  // The brokerage also lists Marin/Peninsula rentals; this is an SF-only app.
+  // The permalink slug ends in the locality ("…-outer-richmond-san-francisco",
+  // "…-greenbrae"), so de-slug the tail and keep only San Francisco addresses.
+  const localityText = (link.replace(/\/+$/, "").split("/").pop() ?? "")
+    .replace(/^\d+-/, "")
+    .replace(/-/g, " ");
+  if (!isSfLocation(localityText)) return null;
 
   const title = decodeEntities(post.title?.rendered ?? "").trim();
   const body = stripHtml(post.content?.rendered ?? post.excerpt?.rendered ?? "");
@@ -88,8 +119,10 @@ export function buildListingFromRental(post: RentalPost): NormalizedListing | nu
   const bathText = haystack.match(/(\d+(?:\.\d)?)\s*(?:full\s+)?(?:bath|ba\b|bathroom)/i)?.[0] ?? null;
   const sqftText = haystack.match(/([\d,]{3,5})\s*(?:sq\.?\s?ft|sqft|square\s?f)/i)?.[0] ?? null;
 
-  const neighborhood = matchNeighborhood(haystack)?.name ?? null;
-
+  // These posts are address-only; the description freely name-drops *other*
+  // neighborhoods ("minutes to the Financial District"), which fooled a prose
+  // match. Leave the neighborhood null and let the geocoder + polygon reverse-
+  // lookup assign the one the address actually sits in.
   const photo = post._embedded?.["wp:featuredmedia"]?.[0]?.source_url ?? null;
 
   return {
@@ -101,8 +134,8 @@ export function buildListingFromRental(post: RentalPost): NormalizedListing | nu
     rawDescription: body || null,
     // The title is the street address for this source.
     addressRaw: title || null,
-    neighborhood,
-    sourceNeighborhoodRaw: neighborhood,
+    neighborhood: null,
+    sourceNeighborhoodRaw: null,
     city: "San Francisco",
     state: "CA",
     latitude: null,
@@ -162,22 +195,30 @@ export const rentalsInSfAdapter: SourceAdapter = {
     for (const post of posts) {
       const listing = buildListingFromRental(post);
       if (!listing || bySourceId.has(listing.sourceListingId)) continue;
+      // The agency's own "Rentals In SF!" office page rides the same feed —
+      // it's not an apartment. Drop it by brand title (and, below, by no price).
+      if (/^rentals\s+in\s+sf\b/i.test(listing.title)) continue;
 
-      // The rent isn't in the API — fetch the detail page for it (and mark the
-      // listing detail-depth). Skip unchanged listings we already have a price
-      // for to stay polite.
+      // Rent + beds/baths are only on the detail page (the API omits them), so
+      // fetch it within the polite budget and let those structured facts win
+      // over the best-effort prose parse.
       const known = ctx.knownListings.get(listing.sourceListingId);
-      const needsDetail =
-        result.detailPagesVisited < budget &&
-        (known == null || known.priceMonthly == null);
-      if (needsDetail) {
+      if (result.detailPagesVisited < budget) {
         const detailRes = await ctx.fetcher.fetchText(listing.originalUrl);
         result.detailPagesVisited++;
         if (detailRes.ok) {
-          const rent = extractRentFromDetail(detailRes.text);
-          if (rent != null) {
-            listing.priceMonthly = rent;
-            listing.priceRaw = `$${rent.toLocaleString()}/mo`;
+          const f = extractDetailFacts(detailRes.text);
+          if (f.rent != null) {
+            listing.priceMonthly = f.rent;
+            listing.priceRaw = `$${f.rent.toLocaleString()}/mo`;
+          }
+          if (f.beds != null) {
+            listing.bedrooms = f.beds;
+            listing.bedroomsRaw = f.beds === 0 ? "studio" : `${f.beds} bd`;
+          }
+          if (f.baths != null) {
+            listing.bathrooms = f.baths;
+            listing.bathroomsRaw = `${f.baths} ba`;
           }
         } else {
           result.detailFetchFailures++;
@@ -186,6 +227,10 @@ export const rentalsInSfAdapter: SourceAdapter = {
       } else if (known?.priceMonthly != null) {
         listing.priceMonthly = known.priceMonthly;
       }
+
+      // A real listing always posts rent; a priceless post is the office page
+      // or a broken draft. Drop it rather than show "— /mo · ? bd" in the rail.
+      if (listing.priceMonthly == null) continue;
 
       bySourceId.set(listing.sourceListingId, listing);
     }

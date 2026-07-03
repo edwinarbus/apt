@@ -215,13 +215,20 @@ export function detectDuplicates(candidates: DupeCandidate[]): DedupeResult {
   const descListings = new Map<string, string[]>();
 
   for (const c of candidates) {
-    // exact: canonical original URL
+    // exact: canonical original URL — unless the two records name different
+    // units. Some portals (e.g. SF's DAHLIA) expose one building page that
+    // covers several unit types; each is a distinct listing sharing that URL,
+    // not a duplicate. The same unit guard every other signal uses applies here.
     if (c.originalUrl) {
       const canonical = canonicalizeListingUrl(c.originalUrl);
       if (canonical) {
         const prev = byCanonicalUrl.get(canonical);
-        if (prev && prev !== c.id) uf.union(prev, c.id, "same_canonical_url");
-        else byCanonicalUrl.set(canonical, c.id);
+        const prevCand = prev ? byId.get(prev) : undefined;
+        if (prev && prev !== c.id && prevCand && !unitsConflict(prevCand, c)) {
+          uf.union(prev, c.id, "same_canonical_url");
+        } else if (!prev) {
+          byCanonicalUrl.set(canonical, c.id);
+        }
       }
     }
 

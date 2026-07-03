@@ -20,6 +20,7 @@ import { parsePrice } from "@/core/normalize";
 import { checkRobots } from "@/core/robots";
 import { advanceStaleStatus, shouldProcessStaleUpdates } from "@/core/stale";
 import { detectDuplicates, type DupeCandidate } from "@/core/dedupe";
+import { neighborhoodForPoint } from "@/core/neighborhood-geo";
 import { assessListing, computeBaselines } from "@/core/scam";
 import {
   geocodeAddress,
@@ -600,11 +601,18 @@ export async function runSource(
       }
       hit ??= neighborhoodFallback(row.neighborhood);
       if (hit?.latitude != null && hit.longitude != null) {
+        // Fill a missing neighborhood from the authoritative polygon (the
+        // reverse lookup is coarser than good source names, so only when blank).
+        const filledHood =
+          !row.neighborhood && hit.precision !== "neighborhood"
+            ? neighborhoodForPoint(hit.longitude, hit.latitude)
+            : null;
         db.update(listings)
           .set({
             latitude: hit.latitude,
             longitude: hit.longitude,
             geocodePrecision: hit.precision,
+            ...(filledHood ? { neighborhood: filledHood } : {}),
             updatedAt: nowIso(),
           })
           .where(eq(listings.id, row.id))

@@ -18,6 +18,7 @@
     "sources:verify": "tsx scripts/verify-sources.ts",
     "sources:verify:live": "tsx scripts/verify-sources.ts --live --enabled-only",
     "listings:backfill": "tsx scripts/backfill.ts",
+    "backfill:neighborhoods": "tsx scripts/backfill-neighborhoods.ts",
     "fixtures:refresh": "tsx scripts/refresh-fixtures.ts",
     "digest": "tsx scripts/digest.ts",
     "daily": "tsx scripts/daily.ts",

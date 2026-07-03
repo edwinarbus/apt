@@ -123,6 +123,17 @@ describe("detectDuplicates", () => {
     expect(r.groups[0].reasons).toContain("same_canonical_url");
   });
 
+  it("does not merge different unit types that share one building-page URL", () => {
+    // DAHLIA exposes one URL per building; each unit type is a distinct listing.
+    const url = "https://housing.sfgov.org/listings/abc";
+    const r = detectDuplicates([
+      cand({ id: "a", originalUrl: url, unitNumberPublic: "Studio", bedrooms: 0 }),
+      cand({ id: "b", originalUrl: url, unitNumberPublic: "1 BR", bedrooms: 1 }),
+      cand({ id: "c", originalUrl: url, unitNumberPublic: "2 BR", bedrooms: 2 }),
+    ]);
+    expect(r.groups).toHaveLength(0);
+  });
+
   it("links same address + price + beds + baths as high confidence", () => {
     const r = detectDuplicates([
       cand({ id: "a", addressRaw: "740 Clayton St", priceMonthly: 3000, bedrooms: 1, bathrooms: 1 }),
