@@ -53,7 +53,7 @@ export function ListingDetail({
   // Play a quick fade-out before unmounting so close is animated too.
   const requestClose = useCallback(() => {
     setClosing(true);
-    window.setTimeout(onClose, 120);
+    window.setTimeout(onClose, 150);
   }, [onClose]);
 
   useEffect(() => {

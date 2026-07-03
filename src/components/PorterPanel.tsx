@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ApplicationDraftDto, ListingSummary, SavedSearchDto } from "@/lib/api-types";
 import { fmtMoney, relativeTime } from "@/lib/format";
 import { PhotoImg } from "./PhotoImg";
@@ -30,12 +30,19 @@ export function PorterPanel({
   onChanged?: () => void;
 }) {
   const [searches, setSearches] = useState<SavedSearchDto[] | null>(null);
+  const [closing, setClosing] = useState(false);
+
+  // Play a scale-down before unmounting so close is animated too.
+  const requestClose = useCallback(() => {
+    setClosing(true);
+    window.setTimeout(onClose, 150);
+  }, [onClose]);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && requestClose();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [requestClose]);
 
   useEffect(() => {
     let live = true;
@@ -77,11 +84,15 @@ export function PorterPanel({
 
   return (
     <div
-      className="animate-backdrop-in fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-[2px]"
-      onClick={onClose}
+      className={`fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-[2px] ${
+        closing ? "animate-backdrop-out" : "animate-backdrop-in"
+      }`}
+      onClick={requestClose}
     >
       <div
-        className="animate-modal-in flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-line bg-surface shadow-[0_24px_70px_rgba(0,0,0,0.6)]"
+        className={`flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-line bg-surface shadow-[0_24px_70px_rgba(0,0,0,0.6)] ${
+          closing ? "animate-modal-out" : "animate-modal-in"
+        }`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -99,7 +110,7 @@ export function PorterPanel({
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={requestClose}
             aria-label="Close"
             className="relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-elevated hover:text-ink"
           >
@@ -153,7 +164,7 @@ export function PorterPanel({
           ) : (
             <ul className="flex flex-col gap-2">
               {applications.map((a) => (
-                <ApplicationCard key={a.listingId} app={a} onSelect={onSelect} onClose={onClose} />
+                <ApplicationCard key={a.listingId} app={a} onSelect={onSelect} onClose={requestClose} />
               ))}
             </ul>
           )}

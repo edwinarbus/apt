@@ -106,12 +106,12 @@ body {
   to { opacity: 0; }
 }
 @keyframes modal-in {
-  from { opacity: 0; transform: scale(0.985); }
+  from { opacity: 0; transform: scale(0.9); }
   to { opacity: 1; transform: scale(1); }
 }
 @keyframes modal-out {
   from { opacity: 1; transform: scale(1); }
-  to { opacity: 0; transform: scale(0.985); }
+  to { opacity: 0; transform: scale(0.9); }
 }
 @keyframes click-ripple {
   from { transform: scale(0.3); opacity: 0.7; }
@@ -121,11 +121,11 @@ body {
 .animate-fade-up { animation: fade-up 0.22s cubic-bezier(0.2, 0, 0, 1) both; }
 .animate-fade-in { animation: fade-in 0.2s ease both; }
 .animate-rise-in { animation: rise-in 0.18s cubic-bezier(0.2, 0, 0, 1) both; }
-/* Fast modal open/close — a quick opacity + subtle scale. */
-.animate-backdrop-in { animation: fade-in 0.12s ease both; }
-.animate-backdrop-out { animation: fade-out 0.11s ease both; }
-.animate-modal-in { animation: modal-in 0.13s cubic-bezier(0.2, 0, 0, 1) both; }
-.animate-modal-out { animation: modal-out 0.11s ease-in both; }
+/* Modal open/close — a clear scale-up in, scale-down out. */
+.animate-backdrop-in { animation: fade-in 0.16s ease both; }
+.animate-backdrop-out { animation: fade-out 0.14s ease both; }
+.animate-modal-in { animation: modal-in 0.19s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.animate-modal-out { animation: modal-out 0.15s cubic-bezier(0.4, 0, 1, 1) both; }
 .thinking-dot { animation: dot-bounce 1.1s ease-in-out infinite; }
 .soft-pulse { animation: soft-pulse 1.6s ease-in-out infinite; }
 
