@@ -22,6 +22,8 @@ export type SearchProgressEvent =
   /** ids = the actual shortlisted listings, so the UI can target the real ones */
   | { type: "stage"; stage: "prerank"; kept: number; ids: string[] }
   | { type: "stage"; stage: "model_start"; model: string }
+  /** a chunk of Claude's real summarized thinking, streamed as it reasons */
+  | { type: "thinking"; delta: string }
   | { type: "delta"; chars: number };
 
 export type SearchProgressHandler = (event: SearchProgressEvent) => void;
@@ -123,9 +125,14 @@ const zeroUsage: SearchUsage = {
 /**
  * Live client. Lazily constructs the SDK so importing this module never
  * requires an API key. Streams the response so a long reply doesn't hit a
- * request timeout. Extended thinking is intentionally off here — it made
- * interactive search too slow; the model still reasons inline to produce each
- * match's reason, and the candidate set is pre-bounded by the orchestrator.
+ * request timeout.
+ *
+ * Adaptive thinking is ON with `display: "summarized"` — the real reasoning
+ * summaries stream to the UI's activity feed while the model ranks (on
+ * Sonnet 5 the display default is "omitted", which would stream empty
+ * thinking blocks). `max_tokens` must leave room for BOTH the thinking and
+ * the JSON answer: the old 8000 cap let thinking eat the whole budget and
+ * the reply died mid-JSON.
  */
 export class AnthropicSearchClient implements SearchClient {
   model: string;
@@ -134,7 +141,7 @@ export class AnthropicSearchClient implements SearchClient {
 
   constructor(opts: { model?: string; maxTokens?: number } = {}) {
     this.model = opts.model ?? process.env.APT_SEARCH_MODEL ?? DEFAULT_SEARCH_MODEL;
-    this.maxTokens = opts.maxTokens ?? 8000;
+    this.maxTokens = opts.maxTokens ?? 32000;
   }
 
   private async getClient() {
@@ -168,12 +175,11 @@ export class AnthropicSearchClient implements SearchClient {
       const stream = client.messages.stream({
         model: this.model,
         max_tokens: this.maxTokens,
-        // Explicitly OFF: omitting `thinking` leaves adaptive thinking on for
-        // Sonnet 5, which adds ~30-60s and can eat the whole token budget
-        // before any text (observed: zero text events + unparseable reply).
-        // Interactive search needs the fast path; the per-match reasons still
-        // force inline reasoning.
-        thinking: { type: "disabled" },
+        // Real reasoning, visible: the summarized thinking streams to the
+        // activity feed. On Sonnet 5, display defaults to "omitted" (empty
+        // thinking text) — "summarized" must be explicit. Adaptive may skip
+        // thinking entirely on simple asks; the UI handles a no-thinking run.
+        thinking: { type: "adaptive", display: "summarized" },
         system: [
           { type: "text", text: SEARCH_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
         ],
@@ -185,6 +191,17 @@ export class AnthropicSearchClient implements SearchClient {
         stream.on("text", (delta) => {
           emitted += delta.length;
           onProgress({ type: "delta", chars: emitted });
+        });
+        // Thinking summaries stream as thinking_delta events (the
+        // signature_delta that precedes content_block_stop is ignored).
+        stream.on("streamEvent", (event) => {
+          if (
+            event.type === "content_block_delta" &&
+            event.delta.type === "thinking_delta" &&
+            event.delta.thinking
+          ) {
+            onProgress({ type: "thinking", delta: event.delta.thinking });
+          }
         });
       }
       const res = await stream.finalMessage();

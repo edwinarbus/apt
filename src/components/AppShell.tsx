@@ -22,6 +22,7 @@ type SearchStreamEvent =
   | { type: "stage"; stage: "assemble"; candidates: number }
   | { type: "stage"; stage: "prerank"; kept: number; ids?: string[] }
   | { type: "stage"; stage: "model_start"; model: string }
+  | { type: "thinking"; delta: string }
   | { type: "delta"; chars: number }
   | { type: "done"; result: SearchResponse }
   | { type: "error"; error: string };
@@ -116,7 +117,8 @@ export function AppShell() {
     setSearching(true);
     setSearchError(null);
     setSearch(null);
-    setProgress(EMPTY_PROGRESS);
+    const startedAt = Date.now();
+    setProgress({ ...EMPTY_PROGRESS, startedAt });
     setDrawerOpen(true); // raise the mobile sheet so the live feed is visible
     try {
       const res = await fetch("/api/search", {
@@ -146,10 +148,13 @@ export function AppShell() {
                 ? { ...p, kept: event.kept, keptIds: event.ids ?? null }
                 : { ...p, model: event.model },
           );
+        } else if (event.type === "thinking") {
+          setProgress((p) => ({ ...p, thinking: p.thinking + event.delta }));
         } else if (event.type === "delta") {
           setProgress((p) => ({ ...p, chars: event.chars }));
         } else if (event.type === "done") {
           finished = true;
+          setProgress((p) => ({ ...p, elapsedMs: Date.now() - startedAt }));
           setSearch(event.result);
         } else if (event.type === "error") {
           finished = true;

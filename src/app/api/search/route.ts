@@ -4,13 +4,15 @@ import { runSearch } from "@/search/search";
 import type { SearchRequestBody, SearchResponse } from "@/lib/api-types";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+// Adaptive thinking can reason for a while before the answer starts.
+export const maxDuration = 300;
 
 /**
  * Streams the search as NDJSON so the UI can show live, real progress:
  *   {"type":"stage","stage":"assemble","candidates":600}
  *   {"type":"stage","stage":"prerank","kept":60}
  *   {"type":"stage","stage":"model_start","model":"claude-sonnet-5"}
+ *   {"type":"thinking","delta":"…"}          // Claude's real summarized thinking
  *   {"type":"delta","chars":1234}            // model output growing
  *   {"type":"done","result":{...}}           // final SearchResponse
  * Errors arrive as {"type":"error","error":"..."} on the same stream.
