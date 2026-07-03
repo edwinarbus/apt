@@ -9,6 +9,7 @@ import { fmtMoneyShort } from "@/lib/format";
 import { multiPolygonBounds, type MultiPolygonCoords } from "@/lib/geo";
 import { neighborhoodCentroid } from "@/core/neighborhoods";
 import hoodsData from "@/data/sf-neighborhoods.json";
+import outsideSfMaskData from "@/data/sf-outside-mask.json";
 
 /**
  * The Navy-ops tactical stage.
@@ -108,15 +109,17 @@ const WORLD_RING: [number, number][] = [
   [-180, -85],
 ];
 
+/**
+ * "Everything outside San Francisco" as a single clean MultiPolygon —
+ * precomputed offline (a Bay-Area box MINUS every neighborhood, dissolved with
+ * a real polygon-boolean) so overlaps/winding are resolved. Drawn opaque, it
+ * hides all non-SF content with no seams inside SF. See scripts/build-sf-boundary.ts.
+ */
 function outsideSfMask(): GeoJSON.Feature {
-  const holes: [number, number][][] = [];
-  for (const f of HOODS) {
-    for (const poly of f.geometry.coordinates) if (poly[0]) holes.push(poly[0]);
-  }
   return {
     type: "Feature",
     properties: {},
-    geometry: { type: "Polygon", coordinates: [WORLD_RING, ...holes] },
+    geometry: outsideSfMaskData as GeoJSON.MultiPolygon,
   };
 }
 

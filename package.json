@@ -28,7 +28,8 @@
     "test:adapters": "vitest run tests/adapters-craigslist.test.ts tests/adapters-rentsfnow.test.ts tests/adapters-rentbt.test.ts tests/adapters-mosser.test.ts",
     "backfill:contacts": "tsx scripts/backfill-contacts.ts",
     "porter:deploy": "tsx scripts/porter-agent.ts",
-    "porter:worker": "tsx scripts/porter-worker.ts"
+    "porter:worker": "tsx scripts/porter-worker.ts",
+    "build:sf-boundary": "tsx scripts/build-sf-boundary.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.109.1",
@@ -51,6 +52,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.10",
     "playwright": "^1.61.1",
+    "polygon-clipping": "^0.15.7",
     "tailwindcss": "^4",
     "tsx": "^4.22.4",
     "typescript": "^5",
