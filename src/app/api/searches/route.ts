@@ -64,21 +64,18 @@ export async function GET() {
     // Auto-apply: prepare a ready-to-send application for each new match.
     const applications: SavedSearchDto["applications"] = criteria.autoApply
       ? (newMatches.length ? newMatches : matching).slice(0, 5).map((target) => {
-          const d = draftApplication(
-            {
-              title: target.title,
-              addressRaw: target.addressRaw,
-              neighborhood: target.neighborhood,
-              bedrooms: target.bedrooms,
-              bathrooms: target.bathrooms,
-              priceMonthly: target.priceEffectiveMonthly ?? target.priceMonthly,
-              availableDate: target.availableDate,
-              originalUrl: target.originalUrl,
-              contactEmail: target.contactEmail,
-              contactPhone: target.contactPhone,
-            },
-            { searchName: s.name },
-          );
+          const d = draftApplication({
+            title: target.title,
+            addressRaw: target.addressRaw,
+            neighborhood: target.neighborhood,
+            bedrooms: target.bedrooms,
+            bathrooms: target.bathrooms,
+            priceMonthly: target.priceEffectiveMonthly ?? target.priceMonthly,
+            availableDate: target.availableDate,
+            originalUrl: target.originalUrl,
+            contactEmail: target.contactEmail,
+            contactPhone: target.contactPhone,
+          });
           return {
             listingId: target.id,
             listingTitle: target.title,

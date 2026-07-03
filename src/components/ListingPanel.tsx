@@ -95,7 +95,7 @@ export function ListingPanel({
       className={
         chromeless
           ? "flex h-full w-full flex-col overflow-hidden"
-          : "textured flex h-full w-full flex-col overflow-hidden rounded-xl border border-line-strong/65 bg-panel/96 shadow-[0_14px_48px_rgba(0,0,0,0.6)] backdrop-blur-xl"
+          : "textured flex h-full w-full flex-col overflow-hidden rounded-xl border border-white/20 bg-panel/96 shadow-[0_14px_48px_rgba(0,0,0,0.6)] backdrop-blur-xl"
       }
     >
       {/* While searching, the thinking feed owns the panel — no duplicate
@@ -228,33 +228,35 @@ export function SuspiciousToggle({
   );
 }
 
-/** Icon entry to Porter / watched searches, with a new-match dot. */
+/** Icon entry to Porter / watched searches, with a new-match count. */
 export function PorterButton({ badge, onClick }: { badge?: number; onClick: () => void }) {
   return (
-    <div className="group relative">
-      <button
-        type="button"
-        onClick={onClick}
-        aria-label="Porter — watched searches & applications"
-        className="relative flex h-[26px] w-[26px] items-center justify-center rounded-md border border-line text-muted transition-colors hover:border-line-strong hover:text-ink"
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-          <path d="M12 2c3 2.5 4.5 6 4.5 10 0 2.2-.8 4.2-2 5.8L12 22l-2.5-4.2c-1.2-1.6-2-3.6-2-5.8C7.5 8 9 4.5 12 2Z" />
-          <circle cx="12" cy="10" r="2.2" />
-        </svg>
-        {!!badge && badge > 0 && (
-          <span className="absolute -top-1 -right-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-accent px-1 text-[9px] font-bold text-paper tabular-nums">
-            {badge > 99 ? "99" : badge}
-          </span>
-        )}
-      </button>
-      <span
-        role="tooltip"
-        className="pointer-events-none absolute top-full right-0 z-50 mt-2 hidden w-max max-w-[214px] rounded-md border border-line-strong bg-elevated px-2.5 py-1.5 text-[11.5px] leading-snug text-muted shadow-[0_10px_28px_rgba(0,0,0,0.55)] group-hover:block"
-      >
-        Porter — applies to new matches for you
-      </span>
-    </div>
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label="Porter — watched searches & applications"
+      title="Porter"
+      className="relative flex h-[26px] w-[26px] items-center justify-center rounded-md border border-line text-muted transition-colors hover:border-line-strong hover:text-ink"
+    >
+      <BellIcon size={15} />
+      {!!badge && badge > 0 && (
+        <span className="absolute -top-1 -right-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-accent px-1 text-[9px] font-bold text-paper tabular-nums">
+          {badge > 99 ? "99" : badge}
+        </span>
+      )}
+    </button>
+  );
+}
+
+/** Concierge / desk bell — Porter's mark. */
+export function BellIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M3.5 18.5h17" />
+      <path d="M5.5 18.5a6.5 6.5 0 0 1 13 0" />
+      <path d="M12 8.5v3.5" />
+      <circle cx="12" cy="7" r="1.6" />
+    </svg>
   );
 }
 

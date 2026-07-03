@@ -4,13 +4,14 @@ import { useEffect, useMemo, useState } from "react";
 import type { ApplicationDraftDto, ListingSummary, SavedSearchDto } from "@/lib/api-types";
 import { fmtMoney, relativeTime } from "@/lib/format";
 import { PhotoImg } from "./PhotoImg";
+import { BellIcon } from "./ListingPanel";
 
 /**
- * Porter — the managed agent's surface. Its core job is auto-applying:
- * every night it reviews new listings for the user's watched searches and
- * writes a ready-to-send application for each match. This panel foregrounds
- * those applications (one tap sends from the user's email) and lists the
- * searches Porter watches.
+ * Porter — the managed agent's surface, framed as an activity report: overnight
+ * it reviews new listings for the user's watched searches and writes a
+ * ready-to-send email to each matching property. This panel shows what Porter
+ * did (the prepared emails, one tap to send) and lets the user manage the
+ * searches it watches.
  */
 function mailtoHref(a: ApplicationDraftDto): string | null {
   if (!a.to || a.channel !== "email") return null;
@@ -21,10 +22,12 @@ export function PorterPanel({
   listings,
   onClose,
   onSelect,
+  onChanged,
 }: {
   listings: ListingSummary[];
   onClose: () => void;
   onSelect: (id: string) => void;
+  onChanged?: () => void;
 }) {
   const [searches, setSearches] = useState<SavedSearchDto[] | null>(null);
 
@@ -49,6 +52,10 @@ export function PorterPanel({
     () => (searches ?? []).flatMap((s) => s.applications),
     [searches],
   );
+  const newTotal = useMemo(
+    () => (searches ?? []).reduce((n, s) => n + s.newMatchCount, 0),
+    [searches],
+  );
   const lastRunAt = useMemo(
     () =>
       listings.reduce<string | null>(
@@ -57,6 +64,16 @@ export function PorterPanel({
       ),
     [listings],
   );
+
+  const unfollow = async (id: string) => {
+    setSearches((prev) => prev?.filter((s) => s.id !== id) ?? prev);
+    try {
+      await fetch(`/api/searches/${id}`, { method: "DELETE" });
+    } catch {
+      /* best effort */
+    }
+    onChanged?.();
+  };
 
   return (
     <div
@@ -71,16 +88,13 @@ export function PorterPanel({
         <div className="relative flex items-start gap-3 overflow-hidden border-b border-line px-5 py-4">
           <div className="pointer-events-none absolute -top-14 -right-8 h-36 w-36 rounded-full bg-accent/12 blur-3xl" />
           <span className="relative mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/15 text-accent">
-            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M12 2c3 2.5 4.5 6 4.5 10 0 2.2-.8 4.2-2 5.8L12 22l-2.5-4.2c-1.2-1.6-2-3.6-2-5.8C7.5 8 9 4.5 12 2Z" />
-              <circle cx="12" cy="10" r="2.2" />
-            </svg>
+            <BellIcon size={20} />
           </span>
           <div className="relative min-w-0 flex-1">
             <h2 className="text-[16px] font-semibold text-ink">Porter</h2>
             <p className="text-[12.5px] text-muted">
-              Applies to new matches for you · runs nightly
-              {lastRunAt && <> · last run {relativeTime(lastRunAt)}</>}
+              Your overnight rental agent
+              {lastRunAt && <> · last ran {relativeTime(lastRunAt)}</>}
             </p>
           </div>
           <button
@@ -94,11 +108,35 @@ export function PorterPanel({
         </div>
 
         <div className="panel-scroll min-h-0 flex-1 overflow-y-auto px-5 py-4">
-          {/* Ready to send — the core auto-apply surface */}
+          {/* Activity report — what Porter did while you were away */}
+          {searches && searches.length > 0 && (
+            <div className="mb-5 flex items-start gap-2.5 rounded-lg border border-accent/25 bg-accent/10 px-3.5 py-3">
+              <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent/20 text-accent">
+                <BellIcon size={13} />
+              </span>
+              <p className="text-[12.5px] leading-relaxed text-muted">
+                <span className="font-medium text-ink">While you were away,</span> Porter checked your{" "}
+                {searches.length} watched {searches.length === 1 ? "search" : "searches"}, found{" "}
+                <span className="font-semibold text-ink">{newTotal}</span> new{" "}
+                {newTotal === 1 ? "match" : "matches"}
+                {applications.length > 0 ? (
+                  <>
+                    , and wrote{" "}
+                    <span className="font-semibold text-ink">{applications.length}</span>{" "}
+                    {applications.length === 1 ? "email" : "emails"} to the properties — ready to send below.
+                  </>
+                ) : (
+                  <>.</>
+                )}
+              </p>
+            </div>
+          )}
+
+          {/* Emails Porter drafted — one tap to send */}
           <div className="mb-2 flex items-baseline justify-between">
-            <h3 className="text-[13px] font-semibold text-ink">Applications ready to send</h3>
+            <h3 className="text-[13px] font-semibold text-ink">Emails Porter drafted</h3>
             {applications.length > 0 && (
-              <span className="text-[12px] text-faint">{applications.length} prepared</span>
+              <span className="text-[12px] text-faint">{applications.length} ready</span>
             )}
           </div>
 
@@ -109,8 +147,8 @@ export function PorterPanel({
           ) : applications.length === 0 ? (
             <p className="rounded-lg border border-line bg-elevated/40 px-3 py-5 text-center text-[12.5px] leading-relaxed text-faint">
               Turn on <span className="font-medium text-muted">Auto-apply</span> when you save a
-              search, and Porter will write an application for every new match — ready here to
-              send in one tap.
+              search, and Porter will email each matching property for you — every draft shows up
+              here to send in one tap.
             </p>
           ) : (
             <ul className="flex flex-col gap-2">
@@ -120,7 +158,7 @@ export function PorterPanel({
             </ul>
           )}
 
-          {/* Watched searches */}
+          {/* Watched searches — with unfollow */}
           {searches && searches.length > 0 && (
             <>
               <h3 className="mt-6 mb-2 text-[13px] font-semibold text-ink">Watched searches</h3>
@@ -128,7 +166,7 @@ export function PorterPanel({
                 {searches.map((s) => (
                   <li
                     key={s.id}
-                    className="flex items-center justify-between gap-2 rounded-lg border border-line bg-elevated/25 px-3 py-2"
+                    className="group flex items-center justify-between gap-2 rounded-lg border border-line bg-elevated/25 px-3 py-2"
                   >
                     <div className="min-w-0">
                       <p className="truncate text-[12.5px] font-medium text-ink" title={s.name}>
@@ -140,18 +178,31 @@ export function PorterPanel({
                         {s.newMatchCount > 0 && <span className="text-good"> · {s.newMatchCount} new</span>}
                       </p>
                     </div>
-                    {s.autoApply ? (
-                      <span className="flex shrink-0 items-center gap-1 rounded-md bg-accent/15 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-accent uppercase">
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                          <path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z" />
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      {s.autoApply ? (
+                        <span className="flex items-center gap-1 rounded-md bg-accent/15 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-accent uppercase">
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                            <path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z" />
+                          </svg>
+                          Auto-apply
+                        </span>
+                      ) : (
+                        <span className="rounded-md border border-line px-1.5 py-0.5 text-[10px] font-medium text-faint">
+                          Watching
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => unfollow(s.id)}
+                        aria-label={`Unfollow ${s.name}`}
+                        title="Unfollow"
+                        className="flex h-6 w-6 items-center justify-center rounded-md text-faint transition-colors hover:bg-alert/15 hover:text-alert"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                          <path d="M6 6l12 12M18 6L6 18" />
                         </svg>
-                        Auto-apply
-                      </span>
-                    ) : (
-                      <span className="shrink-0 rounded-md border border-line px-1.5 py-0.5 text-[10px] font-medium text-faint">
-                        Watching
-                      </span>
-                    )}
+                      </button>
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -163,8 +214,8 @@ export function PorterPanel({
           <ul className="flex flex-col gap-2.5">
             {[
               ["Scans every night", "Pulls new listings from all your sources, then enriches and photo-analyzes them."],
-              ["Applies for you", "Writes a tailored application for every new match on your auto-apply searches."],
-              ["You send in one tap", "Every application is queued here — review it and send it from your email in a tap."],
+              ["Emails properties for you", "Writes a tailored email — with your details — to every new match on your auto-apply searches."],
+              ["You send in one tap", "Every email is queued here — review it and send it from your inbox in a tap."],
             ].map(([title, body]) => (
               <li key={title} className="flex gap-2.5">
                 <span aria-hidden className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
@@ -174,18 +225,13 @@ export function PorterPanel({
               </li>
             ))}
           </ul>
-
-          <p className="mt-4 rounded-lg border border-line bg-elevated/30 px-3 py-2.5 text-[11.5px] leading-relaxed text-faint">
-            Runs locally on the nightly pipeline, or in the cloud via Claude Managed Agents
-            (<code className="rounded-sm border border-line bg-elevated px-1 py-0.5 text-[10.5px] text-muted">npm run porter:deploy</code>).
-          </p>
         </div>
       </div>
     </div>
   );
 }
 
-/** One prepared application: the listing + a one-tap Send, expandable to preview. */
+/** One email Porter drafted: the property + a one-tap "Email property", expandable to preview. */
 function ApplicationCard({
   app: a,
   onSelect,
@@ -216,18 +262,20 @@ function ApplicationCard({
               </span>
               <span className="truncate text-[12px] text-muted">{a.listingTitle}</span>
             </div>
-            <p className="truncate text-[12px] text-faint">{a.addressLine}</p>
+            <p className="truncate text-[11.5px] text-faint">
+              {a.to ? <>Email drafted to {a.to}</> : a.addressLine}
+            </p>
           </div>
         </button>
         {href ? (
           <a
             href={href}
-            className="flex shrink-0 items-center gap-1 rounded-md bg-accent px-3 py-1.5 text-[12.5px] font-semibold text-paper transition-colors hover:bg-accent-deep"
+            className="flex shrink-0 items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-[12.5px] font-semibold text-paper transition-colors hover:bg-accent-deep"
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="m22 2-7 20-4-9-9-4Z" /><path d="M22 2 11 13" />
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M3 6.5 12 13l9-6.5" /><rect x="3" y="5" width="18" height="14" rx="2" />
             </svg>
-            Send
+            Email property
           </a>
         ) : (
           <span className="shrink-0 rounded-md border border-line px-2 py-1.5 text-[11.5px] text-faint">
@@ -243,7 +291,7 @@ function ApplicationCard({
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" className={`transition-transform ${open ? "rotate-90" : ""}`} aria-hidden>
           <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
-        {open ? "Hide" : "Review"} the application
+        {open ? "Hide" : "Review"} the email
       </button>
       {open && (
         <div className="border-t border-line bg-paper/40 p-2.5">
@@ -254,7 +302,7 @@ function ApplicationCard({
           <p className="text-[11px] text-faint">
             <span className="text-muted">Subject:</span> {a.subject}
           </p>
-          <pre className="mt-1.5 max-h-40 overflow-y-auto whitespace-pre-wrap font-sans text-[11.5px] leading-relaxed text-muted">
+          <pre className="mt-1.5 max-h-48 overflow-y-auto whitespace-pre-wrap font-sans text-[11.5px] leading-relaxed text-muted">
             {a.body}
           </pre>
         </div>

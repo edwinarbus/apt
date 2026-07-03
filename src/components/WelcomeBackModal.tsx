@@ -4,6 +4,7 @@ import { useEffect, useMemo } from "react";
 import type { ListingSummary, SavedSearchDto } from "@/lib/api-types";
 import { fmtBaths, fmtBeds, fmtMoney } from "@/lib/format";
 import { PhotoImg } from "./PhotoImg";
+import { BellIcon } from "./ListingPanel";
 
 /**
  * First-open "while you were away" surface: what the overnight Apt Scout turned
@@ -63,10 +64,7 @@ export function WelcomeBackModal({
           <div className="pointer-events-none absolute -top-16 -right-10 h-40 w-40 rounded-full bg-accent/12 blur-3xl" />
           <div className="relative flex items-start gap-3">
             <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent/15 text-accent">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <path d="M12 3v2m0 14v2M5.6 5.6l1.4 1.4m10 10 1.4 1.4M3 12h2m14 0h2M5.6 18.4l1.4-1.4m10-10 1.4-1.4" />
-                <circle cx="12" cy="12" r="3.2" />
-              </svg>
+              <BellIcon size={20} />
             </span>
             <div className="min-w-0 flex-1">
               <h2 className="text-[17px] font-semibold text-ink">While you were away</h2>

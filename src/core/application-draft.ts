@@ -26,25 +26,20 @@ export interface ApplicationDraft {
   body: string;
 }
 
-function bedLabel(beds: number | null): string {
-  if (beds == null) return "unit";
-  if (beds === 0) return "studio";
-  return `${beds}-bed`;
-}
-
-function money(n: number | null): string | null {
-  return n == null ? null : `$${Math.round(n).toLocaleString()}/mo`;
-}
+/** The tenant's profile, included in every application so it's ready to send. */
+const APPLICANT = {
+  name: "Edwin Arbus",
+  creditScore: 720,
+  moveIn: "August 1",
+  pet: "one 21 lb dog (adopted via the Scout app)",
+};
 
 /**
- * A short, specific, polite application inquiry. The tenant's own details are
- * left as clearly-marked placeholders for the user to fill before sending —
- * the agent never invents personal information.
+ * A short, complete, ready-to-send rental application from the tenant to the
+ * property. It carries the tenant's real profile (name, credit, move-in, pet),
+ * so there are no placeholders — the user just reviews and sends.
  */
-export function draftApplication(
-  listing: DraftListingFacts,
-  opts: { searchName?: string } = {},
-): ApplicationDraft {
+export function draftApplication(listing: DraftListingFacts): ApplicationDraft {
   const to = listing.contactEmail ?? listing.contactPhone ?? null;
   const channel: ApplicationDraft["channel"] = listing.contactEmail
     ? "email"
@@ -52,32 +47,22 @@ export function draftApplication(
       ? "phone"
       : "unknown";
 
-  const where =
-    [listing.addressRaw, listing.neighborhood].filter(Boolean).join(", ") ||
-    listing.title ||
-    "your listing";
-  const specifics = [bedLabel(listing.bedrooms), money(listing.priceMonthly)]
-    .filter(Boolean)
-    .join(", ");
-  const availLine = listing.availableDate
-    ? ` I saw it's available around ${listing.availableDate}.`
-    : "";
-
-  const subject = `Application inquiry — ${where}`;
+  const where = listing.addressRaw ?? listing.title ?? "your listing";
+  const subject = `Application — ${where}`;
   const body = [
     `Hi,`,
     ``,
-    `I'm very interested in the ${specifics} at ${where} and would like to apply.${availLine} It's an excellent fit for what I'm looking for${opts.searchName ? ` (${opts.searchName})` : ""}.`,
+    `I'm interested in the apartment at ${where} and would like to apply. A bit about me:`,
     ``,
-    `Could you let me know whether it's still available, and how you'd like me to submit an application? I'm ready to move quickly and can provide:`,
-    `  • [Your full name and phone]`,
-    `  • [Monthly income / proof of income]`,
-    `  • [Credit / background details as required]`,
-    `  • [Preferred move-in date]`,
+    `  • ${APPLICANT.name}`,
+    `  • Credit score: ${APPLICANT.creditScore}`,
+    `  • Move-in date: ${APPLICANT.moveIn}`,
+    `  • ${APPLICANT.pet}`,
     ``,
-    `Happy to schedule a tour at your convenience. Thank you!`,
+    `Could you let me know if it's still available and how to apply? Happy to share anything else you need.`,
     ``,
-    `[Your name]`,
+    `Thanks,`,
+    APPLICANT.name,
   ].join("\n");
 
   return { to, channel, subject, body };
