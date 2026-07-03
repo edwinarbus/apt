@@ -3,6 +3,8 @@ import { craigslistAdapter } from "./craigslist";
 import { rentSfNowAdapter } from "./rentsfnow";
 import { rentBtAdapter } from "./rentbt";
 import { mosserAdapter } from "./mosser";
+import { dahliaAdapter } from "./dahlia";
+import { rentalsInSfAdapter } from "./rentalsinsf";
 
 /**
  * Adapter registry, keyed by a source's `adapterType`. Sources whose adapter
@@ -29,3 +31,5 @@ registerAdapter(craigslistAdapter);
 registerAdapter(rentSfNowAdapter);
 registerAdapter(rentBtAdapter);
 registerAdapter(mosserAdapter);
+registerAdapter(dahliaAdapter);
+registerAdapter(rentalsInSfAdapter);

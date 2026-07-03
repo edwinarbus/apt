@@ -12,6 +12,38 @@ import {
  * injects AnthropicVisionClient.
  */
 export type VisionUsage = AiUsage;
+
+/**
+ * Fetch an image and downscale it to a base64 JPEG for a vision call.
+ * Anthropic can fetch URL image blocks itself, but some source hosts block its
+ * fetcher (403) and others serve images past Claude's 8000px limit — doing it
+ * here (browser-like UA + sharp downscale to ≤1500px) makes vision robust across
+ * every source. Returns null if the image can't be fetched or decoded.
+ */
+async function encodeImageForVision(
+  url: string,
+): Promise<{ mediaType: "image/jpeg"; data: string } | null> {
+  try {
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+        Accept: "image/avif,image/webp,image/*,*/*;q=0.8",
+      },
+    });
+    if (!res.ok) return null;
+    const buf = Buffer.from(await res.arrayBuffer());
+    const { default: sharp } = await import("sharp");
+    const out = await sharp(buf)
+      .rotate()
+      .resize({ width: 1500, height: 1500, fit: "inside", withoutEnlargement: true })
+      .jpeg({ quality: 80 })
+      .toBuffer();
+    return { mediaType: "image/jpeg", data: out.toString("base64") };
+  } catch {
+    return null;
+  }
+}
 export { estimateCostUsd };
 
 export interface VisionCallResult {
@@ -166,14 +198,36 @@ export class AnthropicVisionClient implements VisionClient {
       };
     }
 
+    // Download + downscale each image and send base64 (see encodeImageForVision):
+    // robust against hosts that block Anthropic's fetcher and oversized images.
+    const imageBlocks: Array<{
+      type: "image";
+      source: { type: "base64"; media_type: "image/jpeg"; data: string };
+    }> = [];
+    for (const url of input.imageUrls) {
+      const enc = await encodeImageForVision(url);
+      if (enc) {
+        imageBlocks.push({
+          type: "image",
+          source: { type: "base64", media_type: enc.mediaType, data: enc.data },
+        });
+      }
+    }
+    if (imageBlocks.length === 0) {
+      return {
+        data: null,
+        error: "no images could be fetched or decoded",
+        usage: { ...zeroUsage },
+        model: this.model,
+        imageCount,
+      };
+    }
+
     const usageTotal: VisionUsage = { ...zeroUsage };
     const call = async (extra: string) => {
       const content = [
         { type: "text" as const, text: buildVisionContext(input) },
-        ...input.imageUrls.map((url) => ({
-          type: "image" as const,
-          source: { type: "url" as const, url },
-        })),
+        ...imageBlocks,
         { type: "text" as const, text: VISION_TASK_INSTRUCTION + extra },
       ];
       const res = await client.messages.create({
