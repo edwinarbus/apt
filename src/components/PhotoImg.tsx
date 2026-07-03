@@ -39,7 +39,8 @@ export function PhotoImg({
       loading="lazy"
       decoding="async"
       referrerPolicy="no-referrer"
-      className={className}
+      // quiet slab behind the box while the photo streams in — no blank hole
+      className={`bg-elevated/60 ${className ?? ""}`}
       onError={() => setFailedSrc(src)}
     />
   );

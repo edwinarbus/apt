@@ -74,14 +74,20 @@ export function AppShell() {
   // Mobile results drawer (below lg the panel becomes a bottom sheet).
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  // Escape releases the lifted neighborhood (when no modal is open).
+  // Escape walks back one layer at a time: modals close themselves first;
+  // then a selected listing deselects; then an isolated hood releases.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !detailOpen) setSelectedHood(null);
+      if (e.key !== "Escape" || detailOpen || scoutOpen) return;
+      if (selectedId) {
+        setSelectedId(null);
+        return;
+      }
+      setSelectedHood(null);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [detailOpen]);
+  }, [detailOpen, scoutOpen, selectedId]);
 
   useEffect(() => {
     fetch("/api/listings")
@@ -359,6 +365,7 @@ export function AppShell() {
           searchActive={search != null}
           searching={searching}
           progress={progress}
+          interpretation={search?.interpretation ?? null}
           hoodName={selectedHood}
           selectedId={selectedId}
           onSelect={(id) => select(id)}
@@ -379,6 +386,8 @@ export function AppShell() {
         hoodName={selectedHood}
         sort={sort}
         onSortChange={setSort}
+        hideSuspicious={hideSuspicious}
+        onToggleSuspicious={() => setHideSuspicious((v) => !v)}
       >
         <ListingPanel
           chromeless
@@ -461,6 +470,8 @@ function MobileDrawer({
   hoodName,
   sort,
   onSortChange,
+  hideSuspicious,
+  onToggleSuspicious,
   children,
 }: {
   open: boolean;
@@ -471,6 +482,8 @@ function MobileDrawer({
   hoodName?: string | null;
   sort: SortKey;
   onSortChange: (s: SortKey) => void;
+  hideSuspicious?: boolean;
+  onToggleSuspicious?: () => void;
   children: React.ReactNode;
 }) {
   const label = listingCountLabel({ count, searching, searchActive, hoodName });
@@ -505,6 +518,24 @@ function MobileDrawer({
               <span className="truncate text-[13px] text-accent">· {label.scope}</span>
             )}
           </button>
+          {open && onToggleSuspicious && (
+            <button
+              type="button"
+              onClick={onToggleSuspicious}
+              aria-pressed={hideSuspicious}
+              aria-label={hideSuspicious ? "Show suspicious listings" : "Hide suspicious listings"}
+              title={hideSuspicious ? "Showing all listings" : "Hide verify-carefully / suspicious listings"}
+              className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md border transition-colors ${
+                hideSuspicious
+                  ? "border-warn/40 bg-warn/10 text-warn"
+                  : "border-line text-muted hover:border-line-strong hover:text-ink"
+              }`}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M10.3 5.2a11 11 0 0 1 1.7-.2c6 0 9 6 9 7a12.6 12.6 0 0 1-2 2.7M6.6 6.6C3.7 8.3 2 11.4 2 12c0 1 3 7 10 7 2 0 3.7-.5 5.1-1.3M3 3l18 18" />
+              </svg>
+            </button>
+          )}
           {open && <SortSelect sort={sort} searchActive={searchActive} onSortChange={onSortChange} />}
           <button
             type="button"

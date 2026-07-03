@@ -1060,6 +1060,7 @@ export function MapView({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
+    const wasActive = searchActiveRef.current;
     searchActiveRef.current = !!searchActive;
 
     try {
@@ -1109,6 +1110,11 @@ export function MapView({
           }
         }
       }
+    } else if (!searchActive && wasActive && !selectedHoodRef.current) {
+      // Clearing a search glides back to the resting city view.
+      const home = { center: SF_CENTER as [number, number], zoom: 12.4, pitch: BROWSE_PITCH, bearing: 0 };
+      if (prefersReducedMotion() || document.visibilityState === "hidden") map.jumpTo(home);
+      else map.flyTo({ ...home, duration: 1200, curve: 1.3 });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchActive, searchActive ? listings : null]);

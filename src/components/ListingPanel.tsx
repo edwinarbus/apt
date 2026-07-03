@@ -42,6 +42,7 @@ export function ListingPanel({
   searchActive,
   searching,
   progress,
+  interpretation,
   hoodName,
   selectedId,
   onSelect,
@@ -57,6 +58,8 @@ export function ListingPanel({
   searchActive?: boolean;
   searching?: boolean;
   progress?: SearchProgressState;
+  /** the model's one-line restatement of what the search asked for */
+  interpretation?: string | null;
   hoodName?: string | null;
   selectedId: string | null;
   onSelect: (id: string) => void;
@@ -87,7 +90,7 @@ export function ListingPanel({
       {/* While searching, the thinking feed owns the panel — no duplicate
           "Searching…" header, no dead sort dropdown. */}
       {!hideHeader && !searching && (
-        <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-2.5">
+        <div className="animate-fade-in flex items-center justify-between gap-2 border-b border-line px-3 py-2.5">
           <div className="flex min-w-0 items-baseline gap-1.5">
             {label.n && (
               <span className="tnum text-[15px] leading-none font-semibold text-ink">
@@ -121,6 +124,16 @@ export function ListingPanel({
             <SortSelect sort={sort} searchActive={searchActive} onSortChange={onSortChange} />
           </div>
         </div>
+      )}
+
+      {/* How the model read the ask — closes the loop from the thinking feed. */}
+      {!hideHeader && !searching && searchActive && interpretation && (
+        <p
+          className="animate-fade-in line-clamp-2 border-b border-line bg-accent-soft/25 px-3 py-2 text-[12px] leading-snug text-muted"
+          title={interpretation}
+        >
+          {interpretation}
+        </p>
       )}
 
       <div className="panel-scroll min-h-0 flex-1 overflow-y-auto">

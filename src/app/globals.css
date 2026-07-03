@@ -54,6 +54,13 @@ body {
   font-feature-settings: "tnum";
 }
 
+/* Keyboard focus: a quiet accent ring, only when navigating by keyboard.
+ * :where() keeps specificity at zero so component styles still win. */
+:where(button, a, select, textarea, input, [role="button"]):focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--color-accent) 55%, transparent);
+  outline-offset: 1px;
+}
+
 /* ---------- Motion — quick, subtle, purposeful. No glow/sweep/terminal FX. ---------- */
 
 @keyframes fade-up {

@@ -55,6 +55,7 @@ export function SearchBar({
   const [micSupported, setMicSupported] = useState(false);
   const recRef = useRef<SpeechRecognitionLike | null>(null);
   const baseRef = useRef("");
+  const fieldRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -62,6 +63,19 @@ export function SearchBar({
     return () => {
       try { recRef.current?.stop(); } catch { /* Safari may throw if never started */ }
     };
+  }, []);
+
+  // "/" focuses the search from anywhere (unless already typing somewhere).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "/" || e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
+      e.preventDefault();
+      fieldRef.current?.focus();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
 
   const toggleMic = () => {
@@ -120,6 +134,7 @@ export function SearchBar({
           <path d="M20 20l-3.5-3.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
         </svg>
         <textarea
+          ref={fieldRef}
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
           onKeyDown={onKeyDown}
