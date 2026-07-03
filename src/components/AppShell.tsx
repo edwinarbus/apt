@@ -336,8 +336,8 @@ export function AppShell() {
         />
       </div>
 
-      {/* App header — brand + search, one compact bar (top-left) */}
-      <div className="pointer-events-none absolute top-3 right-3 left-3 z-20 md:right-auto md:w-[420px]">
+      {/* App header — brand + search, one bar (top-left, never touching the rail) */}
+      <div className="pointer-events-none absolute top-3 right-3 left-3 z-20 md:right-auto md:w-[620px] md:max-w-[calc(100%-408px)]">
         <div className="pointer-events-auto">
           <SearchBar
             query={query}

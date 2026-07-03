@@ -4,10 +4,11 @@ import { useEffect, useRef, useState } from "react";
 
 /**
  * The live search activity: nothing but Claude's REAL summarized thinking,
- * streamed from the API (adaptive thinking, display: "summarized", low effort)
- * with the latest text always in view. No synthetic stage feed, no accordion —
- * just the model's reasoning as it ranks. Adaptive may skip thinking on a
- * simple ask, so there's a minimal fallback line until text arrives.
+ * streamed from the API (adaptive thinking, display: "summarized", low effort).
+ * Each summary paragraph renders as its own thought — earlier ones recede,
+ * the newest stays bright with a live caret — so long reasoning stays
+ * scannable instead of piling into one wall of text. Adaptive may skip
+ * thinking on a simple ask, so there's a minimal fallback line.
  */
 
 export interface SearchProgressState {
@@ -40,19 +41,29 @@ function fmtSeconds(ms: number): string {
   return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
 }
 
-function Dots() {
+/** Small four-point spark — the "reasoning" mark. */
+function Spark() {
   return (
-    <span className="flex items-end gap-[3px]" aria-hidden>
-      <span className="thinking-dot h-1.5 w-1.5 rounded-full bg-accent" />
-      <span className="thinking-dot h-1.5 w-1.5 rounded-full bg-accent" style={{ animationDelay: "0.15s" }} />
-      <span className="thinking-dot h-1.5 w-1.5 rounded-full bg-accent" style={{ animationDelay: "0.3s" }} />
-    </span>
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden
+      className="soft-pulse shrink-0 text-accent"
+    >
+      <path d="M12 2.5c.8 4.6 2.9 6.7 7.5 7.5-4.6.8-6.7 2.9-7.5 7.5-.8-4.6-2.9-6.7-7.5-7.5 4.6-.8 6.7-2.9 7.5-7.5Z" />
+      <path d="M19 14.5c.4 2.1 1.4 3.1 3.5 3.5-2.1.4-3.1 1.4-3.5 3.5-.4-2.1-1.4-3.1-3.5-3.5 2.1-.4 3.1-1.4 3.5-3.5Z" opacity="0.65" />
+    </svg>
   );
 }
 
 export function SearchProgress({ progress }: { progress: SearchProgressState }) {
   const { thinking, chars, startedAt } = progress;
-  const hasThinking = thinking.trim().length > 0;
+  // Summarized thinking arrives in paragraph-sized chunks — present each as
+  // its own thought instead of one accumulated wall.
+  const paras = thinking.trim() ? thinking.trim().split(/\n{2,}/) : [];
+  const stillThinking = chars === 0;
 
   const bodyRef = useRef<HTMLDivElement | null>(null);
   // Keep the newest thought in view as it streams.
@@ -67,29 +78,48 @@ export function SearchProgress({ progress }: { progress: SearchProgressState }) 
   }, []);
   const elapsed = startedAt != null ? now - startedAt : 0;
 
-  const label = chars > 0 ? "Finishing up" : hasThinking ? "Thinking" : "Searching";
+  const label = !stillThinking ? "Finishing up" : paras.length ? "Thinking" : "Searching";
 
   return (
-    <div className="animate-fade-in flex h-full min-h-0 flex-col px-4 py-5">
-      <div className="mb-3 flex shrink-0 items-center gap-2">
-        <Dots />
-        <span className="text-[13px] font-medium text-ink">{label}</span>
+    <div className="animate-fade-in flex h-full min-h-0 flex-col px-4 pt-4 pb-2">
+      <div className="flex shrink-0 items-center gap-2">
+        <Spark />
+        <span className="shimmer-text text-[13px] font-semibold">{label}</span>
         {elapsed > 2000 && (
-          <span className="tnum ml-auto text-[12px] text-faint">{fmtSeconds(elapsed)}</span>
+          <span className="tnum ml-auto text-[11.5px] text-faint">{fmtSeconds(elapsed)}</span>
         )}
       </div>
 
-      {hasThinking ? (
-        <div ref={bodyRef} className="panel-scroll min-h-0 flex-1 overflow-y-auto pr-0.5">
-          <p className="text-[13px] leading-relaxed whitespace-pre-wrap text-muted">
-            {thinking.trim()}
-          </p>
+      <div className="relative min-h-0 flex-1">
+        <div ref={bodyRef} className="panel-scroll h-full overflow-y-auto pt-3 pb-1">
+          {paras.length > 0 ? (
+            <div className="flex flex-col gap-3 border-l border-line pl-3">
+              {paras.map((p, i) => {
+                const latest = i === paras.length - 1;
+                return (
+                  <p
+                    key={i}
+                    className={`text-[12.5px] leading-relaxed whitespace-pre-wrap transition-colors duration-500 ${
+                      latest && stillThinking ? "text-muted" : "text-faint"
+                    }`}
+                  >
+                    {p}
+                    {latest && stillThinking && (
+                      <span aria-hidden className="thinking-caret ml-1" />
+                    )}
+                  </p>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="shimmer-text text-[12.5px] leading-relaxed">
+              Reading your search and the listings…
+            </p>
+          )}
         </div>
-      ) : (
-        <p className="text-[13px] leading-relaxed text-faint">
-          Reading your search and the listings…
-        </p>
-      )}
+        {/* older thoughts slide away under a quiet fade */}
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-surface to-transparent" />
+      </div>
     </div>
   );
 }

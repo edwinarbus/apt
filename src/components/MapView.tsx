@@ -43,10 +43,10 @@ const TERRAIN_EXAGGERATION = 1.4;
 /** Resting tilt of the browse map — enough to read as a 3D scene, not top-down. */
 const BROWSE_PITCH = 12;
 
-// Clusters are aggregates of mixed status → neutral graphite, denser = lighter.
+// Clusters are aggregates of mixed status → neutral steel, denser = lighter.
 const CLUSTER_COLOR_BROWSE = [
   "step", ["get", "point_count"],
-  "#17212e", 10, "#1f2c3a", 40, "#293845",
+  "#1b2634", 10, "#25334a", 40, "#31445c",
 ] as unknown as maplibregl.ExpressionSpecification;
 
 export interface RadarPoint {
@@ -275,7 +275,10 @@ function removeTerrain(map: maplibregl.Map) {
   }
 }
 
-/** Recolor the light Positron style into the navy ops palette before boot. */
+/** Recolor the light Positron style into the navy ops palette before boot.
+ * Deliberately NOT monochrome: water reads blue, parks read green, buildings
+ * sit warmer than the land, and major roads run brighter than minor ones, so
+ * the city has tonal depth even though every hue stays in the dark family. */
 function darkenStyle(style: StyleSpecification): StyleSpecification {
   const TEXT = "#8ba3c2";
   const TEXT_MINOR = "#5f7492";
@@ -285,18 +288,24 @@ function darkenStyle(style: StyleSpecification): StyleSpecification {
     if (layer.type === "background") {
       paint["background-color"] = PAPER;
     } else if (layer.type === "fill") {
-      if (id.includes("water")) paint["fill-color"] = "#0c1a2e";
+      if (id.includes("water")) paint["fill-color"] = "#0e2338"; // deep saturated blue
       else if (id.includes("green") || id.includes("park") || id.includes("wood") || id.includes("grass"))
-        paint["fill-color"] = "#0d1a24";
-      else if (id.includes("building")) paint["fill-color"] = "#131f33";
+        paint["fill-color"] = "#12241c"; // quiet green
+      else if (id.includes("sand") || id.includes("beach"))
+        paint["fill-color"] = "#20222a";
+      else if (id.includes("building")) paint["fill-color"] = "#1b2536"; // warm slate, lifted off the land
       else paint["fill-color"] = "#0b1526";
       delete paint["fill-outline-color"];
     } else if (layer.type === "line") {
-      if (id.includes("water")) paint["line-color"] = "#12253c";
+      if (id.includes("water")) paint["line-color"] = "#17304a";
       else if (id.includes("casing")) paint["line-color"] = "#101d31";
       else if (id.includes("boundary") || id.includes("admin")) paint["line-color"] = "#2a3d5c";
-      else if (id.includes("rail") || id.includes("transit")) paint["line-color"] = "#1c2c44";
-      else paint["line-color"] = "#22344f";
+      else if (id.includes("rail") || id.includes("transit")) paint["line-color"] = "#26303f";
+      else if (id.includes("major") || id.includes("motorway") || id.includes("trunk") || id.includes("primary"))
+        paint["line-color"] = "#33475f"; // arterials pop a step brighter
+      else if (id.includes("minor") || id.includes("service") || id.includes("path"))
+        paint["line-color"] = "#1d2d45";
+      else paint["line-color"] = "#25374f";
     } else if (layer.type === "symbol") {
       paint["text-color"] = id.includes("place") || id.includes("city") ? TEXT : TEXT_MINOR;
       paint["text-halo-color"] = PAPER;
@@ -634,7 +643,7 @@ export function MapView({
               "source-layer": "building",
               minzoom: 13,
               paint: {
-                "fill-extrusion-color": "#1d2f4b",
+                "fill-extrusion-color": "#243349",
                 "fill-extrusion-height": [
                   "interpolate", ["linear"], ["zoom"],
                   13, 0,

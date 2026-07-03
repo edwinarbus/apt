@@ -84,7 +84,9 @@ export function ListingPanel({
           : "flex h-full w-full flex-col overflow-hidden rounded-lg border border-line bg-surface/97 shadow-[0_12px_44px_rgba(0,0,0,0.5)]"
       }
     >
-      {!hideHeader && (
+      {/* While searching, the thinking feed owns the panel — no duplicate
+          "Searching…" header, no dead sort dropdown. */}
+      {!hideHeader && !searching && (
         <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-2.5">
           <div className="flex min-w-0 items-baseline gap-1.5">
             {label.n && (
@@ -192,18 +194,24 @@ function EmptyState({
   );
 }
 
-/** Compact ring for the 0–100 AI match score. */
+/** Compact ring for the 0–100 AI match score, toned by how good the match is
+ * (muted green → amber → red; mixed down so it never glows). */
 function ScoreGauge({ score }: { score: number }) {
   const pct = Math.max(0, Math.min(100, score));
+  const tone =
+    pct >= 80 ? "var(--color-good)" : pct >= 65 ? "var(--color-warn)" : "var(--color-alert)";
   return (
     <span
-      className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
+      className="relative flex h-[24px] w-[24px] shrink-0 items-center justify-center rounded-full"
       style={{
-        background: `conic-gradient(var(--color-accent) ${pct * 3.6}deg, var(--color-line) 0deg)`,
+        background: `conic-gradient(color-mix(in srgb, ${tone} 62%, transparent) ${pct * 3.6}deg, var(--color-line) 0deg)`,
       }}
       title={`Match score: ${Math.round(pct)}/100`}
     >
-      <span className="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-surface text-[11px] font-semibold text-accent tabular-nums">
+      <span
+        className="flex h-[19px] w-[19px] items-center justify-center rounded-full bg-surface text-[9.5px] font-semibold tabular-nums"
+        style={{ color: `color-mix(in srgb, ${tone} 76%, var(--color-muted))` }}
+      >
         {Math.round(pct)}
       </span>
     </span>
