@@ -18,6 +18,7 @@ import { MapView } from "./MapView";
 import { ListingPanel, SortSelect, listingCountLabel } from "./ListingPanel";
 import { ListingDetail } from "./ListingDetail";
 import { ScoutPanel } from "./ScoutPanel";
+import { SaveSearchDialog } from "./SaveSearchDialog";
 
 /** One NDJSON line from /api/search. */
 type SearchStreamEvent =
@@ -64,8 +65,10 @@ export function AppShell() {
   // Optional filter: hide listings flagged verify-carefully / suspicious.
   const [hideSuspicious, setHideSuspicious] = useState(false);
 
-  // Overnight scout panel
+  // Overnight scout panel + saved (watched) searches
   const [scoutOpen, setScoutOpen] = useState(false);
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [savedQueries, setSavedQueries] = useState<Set<string>>(new Set());
   const newTodayCount = useMemo(
     () => (listings ?? []).filter((l) => l.badges.includes("new_today")).length,
     [listings],
@@ -210,6 +213,34 @@ export function AppShell() {
     setSearchError(null);
     setSearching(false);
   }, []);
+
+  // Save the current search so the overnight Scout watches it (+ optionally
+  // drafts applications for new matches). Derives a light neighborhood filter
+  // from the query; the full natural-language query is stored for provenance.
+  const saveCurrentSearch = useCallback(
+    async ({ name, autoApply }: { name: string; autoApply: boolean }) => {
+      const q = query.trim();
+      const hood = matchNeighborhood(q);
+      const res = await fetch("/api/searches", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          query: q,
+          autoApply,
+          criteria: hood ? { neighborhoods: [hood.name] } : undefined,
+        }),
+      });
+      if (!res.ok) {
+        const j = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(j.error ?? `Save failed (${res.status})`);
+      }
+      setSavedQueries((s) => new Set(s).add(q));
+      setSaveOpen(false);
+      setScoutOpen(true); // reveal the watched search + what Scout will do
+    },
+    [query],
+  );
 
   const reasonById = useMemo(() => {
     const m = new Map<string, MatchInfo>();
@@ -373,6 +404,8 @@ export function AppShell() {
           onSortChange={setSort}
           hideSuspicious={hideSuspicious}
           onToggleSuspicious={() => setHideSuspicious((v) => !v)}
+          onSaveSearch={() => setSaveOpen(true)}
+          searchSaved={savedQueries.has(query.trim())}
         />
       </div>
 
@@ -454,6 +487,16 @@ export function AppShell() {
           listings={listings ?? []}
           onClose={() => setScoutOpen(false)}
           onSelect={(id) => select(id)}
+        />
+      )}
+
+      {saveOpen && (
+        <SaveSearchDialog
+          query={query}
+          interpretation={search?.interpretation ?? null}
+          matchCount={displayed.length}
+          onClose={() => setSaveOpen(false)}
+          onConfirm={saveCurrentSearch}
         />
       )}
     </div>

@@ -80,6 +80,26 @@ describe("assembleCandidates", () => {
     expect(assembleCandidates(db, { query: "x" })).toHaveLength(1);
     expect(assembleCandidates(db, { query: "x", includeHiddenGone: true })).toHaveLength(2);
   });
+
+  it("does not truncate a small-neighborhood match away before pre-rank (regression)", async () => {
+    // A large dataset where the only two Outer Richmond listings sit past the
+    // old hard 600-cap; without a location sort they must still survive to the
+    // relevance pre-rank rather than being dropped in DB order.
+    stubSuccess(
+      Array.from({ length: 700 }, (_, i) =>
+        makeListing({
+          sourceListingId: `bulk_${i}`,
+          neighborhood: i >= 650 ? "Outer Richmond" : "Mission",
+        }),
+      ),
+    );
+    await runSource(db, "stub_src", OPTS);
+    const all = assembleCandidates(db, { query: "outer richmond" });
+    const outer = all.filter((c) => c.neighborhood === "Outer Richmond");
+    expect(outer.length).toBeGreaterThan(0);
+    const ranked = prerankAndCap("outer richmond", all, 60);
+    expect(ranked.some((c) => c.neighborhood === "Outer Richmond")).toBe(true);
+  });
 });
 
 describe("prerankAndCap", () => {

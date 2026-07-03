@@ -181,7 +181,13 @@ export function assembleCandidates(db: Db, opts: SearchOptions): CandidateProfil
   if (opts.location) {
     out.sort((a, b) => (a.distanceMi ?? Infinity) - (b.distanceMi ?? Infinity));
   }
-  const cap = opts.maxCandidates ?? 600;
+  // Safety bound only. Do NOT truncate below the dataset in DB/arbitrary order:
+  // the relevance pre-rank (prerankAndCap) is what selects which listings reach
+  // the model, so a low cap here would silently drop relevant listings (e.g. a
+  // 2-unit neighborhood sitting past position 600) before they're ever scored.
+  // With a location we've already sorted nearest-first, so the cap keeps the
+  // closest N; without one, keep everything and let relevance decide.
+  const cap = opts.maxCandidates ?? 5000;
   return out.length > cap ? out.slice(0, cap) : out;
 }
 

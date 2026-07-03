@@ -15,14 +15,14 @@
  */
 @theme {
   --color-paper: #070b12;          /* app background */
-  --color-surface: #0d131d;        /* panels */
-  --color-elevated: #141c28;       /* raised surfaces, inputs */
-  --color-line: #1e2836;           /* hairline border */
-  --color-line-strong: #2c3a4c;    /* stronger border */
+  --color-surface: #151d2b;        /* panels — lifted well clear of the dark map */
+  --color-elevated: #1e2836;       /* raised surfaces, inputs */
+  --color-line: #2a3646;           /* hairline border */
+  --color-line-strong: #3a4a5e;    /* stronger border */
 
-  --color-ink: #eef2f7;            /* primary text — off-white */
-  --color-muted: #97a5b8;          /* secondary text — slate */
-  --color-faint: #5f6d80;          /* tertiary / metadata */
+  --color-ink: #f1f5f9;            /* primary text — off-white */
+  --color-muted: #a4b2c4;          /* secondary text — slate */
+  --color-faint: #697788;          /* tertiary / metadata */
 
   --color-accent: #4aa8e0;         /* selection / active search only */
   --color-accent-deep: #2f8cbd;
@@ -54,12 +54,6 @@ body {
   font-feature-settings: "tnum";
 }
 
-/* Keyboard focus: a quiet accent ring, only when navigating by keyboard.
- * :where() keeps specificity at zero so component styles still win. */
-:where(button, a, select, textarea, input, [role="button"]):focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--color-accent) 55%, transparent);
-  outline-offset: 1px;
-}
 
 /* ---------- Motion — quick, subtle, purposeful. No glow/sweep/terminal FX. ---------- */
 

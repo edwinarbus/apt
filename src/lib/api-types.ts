@@ -111,6 +111,36 @@ export interface SearchResponse {
   error: string | null;
 }
 
+/** A drafted (never-sent) rental application the Scout stages for a match. */
+export interface ApplicationDraftDto {
+  listingId: string;
+  listingTitle: string | null;
+  to: string | null;
+  channel: "email" | "phone" | "unknown";
+  subject: string;
+  body: string;
+}
+
+/** A saved search the overnight Scout watches, with its live match stats. */
+export interface SavedSearchDto {
+  id: string;
+  name: string;
+  query: string | null;
+  autoApply: boolean;
+  enabled: boolean;
+  createdAt: string;
+  /** active listings currently matching this search's criteria */
+  matchCount: number;
+  /** of those, how many are new in the last 24h */
+  newMatchCount: number;
+  /** for auto-apply searches, a drafted application for the freshest match */
+  sampleDraft: ApplicationDraftDto | null;
+}
+
+export interface SavedSearchesResponse {
+  searches: SavedSearchDto[];
+}
+
 export interface ListingEventPayload {
   id: string;
   eventType: string;

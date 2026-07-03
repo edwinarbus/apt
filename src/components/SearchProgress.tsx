@@ -83,35 +83,31 @@ export function SearchProgress({ progress }: { progress: SearchProgressState }) 
         )}
       </div>
 
-      <div className="relative min-h-0 flex-1">
-        <div ref={bodyRef} className="panel-scroll h-full overflow-y-auto pt-3 pb-1">
-          {paras.length > 0 ? (
-            <div className="flex flex-col gap-3 border-l border-line pl-3">
-              {paras.map((p, i) => {
-                const latest = i === paras.length - 1;
-                return (
-                  <p
-                    key={i}
-                    className={`text-[12.5px] leading-relaxed whitespace-pre-wrap transition-colors duration-500 ${
-                      latest && stillThinking ? "text-muted" : "text-faint"
-                    }`}
-                  >
-                    {p}
-                    {latest && stillThinking && (
-                      <span aria-hidden className="thinking-caret ml-1" />
-                    )}
-                  </p>
-                );
-              })}
-            </div>
-          ) : (
-            <p className="shimmer-text text-[12.5px] leading-relaxed">
-              Reading your search and the listings…
-            </p>
-          )}
-        </div>
-        {/* older thoughts slide away under a quiet fade */}
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-surface to-transparent" />
+      <div ref={bodyRef} className="panel-scroll mt-3 min-h-0 flex-1 overflow-y-auto pb-1">
+        {paras.length > 0 ? (
+          <div className="flex flex-col gap-3 border-l-2 border-line pl-3.5">
+            {paras.map((p, i) => {
+              const latest = i === paras.length - 1;
+              return (
+                <p
+                  key={i}
+                  className={`text-[12.5px] leading-relaxed whitespace-pre-wrap transition-colors duration-500 ${
+                    latest && stillThinking ? "text-muted" : "text-faint"
+                  }`}
+                >
+                  {p}
+                  {latest && stillThinking && (
+                    <span aria-hidden className="thinking-caret ml-1" />
+                  )}
+                </p>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="shimmer-text text-[12.5px] leading-relaxed">
+            Reading your search and the listings…
+          </p>
+        )}
       </div>
     </div>
   );

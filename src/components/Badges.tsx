@@ -23,17 +23,17 @@ const COMPACT_PRIORITY: BadgeKind[] = [
   "stale",
 ];
 
-/** One tiny status chip — the highest-priority badge only. Sits by the price. */
+/** One tiny status tag — the highest-priority badge only. Sits by the price,
+ * vertically centered on its line. Small caps so it reads as a quiet marker. */
 export function CompactBadge({ badges }: { badges: BadgeKind[] }) {
   const kind = COMPACT_PRIORITY.find((k) => badges.includes(k));
   if (!kind) return null;
   const color = BADGE_COLORS[kind];
   return (
     <span
-      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10.5px] font-medium whitespace-nowrap"
-      style={{ backgroundColor: `${color}1a`, color }}
+      className="inline-flex shrink-0 self-center items-center rounded-[4px] px-1.5 py-[1.5px] text-[9px] font-bold tracking-[0.05em] uppercase whitespace-nowrap"
+      style={{ backgroundColor: `${color}22`, color }}
     >
-      <span className="h-1 w-1 rounded-full" style={{ backgroundColor: color }} />
       {COMPACT_LABELS[kind] ?? BADGE_LABELS[kind]}
     </span>
   );

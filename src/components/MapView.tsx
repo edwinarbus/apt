@@ -40,8 +40,11 @@ const HOOD = "#4a90b8"; // neighborhood geometry — controlled steel-cyan
 const HALO = "#06090f"; // marker stroke = background, for a crisp cut-out edge
 /** Real-terrain relief exaggeration while a neighborhood is shown in 3D. */
 const TERRAIN_EXAGGERATION = 1.4;
-/** Resting tilt of the browse map — enough to read as a 3D scene, not top-down. */
-const BROWSE_PITCH = 12;
+/** Resting tilt of the browse map — a dramatic three-quarter view of the city,
+ * clearly a 3D scene rather than a top-down plan. */
+const BROWSE_PITCH = 47;
+/** Idle zoom that frames the whole tilted city with sky above it. */
+const BROWSE_ZOOM = 11.7;
 
 // Clusters are aggregates of mixed status → neutral steel, denser = lighter.
 const CLUSTER_COLOR_BROWSE = [
@@ -875,13 +878,13 @@ export function MapView({
         syncData(map, listingsRef.current);
         refreshThumbsRef.current();
 
-        const intro = { center: SF_CENTER as [number, number], zoom: 12.4, pitch: BROWSE_PITCH, bearing: 0 };
+        const intro = { center: SF_CENTER as [number, number], zoom: BROWSE_ZOOM, pitch: BROWSE_PITCH, bearing: 0 };
         if (reduced || document.visibilityState === "hidden") {
           map.jumpTo(intro);
         } else {
-          map.flyTo({ ...intro, duration: 1400, curve: 1.2 });
+          map.flyTo({ ...intro, duration: 1500, curve: 1.2 });
           window.setTimeout(() => {
-            if (mapRef.current === map && map.isMoving() && map.getZoom() < 12) {
+            if (mapRef.current === map && map.isMoving() && map.getZoom() < 11.4) {
               map.stop();
               map.jumpTo(intro);
             }
@@ -955,7 +958,9 @@ export function MapView({
       return;
     }
 
-    if (!prefersReducedMotion() && document.visibilityState !== "hidden") {
+    // When the search named a neighborhood, the highlight effect owns the
+    // camera (centered + tilted on that hood) — don't tug it toward the pins.
+    if (!highlightHoodRef.current && !prefersReducedMotion() && document.visibilityState !== "hidden") {
       const bounds = new maplibregl.LngLatBounds();
       for (const c of coords) bounds.extend(c);
       if (!bounds.isEmpty()) {
@@ -1029,28 +1034,56 @@ export function MapView({
         if (!motionOk) map.jumpTo({ ...cam, pitch: 62 });
         else map.flyTo({ ...cam, pitch: 62, duration: 2000, curve: 1.4 });
       }
-    } else if (!selectedHood && !searchActiveRef.current) {
-      const home = { center: SF_CENTER as [number, number], zoom: 12.4, pitch: BROWSE_PITCH, bearing: 0 };
+    } else if (!selectedHood && !searchActiveRef.current && !highlightHoodRef.current) {
+      const home = { center: SF_CENTER as [number, number], zoom: BROWSE_ZOOM, pitch: BROWSE_PITCH, bearing: 0 };
       if (!motionOk) map.jumpTo(home);
       else map.flyTo({ ...home, duration: 1300, curve: 1.3 });
     }
   }, [selectedHood]);
 
-  /* --- Search highlight: outline the neighborhood a search named (no isolate) --- */
+  /* --- Search highlight: a neighborhood named in the query gets centered,
+   * tilted, outlined, and shown with real terrain relief — the same "here's
+   * your neighborhood" gesture as a click, but keeping listing pins visible so
+   * results still read on top. --- */
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
+    const prev = highlightHoodRef.current;
     highlightHoodRef.current = highlightHood ?? null;
-    // A full isolate owns the outline; don't fight it.
+    // A full isolate owns the outline + terrain; don't fight it.
     if (selectedHood) return;
     const name = highlightHood ?? null;
+    const hood = hoodByName(name);
+    const motionOk = !prefersReducedMotion() && document.visibilityState !== "hidden";
     try {
       const filt = ["==", ["get", "name"], name ?? "__none__"] as never;
       map.setFilter("hood-selected-line", filt);
       map.setFilter("hood-selected-glow", filt);
-      map.setPaintProperty("hood-selected-line", "line-opacity", name ? 0.9 : 0);
-      map.setPaintProperty("hood-selected-glow", "line-opacity", name ? 0.5 : 0);
+      map.setPaintProperty("hood-selected-line", "line-opacity", name ? 0.95 : 0);
+      map.setPaintProperty("hood-selected-glow", "line-opacity", name ? 0.6 : 0);
       map.setPaintProperty("hoods-label", "text-opacity", name ? 0.9 : 0.8);
+
+      if (name && hood) {
+        enableTerrain(map);
+        // Center + tilt onto the neighborhood. cameraForBounds is computed flat,
+        // then we pitch in the flyTo so the whole hood stays comfortably framed.
+        const [[w, s], [e, n]] = multiPolygonBounds(hood.geometry.coordinates);
+        const cam = map.cameraForBounds(
+          [
+            [w, s],
+            [e, n],
+          ],
+          { padding: { top: 150, left: 120, right: 120, bottom: 130 }, bearing: 0, maxZoom: 14 },
+        );
+        if (cam) {
+          const target = { ...cam, pitch: 54 };
+          if (!motionOk) map.jumpTo(target);
+          else map.flyTo({ ...target, duration: 1600, curve: 1.5 });
+        }
+      } else if (prev) {
+        // Cleared the highlight: drop terrain (camera home is handled on search clear).
+        removeTerrain(map);
+      }
     } catch {
       /* layers not ready yet */
     }
@@ -1080,7 +1113,9 @@ export function MapView({
     }
     refreshThumbsRef.current(); // matches switch to accent pills / plain pills
 
-    if (searchActive && !selectedHoodRef.current) {
+    // A named neighborhood is framed + tilted by the highlight effect; only
+    // frame the camera here for scattered, citywide results.
+    if (searchActive && !selectedHoodRef.current && !highlightHoodRef.current) {
       const pts = listings.filter((l) => l.latitude != null && l.longitude != null);
       if (pts.length > 0) {
         const bounds = new maplibregl.LngLatBounds();
@@ -1089,30 +1124,25 @@ export function MapView({
             bounds.extend([l.longitude!, l.latitude!]);
           }
         }
-        // If the search named a neighborhood, keep it in frame so its highlight is visible.
-        const hood = hoodByName(highlightHoodRef.current);
-        if (hood) {
-          const [[w, s], [e, n]] = multiPolygonBounds(hood.geometry.coordinates);
-          bounds.extend([w, s]);
-          bounds.extend([e, n]);
-        }
         if (!bounds.isEmpty()) {
           const cam = map.cameraForBounds(bounds, {
             padding: { top: 150, left: 90, right: 90, bottom: 90 },
             maxZoom: pts.length === 1 ? 15.6 : 14.4,
           });
           if (cam) {
+            // Flatten a touch so scattered pins across the city stay readable.
+            const target = { ...cam, pitch: 22 };
             if (prefersReducedMotion() || document.visibilityState === "hidden") {
-              map.jumpTo(cam);
+              map.jumpTo(target);
             } else {
-              map.easeTo({ ...cam, duration: 1200 });
+              map.easeTo({ ...target, duration: 1200 });
             }
           }
         }
       }
-    } else if (!searchActive && wasActive && !selectedHoodRef.current) {
+    } else if (!searchActive && wasActive && !selectedHoodRef.current && !highlightHoodRef.current) {
       // Clearing a search glides back to the resting city view.
-      const home = { center: SF_CENTER as [number, number], zoom: 12.4, pitch: BROWSE_PITCH, bearing: 0 };
+      const home = { center: SF_CENTER as [number, number], zoom: BROWSE_ZOOM, pitch: BROWSE_PITCH, bearing: 0 };
       if (prefersReducedMotion() || document.visibilityState === "hidden") map.jumpTo(home);
       else map.flyTo({ ...home, duration: 1200, curve: 1.3 });
     }

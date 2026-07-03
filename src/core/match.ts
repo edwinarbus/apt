@@ -31,6 +31,14 @@ export interface SavedSearchCriteria {
   centerLng?: number;
   includeKeywords?: string[];
   excludeKeywords?: string[];
+  /** The raw natural-language query this search was saved from (UX/provenance). */
+  query?: string;
+  /**
+   * When true, the overnight Apt Scout DRAFTS an application for each NEW
+   * listing that matches — it never sends. The draft is staged for the user to
+   * review and send themselves. (Automated outreach stays prohibited.)
+   */
+  autoApply?: boolean;
 }
 
 export interface MatchableListing {
