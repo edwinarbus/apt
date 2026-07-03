@@ -752,7 +752,13 @@ export function MapView({
           type: "fill",
           source: "hood-reveal",
           layout: { visibility: "none" },
-          paint: { "fill-color": PAPER, "fill-opacity": 0.9 },
+          // Fully opaque: the satellite raster is a single GLOBAL layer, so the
+          // ONLY thing keeping it inside the selected hood is this hole-punched
+          // cover. Any translucency lets satellite bleed over the whole city —
+          // most visibly during the fly-in — so it must be 1, not 0.9. The hood
+          // (the hole) is the sole place imagery shows; everywhere else stays the
+          // dark paper with just the neighborhood outlines/labels floating above.
+          paint: { "fill-color": PAPER, "fill-opacity": 1 },
         });
 
         // Extruded buildings give the pitched map its depth.

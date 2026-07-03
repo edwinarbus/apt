@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { IBM_Plex_Mono, Inter, Space_Grotesk } from "next/font/google";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./globals.css";
+import { PreloadResources } from "./preload-resources";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -51,6 +52,7 @@ export default function RootLayout({
       className={`${inter.variable} ${plexMono.variable} ${spaceGrotesk.variable} h-full antialiased`}
     >
       <body className="h-[100dvh] min-h-0 overflow-hidden">
+        <PreloadResources />
         <main className="h-full min-h-0">{children}</main>
       </body>
     </html>
