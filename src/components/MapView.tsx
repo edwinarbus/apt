@@ -10,16 +10,14 @@ import { multiPolygonBounds, type MultiPolygonCoords } from "@/lib/geo";
 import hoodsData from "@/data/sf-neighborhoods.json";
 
 /**
- * The Navy-ops 3D stage.
+ * The Navy-ops tactical stage.
  *
  * - Dark navy basemap (Positron recolored at runtime); ONLY San Francisco is
  *   visible — the rest of the world is masked and the camera is hard-bounded.
- * - Real terrain (AWS terrarium DEM) + extruded buildings.
+ * - A flat, pitched 3D map (extruded buildings give depth; no terrain).
  * - The 37 official planning neighborhoods render as glowing HUD polygons.
- *   Clicking one LIFTS it out of the map: a solid slab rises carrying the
- *   actual buildings inside the boundary (a `within` filter splits the
- *   building layer), revealing satellite imagery in the crater below, while
- *   photo thumbnails of that hood's listings hover above the slab.
+ *   Clicking one ISOLATES it: a bright, pulsing high-contrast outline traces
+ *   the boundary, the camera frames it, and its listings show as thumbnails.
  * - While a search runs, the sonar plays ON the map: a rotating beam and
  *   expanding rings sweep from your position, then the REAL shortlisted
  *   listings ping and a designator hops between them as the camera hones in
@@ -37,11 +35,7 @@ const SF_MAX_BOUNDS: [[number, number], [number, number]] = [
 const PAPER = "#070d18";
 const ACCENT = "#47aede"; // interaction: selection, search targets, scan
 const HOOD = "#4a90b8"; // neighborhood geometry — controlled steel-cyan
-const HOOD_BRIGHT = "#6fb6d8"; // selected neighborhood outline
 const HALO = "#06090f"; // marker stroke = background, for a crisp cut-out edge
-/** How far a selected neighborhood is raised out of the map (baked into the DEM). */
-const HOOD_BOOST_M = 105;
-const TERRAIN_EXAGGERATION = 1.35;
 
 // Clusters are aggregates of mixed status → neutral graphite, denser = lighter.
 const CLUSTER_COLOR_BROWSE = [
@@ -146,307 +140,6 @@ function hoodLabelPoints(): GeoJSON.FeatureCollection {
       };
     }),
   };
-}
-
-function hoodRevealMask(name: string | null): GeoJSON.Feature {
-  const holes: [number, number][][] = [];
-  const hood = hoodByName(name);
-  for (const poly of hood?.geometry.coordinates ?? []) if (poly[0]) holes.push(poly[0]);
-  return {
-    type: "Feature",
-    properties: {},
-    geometry: { type: "Polygon", coordinates: [WORLD_RING, ...holes] },
-  };
-}
-
-/* ---------- Custom DEM: physically raise the selected neighborhood ----------
- * The diorama effect. `aptdem://<hood>/{z}/{x}/{y}.png` proxies the public
- * terrarium elevation tiles and re-encodes every pixel inside the hood polygon
- * with +HOOD_BOOST_M meters. Terrain is rebuilt from this source on selection,
- * so the ENTIRE neighborhood — satellite imagery, streets, buildings, markers —
- * drapes up onto a raised plateau with sheer texture-stretched cliff sides,
- * while the rest of the city stays at true elevation. `none` passes through.
- */
-/** Same-origin proxy (see /api/dem) — the upstream terrarium tiles send no CORS
- * header, so a direct fetch is blocked and the canvas re-encode fails. */
-const DEM_PROXY = "/api/dem";
-const demTileCache = new Map<string, ArrayBuffer>();
-const demTileInflight = new Map<string, Promise<ArrayBuffer>>();
-let demProtocolRegistered = false;
-
-function tile2lat(y: number, z: number): number {
-  const n = Math.PI - (2 * Math.PI * y) / 2 ** z;
-  return (180 / Math.PI) * Math.atan(Math.sinh(n));
-}
-
-function lat2tileY(lat: number, z: number): number {
-  const rad = (lat * Math.PI) / 180;
-  return Math.floor(
-    ((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * 2 ** z,
-  );
-}
-
-/**
- * Fetch + boost one aptdem tile, memoized. Shared by the map protocol and the
- * lift preloader (below), with in-flight dedup so a preload and the terrain
- * source requesting the same tile don't both re-encode it.
- */
-function processDemTile(url: string): Promise<ArrayBuffer> {
-  const cached = demTileCache.get(url);
-  if (cached) return Promise.resolve(cached);
-  const inflight = demTileInflight.get(url);
-  if (inflight) return inflight;
-
-  const job = (async () => {
-    const m = /^aptdem:\/\/([^/]*)\/(\d+)\/(\d+)\/(\d+)\.png$/.exec(url);
-    if (!m) throw new Error(`bad aptdem url: ${url}`);
-    const hoodName = decodeURIComponent(m[1]);
-    const z = Number(m[2]);
-    const x = Number(m[3]);
-    const y = Number(m[4]);
-
-    const res = await fetch(`${DEM_PROXY}/${z}/${x}/${y}`);
-    if (!res.ok) throw new Error(`dem tile ${res.status}`);
-    const buf = await res.arrayBuffer();
-
-    const hood = hoodName === "none" ? undefined : hoodByName(hoodName);
-    if (!hood) {
-      demTileCache.set(url, buf);
-      return buf;
-    }
-    // Skip tiles that don't overlap the hood at all.
-    const n = 2 ** z;
-    const lngW = (x / n) * 360 - 180;
-    const lngE = ((x + 1) / n) * 360 - 180;
-    const latN = tile2lat(y, z);
-    const latS = tile2lat(y + 1, z);
-    const [[bw, bs], [be, bn]] = multiPolygonBounds(hood.geometry.coordinates);
-    if (lngE < bw || lngW > be || latN < bs || latS > bn) {
-      demTileCache.set(url, buf);
-      return buf;
-    }
-
-    try {
-      const bmp = await createImageBitmap(new Blob([buf], { type: "image/png" }));
-      const canvas = document.createElement("canvas");
-      canvas.width = 256;
-      canvas.height = 256;
-      const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
-      ctx.drawImage(bmp, 0, 0, 256, 256);
-      const full = ctx.getImageData(0, 0, 256, 256);
-      const d = full.data;
-
-      // Rasterize the hood polygon into a mask with a single native fill on a
-      // second canvas — far faster (and more robust) than a point-in-polygon
-      // test per pixel, which stalled tiles badly enough to break the whole
-      // terrain source. Mask alpha > 0 marks pixels inside the neighborhood.
-      const mcanvas = document.createElement("canvas");
-      mcanvas.width = 256;
-      mcanvas.height = 256;
-      const mctx = mcanvas.getContext("2d", { willReadFrequently: true })!;
-      mctx.fillStyle = "#fff";
-      mctx.strokeStyle = "#fff";
-      mctx.lineJoin = "round";
-      mctx.beginPath();
-      for (const poly of hood.geometry.coordinates) {
-        for (const ring of poly) {
-          ring.forEach(([lng, lat], i) => {
-            const px = ((lng - lngW) / (lngE - lngW)) * 256;
-            const py = ((latN - lat) / (latN - latS)) * 256;
-            if (i === 0) mctx.moveTo(px, py);
-            else mctx.lineTo(px, py);
-          });
-          mctx.closePath();
-        }
-      }
-      mctx.fill("evenodd");
-      // Feather the boost INWARD only: carve a blurred rim just inside the edge
-      // so the boost is full in the interior and ramps to zero AT the polygon
-      // boundary (never past it). Two wins: (1) a hard step would tessellate into
-      // a jagged cliff — the ramp is a smooth slope; (2) the whole slope stays
-      // inside the hood, so the satellite reveal (cut at the sharp polygon)
-      // covers it and the satellite→dark edge lands on flat ground, not mid-slope
-      // where it scallops along the mesh.
-      mctx.globalCompositeOperation = "destination-out";
-      mctx.filter = "blur(2.5px)";
-      mctx.lineWidth = 4;
-      mctx.stroke();
-      mctx.globalCompositeOperation = "source-over";
-      mctx.filter = "none";
-      const mask = mctx.getImageData(0, 0, 256, 256).data;
-
-      for (let i = 0; i < d.length; i += 4) {
-        const a = mask[i + 3];
-        if (a === 0) continue;
-        const raw = d[i] * 256 + d[i + 1] + d[i + 2] / 256 + (HOOD_BOOST_M * a) / 255;
-        const whole = Math.floor(raw);
-        d[i] = (whole >> 8) & 255;
-        d[i + 1] = whole & 255;
-        d[i + 2] = Math.round((raw - whole) * 256) & 255;
-      }
-      ctx.putImageData(full, 0, 0);
-      const blob = await new Promise<Blob | null>((resolve) =>
-        canvas.toBlob(resolve, "image/png"),
-      );
-      if (!blob) throw new Error("toBlob null");
-      const out = await blob.arrayBuffer();
-      demTileCache.set(url, out);
-      return out;
-    } catch (err) {
-      // Never let a re-encode failure error the whole terrain source: fall back
-      // to the true-elevation tile so the map stays intact.
-      console.warn("[apt map] dem boost re-encode failed; using raw tile", err);
-      demTileCache.set(url, buf);
-      return buf;
-    }
-  })();
-
-  demTileInflight.set(url, job);
-  return job.finally(() => demTileInflight.delete(url));
-}
-
-function registerDemProtocol() {
-  if (demProtocolRegistered) return;
-  demProtocolRegistered = true;
-  maplibregl.addProtocol("aptdem", async (params) => ({
-    data: await processDemTile(params.url),
-  }));
-}
-
-const SAT_TILE_URL = (z: number, x: number, y: number) =>
-  `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`;
-
-/** Tile x/y range covering a hood's bbox at a zoom, clamped to the world. */
-function hoodTileRange(
-  hood: HoodFeature,
-  zoom: number,
-): Array<[number, number, number]> {
-  const [[bw, bs], [be, bn]] = multiPolygonBounds(hood.geometry.coordinates);
-  const n = 2 ** zoom;
-  const xMin = Math.max(0, Math.floor(((bw + 180) / 360) * n));
-  const xMax = Math.min(n - 1, Math.floor(((be + 180) / 360) * n));
-  const yMin = Math.max(0, lat2tileY(bn, zoom));
-  const yMax = Math.min(n - 1, lat2tileY(bs, zoom));
-  const out: Array<[number, number, number]> = [];
-  for (let x = xMin; x <= xMax; x++) {
-    for (let y = yMin; y <= yMax; y++) out.push([zoom, x, y]);
-  }
-  return out;
-}
-
-function warmImage(url: string): Promise<void> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => resolve();
-    img.onerror = () => resolve();
-    img.referrerPolicy = "no-referrer";
-    img.src = url;
-  });
-}
-
-/** Run best-effort jobs with a concurrency cap; never rejects. */
-async function runLimited(jobs: Array<() => Promise<unknown>>, limit: number) {
-  let i = 0;
-  const worker = async () => {
-    while (i < jobs.length) {
-      const job = jobs[i++];
-      try {
-        await job();
-      } catch {
-        /* preload is best-effort */
-      }
-    }
-  };
-  await Promise.all(
-    Array.from({ length: Math.min(limit, jobs.length) }, worker),
-  );
-}
-
-/**
- * Warm the boosted DEM tiles (canvas re-encode) and Esri satellite tiles a
- * lifted neighborhood needs, so the visible rise doesn't stutter while they
- * stream in. Best-effort and bounded; resolves when warm (or the set is empty).
- */
-async function preloadHoodLift(hoodName: string): Promise<void> {
-  const hood = hoodByName(hoodName);
-  if (!hood) return;
-  const jobs: Array<() => Promise<unknown>> = [];
-  // Boosted DEM: the source is capped at z12, so warm z10–12.
-  for (const z of [10, 11, 12]) {
-    for (const [zz, x, y] of hoodTileRange(hood, z)) {
-      const url = `aptdem://${encodeURIComponent(hoodName)}/${zz}/${x}/${y}.png`;
-      jobs.push(() => processDemTile(url));
-    }
-  }
-  // Satellite imagery revealed on the plateau, at the swoop's end zoom.
-  const satJobs: Array<() => Promise<unknown>> = [];
-  for (const z of [13, 14]) {
-    for (const [zz, x, y] of hoodTileRange(hood, z)) {
-      satJobs.push(() => warmImage(SAT_TILE_URL(zz, x, y)));
-    }
-  }
-  // Bail on pathologically large sets rather than hammering the network.
-  if (jobs.length + satJobs.length > 130) return;
-  await runLimited([...jobs, ...satJobs], 8);
-}
-
-function demTilesUrl(hoodName: string | null): string {
-  return `aptdem://${encodeURIComponent(hoodName ?? "none")}/{z}/{x}/{y}.png`;
-}
-
-const HILLSHADE_PAINT: Record<string, unknown> = {
-  "hillshade-shadow-color": "#020710",
-  "hillshade-highlight-color": "#4a6d94",
-  "hillshade-accent-color": "#0b1c30",
-  "hillshade-exaggeration": 0.55,
-};
-
-/**
- * (Re)build terrain + hillshade from the boosted DEM for the given hood.
- * The dependent hillshade layers must come down before the source can.
- */
-function swapTerrain(
-  map: maplibregl.Map,
-  hoodName: string | null,
-  exaggeration = TERRAIN_EXAGGERATION,
-) {
-  try {
-    map.setTerrain(null);
-    for (const lid of ["hillshade-top", "hillshade-base"]) {
-      if (map.getLayer(lid)) map.removeLayer(lid);
-    }
-    if (map.getSource("dem")) map.removeSource("dem");
-    map.addSource("dem", {
-      type: "raster-dem",
-      tiles: [demTilesUrl(hoodName)],
-      encoding: "terrarium",
-      tileSize: 256,
-      // Cap at z12: on hood-select the boosted source reuses the z11–12 tiles
-      // already fetched at city view (browser-cached), so it lifts fast instead
-      // of cold-fetching a burst of z13 tiles through the proxy.
-      maxzoom: 12,
-      attribution: "Terrain: Mapzen/AWS",
-    });
-    // Citywide sculpted relief, under the outside-SF mask.
-    map.addLayer(
-      { id: "hillshade-base", type: "hillshade", source: "dem", paint: HILLSHADE_PAINT as never },
-      "outside-sf-mask",
-    );
-    // Relief on the lifted plateau's satellite imagery (hood mode only).
-    map.addLayer(
-      {
-        id: "hillshade-top",
-        type: "hillshade",
-        source: "dem",
-        layout: { visibility: hoodName ? "visible" : "none" },
-        paint: HILLSHADE_PAINT as never,
-      },
-      "hood-reveal-mask",
-    );
-    map.setTerrain({ source: "dem", exaggeration });
-  } catch (err) {
-    console.warn("[apt map] terrain swap failed", err);
-  }
 }
 
 /** Recolor the light Positron style into the navy ops palette before boot. */
@@ -641,14 +334,13 @@ export function MapView({
   const onSelectRef = useRef(onSelect);
   const onHoodSelectRef = useRef(onHoodSelect);
   const selectedHoodRef = useRef<string | null>(null);
-  const prevHoodRef = useRef<string | null>(null);
   const hoveredHoodRef = useRef<string | null>(null);
   const lockMarkerRef = useRef<maplibregl.Marker | null>(null);
   const scanMarkerRef = useRef<maplibregl.Marker | null>(null);
   const sonarMarkerRef = useRef<maplibregl.Marker | null>(null);
   const scanHopTimerRef = useRef<number | null>(null);
   const pulseRafRef = useRef<number | null>(null);
-  const riseRafRef = useRef<number | null>(null);
+  const hoodPulseRafRef = useRef<number | null>(null);
   const thumbsRef = useRef<Map<string, maplibregl.Marker>>(new Map());
   const searchActiveRef = useRef(false);
   const cleanupRef = useRef<(() => void) | null>(null);
@@ -683,8 +375,7 @@ export function MapView({
         thumbs.delete(id);
       }
     }
-    // Markers are terrain-aware, so thumbnails ride the raised plateau on
-    // their own; a short stalk keeps the hover-above feel.
+    // A short stalk keeps the hover-above feel over the flat map.
     for (const l of wanted) {
       let marker = thumbs.get(l.id);
       if (!marker) {
@@ -716,7 +407,6 @@ export function MapView({
     const container = containerRef.current;
     const reduced = prefersReducedMotion();
 
-    registerDemProtocol();
     (async () => {
       let style: StyleSpecification | string = MAP_STYLE_URL;
       try {
@@ -774,45 +464,10 @@ export function MapView({
           paint: { "fill-color": PAPER, "fill-opacity": 0.94 },
         });
 
-        // Satellite crater reveal (hidden until a hood lifts)
-        map.addSource("satellite", {
-          type: "raster",
-          tiles: [
-            "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-          ],
-          tileSize: 256,
-          maxzoom: 19,
-          attribution: "Imagery: Esri",
-        });
-        map.addLayer({
-          id: "hood-satellite",
-          type: "raster",
-          source: "satellite",
-          layout: { visibility: "none" },
-          // Grade the imagery to read as cool recon intelligence, not a warm
-          // chunk of Google Earth: desaturate, add contrast, pull the highlights
-          // down and nudge the hue toward the tactical blue.
-          paint: {
-            "raster-opacity": 0.9,
-            "raster-saturation": -0.4,
-            "raster-contrast": 0.15,
-            "raster-brightness-max": 0.9,
-            "raster-hue-rotate": 8,
-          },
-        });
-        map.addSource("hood-reveal", { type: "geojson", data: hoodRevealMask(null) });
-        map.addLayer({
-          id: "hood-reveal-mask",
-          type: "fill",
-          source: "hood-reveal",
-          layout: { visibility: "none" },
-          paint: { "fill-color": PAPER, "fill-opacity": 0.9 },
-        });
+        // Flat, pitched tactical map — no terrain (the lifted-terrain diorama is
+        // gone; a raster-DEM terrain kept the map in a perpetual repaint loop).
 
-        // Terrain + hillshade from the boostable DEM (masks exist → anchors valid).
-        swapTerrain(map, null);
-
-        // Extruded buildings (they drape onto the boosted terrain automatically)
+        // Extruded buildings give the pitched map its depth.
         let buildingSource: string | null = null;
         try {
           const layers = map.getStyle().layers ?? [];
@@ -877,12 +532,24 @@ export function MapView({
           source: "hoods",
           paint: { "line-color": HOOD, "line-width": 1, "line-opacity": 0.45 },
         });
+        // Isolated-neighborhood outline: a bright high-contrast line with a soft
+        // glow beneath. Both start hidden (filter → __none__) and are pulsed by
+        // the isolate effect while a hood is selected.
+        map.addLayer({
+          id: "hood-selected-glow",
+          type: "line",
+          source: "hoods",
+          filter: ["==", ["get", "name"], "__none__"],
+          layout: { "line-join": "round" },
+          paint: { "line-color": "#59c8f2", "line-width": 8, "line-opacity": 0, "line-blur": 5 },
+        });
         map.addLayer({
           id: "hood-selected-line",
           type: "line",
           source: "hoods",
           filter: ["==", ["get", "name"], "__none__"],
-          paint: { "line-color": HOOD_BRIGHT, "line-width": 2.4, "line-opacity": 0.95 },
+          layout: { "line-join": "round" },
+          paint: { "line-color": "#c8f0ff", "line-width": 2.4, "line-opacity": 0 },
         });
         map.addLayer({
           id: "hoods-label",
@@ -1112,7 +779,7 @@ export function MapView({
       ro.observe(container);
       cleanupRef.current = () => {
         ro.disconnect();
-        for (const r of [pulseRafRef, riseRafRef]) {
+        for (const r of [pulseRafRef, hoodPulseRafRef]) {
           if (r.current != null) cancelAnimationFrame(r.current);
         }
         if (scanHopTimerRef.current != null) clearInterval(scanHopTimerRef.current);
@@ -1259,133 +926,81 @@ export function MapView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scanIds, searching]);
 
-  /* ---------- Neighborhood isolate: lift the hood out of the map ---------- */
+  /* ---------- Neighborhood isolate: pulsing high-contrast outline ---------- */
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
-    const prevHood = prevHoodRef.current;
-    prevHoodRef.current = selectedHood;
     selectedHoodRef.current = selectedHood;
     const reduced = prefersReducedMotion();
     const motionOk = !reduced && document.visibilityState !== "hidden";
     const hood = hoodByName(selectedHood);
-    const RISE_START = 0.35;
 
-    // Toggle the hood-mode layer set (lifted satellite plateau, reveal mask,
-    // outline emphasis, dots↔thumbnails). Split out so the descent can defer it
-    // to the end of the fall instead of yanking the imagery before it lowers.
-    const applyLayers = (activeHood: string | null) => {
-      // Selected outline: hide it while lifted. A bright boundary line draped
-      // over the raised block jags/smears down the vertical cliff faces (the
-      // "bleed"); the physically raised plateau is highlight enough on its own.
-      map.setFilter("hood-selected-line", ["==", ["get", "name"], activeHood ?? "__none__"]);
-      map.setPaintProperty("hood-selected-line", "line-opacity", activeHood ? 0 : 0.95);
-      (map.getSource("hood-reveal") as GeoJSONSource | undefined)?.setData(
-        hoodRevealMask(activeHood),
+    try {
+      // Point the outline + glow at the selected hood; dim the rest of the grid
+      // so the isolated one reads clearly, and mark its area with a faint fill.
+      map.setFilter("hood-selected-line", ["==", ["get", "name"], selectedHood ?? "__none__"]);
+      map.setFilter("hood-selected-glow", ["==", ["get", "name"], selectedHood ?? "__none__"]);
+      map.setPaintProperty("hoods-line", "line-opacity", selectedHood ? 0.25 : 0.45);
+      map.setPaintProperty("hoods-label", "text-opacity", selectedHood ? 0.5 : 0.8);
+      map.setPaintProperty(
+        "hoods-fill",
+        "fill-opacity",
+        (selectedHood
+          ? [
+              "case",
+              ["==", ["get", "name"], selectedHood], 0.07,
+              ["boolean", ["feature-state", "hover"], false], 0.12,
+              0.035,
+            ]
+          : [
+              "case",
+              ["boolean", ["feature-state", "hover"], false], 0.12,
+              0.035,
+            ]) as unknown as maplibregl.ExpressionSpecification,
       );
-      map.setLayoutProperty("hood-satellite", "visibility", activeHood ? "visible" : "none");
-      map.setLayoutProperty("hood-reveal-mask", "visibility", activeHood ? "visible" : "none");
-      // Drop the selected hood from the flat outline grid too, so its own
-      // boundary doesn't drape the cliff; neighbors keep their subtle lines.
-      map.setFilter("hoods-line", activeHood ? ["!=", ["get", "name"], activeHood] : null);
-      map.setPaintProperty("hoods-line", "line-opacity", activeHood ? 0.22 : 0.45);
-      // The broad glow smears down the raised cliff face — hide it while lifted.
-      map.setPaintProperty("hoods-line-glow", "line-opacity", activeHood ? 0 : 0.1);
-      map.setPaintProperty("hoods-label", "text-opacity", activeHood ? 0.4 : 0.8);
-      const dotVis = activeHood ? "none" : "visible";
+      // The isolated hood's listings show as thumbnails; hide the browse dots.
+      const dotVis = selectedHood ? "none" : "visible";
       for (const id of ["points", "clusters", "cluster-count", "point-price"]) {
         map.setLayoutProperty(id, "visibility", dotVis);
       }
       map.setLayoutProperty(
         "match-pulse",
         "visibility",
-        !activeHood && searchActiveRef.current && !reduced ? "visible" : "none",
+        !selectedHood && searchActiveRef.current && !reduced ? "visible" : "none",
       );
-    };
-
-    if (riseRafRef.current != null) {
-      cancelAnimationFrame(riseRafRef.current);
-      riseRafRef.current = null;
-    }
-
-    try {
-      if (selectedHood) {
-        // ── THE LIFT ── rebuild terrain from the boosted DEM so the whole
-        // neighborhood — imagery, streets, buildings, markers — physically
-        // rises out of the map as a plateau, then ramp exaggeration up.
-        applyLayers(selectedHood);
-        swapTerrain(map, selectedHood, motionOk ? RISE_START : TERRAIN_EXAGGERATION);
-        refreshThumbsRef.current();
-        if (motionOk) {
-          const DURATION = 1200;
-          const MAX_WAIT = 900; // start anyway if the network stalls
-          let started = false;
-          const startRamp = () => {
-            if (started || selectedHoodRef.current !== selectedHood) return;
-            started = true;
-            const start = performance.now();
-            const rise = (t: number) => {
-              const k = Math.max(0, Math.min(1, (t - start) / DURATION));
-              const eased = 1 - Math.pow(1 - k, 3);
-              // Mutate the live Terrain instance + repaint instead of calling
-              // map.setTerrain() every frame — that reconstructs the whole terrain
-              // engine (new Terrain + RenderToTexture) per frame and drops the lift
-              // to ~9fps. In-place exaggeration ramps at ~60fps.
-              const terrain = map.terrain as { exaggeration: number } | undefined;
-              if (!terrain) return;
-              terrain.exaggeration = RISE_START + (TERRAIN_EXAGGERATION - RISE_START) * eased;
-              map.triggerRepaint();
-              if (k < 1 && selectedHoodRef.current === selectedHood) {
-                riseRafRef.current = requestAnimationFrame(rise);
-              }
-            };
-            riseRafRef.current = requestAnimationFrame(rise);
-          };
-          // Warm the boosted DEM + satellite tiles first, then ramp — so the
-          // visible rise is hitch-free instead of stuttering as tiles stream in.
-          // The cap keeps a slow network from holding the lift hostage.
-          preloadHoodLift(selectedHood).then(startRamp, startRamp);
-          window.setTimeout(startRamp, MAX_WAIT);
-        }
-      } else {
-        // ── THE DESCENT ── keep the plateau + imagery up and ramp exaggeration
-        // back down, THEN restore the flat browse terrain — so the neighborhood
-        // visibly settles instead of snapping flat.
-        const terrain = map.terrain as { exaggeration: number } | undefined;
-        if (motionOk && prevHood && terrain) {
-          const startExag = terrain.exaggeration || TERRAIN_EXAGGERATION;
-          const start = performance.now();
-          const DURATION = 720;
-          const fall = (t: number) => {
-            if (selectedHoodRef.current !== null) return; // re-selected mid-fall
-            const k = Math.max(0, Math.min(1, (t - start) / DURATION));
-            const eased = k * k * (3 - 2 * k); // smoothstep
-            const tr = map.terrain as { exaggeration: number } | undefined;
-            if (tr) {
-              tr.exaggeration = startExag + (RISE_START - startExag) * eased;
-              map.triggerRepaint();
-            }
-            if (k < 1) {
-              riseRafRef.current = requestAnimationFrame(fall);
-            } else {
-              applyLayers(null);
-              swapTerrain(map, null, TERRAIN_EXAGGERATION);
-              refreshThumbsRef.current();
-            }
-          };
-          riseRafRef.current = requestAnimationFrame(fall);
-        } else {
-          applyLayers(null);
-          swapTerrain(map, null, TERRAIN_EXAGGERATION);
-          refreshThumbsRef.current();
-        }
-      }
+      refreshThumbsRef.current();
     } catch {
       return;
     }
 
-    // Camera choreography (runs concurrently with the terrain motion): swoop
-    // into the hood at a low three-quarter angle, or ease back to the city frame.
+    if (hoodPulseRafRef.current != null) {
+      cancelAnimationFrame(hoodPulseRafRef.current);
+      hoodPulseRafRef.current = null;
+    }
+    if (selectedHood && motionOk) {
+      // A slow, high-contrast breath on the outline (opacity + width + glow).
+      const start = performance.now();
+      const PERIOD = 1700;
+      const pulse = (t: number) => {
+        if (selectedHoodRef.current !== selectedHood) return;
+        const k = (1 - Math.cos(((t - start) / PERIOD) * 2 * Math.PI)) / 2; // 0→1→0
+        map.setPaintProperty("hood-selected-line", "line-opacity", 0.62 + 0.38 * k);
+        map.setPaintProperty("hood-selected-line", "line-width", 2.1 + 1.4 * k);
+        map.setPaintProperty("hood-selected-glow", "line-opacity", 0.1 + 0.42 * k);
+        hoodPulseRafRef.current = requestAnimationFrame(pulse);
+      };
+      hoodPulseRafRef.current = requestAnimationFrame(pulse);
+    } else if (selectedHood) {
+      // Reduced motion: a steady bright outline, no pulse.
+      map.setPaintProperty("hood-selected-line", "line-opacity", 0.95);
+      map.setPaintProperty("hood-selected-line", "line-width", 2.6);
+      map.setPaintProperty("hood-selected-glow", "line-opacity", 0.4);
+    } else {
+      map.setPaintProperty("hood-selected-line", "line-opacity", 0);
+      map.setPaintProperty("hood-selected-glow", "line-opacity", 0);
+    }
+
+    // Camera: gently frame the isolated hood, or ease back to the city.
     if (selectedHood && hood) {
       const [[w, s], [e, n]] = multiPolygonBounds(hood.geometry.coordinates);
       const cam = map.cameraForBounds(
@@ -1393,16 +1008,16 @@ export function MapView({
           [w, s],
           [e, n],
         ],
-        { padding: { top: 240, left: 120, right: 120, bottom: 160 }, bearing: -22, maxZoom: 14.2 },
+        { padding: { top: 150, left: 100, right: 100, bottom: 140 }, maxZoom: 14.6 },
       );
       if (cam) {
-        if (!motionOk) map.jumpTo({ ...cam, pitch: 66 });
-        else map.flyTo({ ...cam, pitch: 66, duration: 2100, curve: 1.4 });
+        if (!motionOk) map.jumpTo(cam);
+        else map.easeTo({ ...cam, duration: 900 });
       }
     } else if (!selectedHood && !searchActiveRef.current) {
       const home = { center: SF_CENTER as [number, number], zoom: 12.5, pitch: 55, bearing: -14 };
       if (!motionOk) map.jumpTo(home);
-      else map.flyTo({ ...home, duration: 1400, curve: 1.3 });
+      else map.flyTo({ ...home, duration: 1200, curve: 1.3 });
     }
   }, [selectedHood]);
 
