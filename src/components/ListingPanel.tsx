@@ -26,14 +26,10 @@ export function listingCountLabel({
   searchActive?: boolean;
   hoodName?: string | null;
 }): { n: string; unit: string; scope: string | null } {
-  if (searching) return { n: "—", unit: "SCANNING", scope: hoodName ?? null };
+  if (searching) return { n: "", unit: "Searching…", scope: hoodName ?? null };
   const unit = searchActive
-    ? count === 1
-      ? "MATCH"
-      : "MATCHES"
-    : count === 1
-      ? "LISTING"
-      : "LISTINGS";
+    ? count === 1 ? "match" : "matches"
+    : count === 1 ? "listing" : "listings";
   return { n: String(count), unit, scope: hoodName ?? null };
 }
 
@@ -80,20 +76,20 @@ export function ListingPanel({
       className={
         chromeless
           ? "flex h-full w-full flex-col overflow-hidden"
-          : "flex h-full w-full flex-col overflow-hidden rounded-lg border border-line bg-surface/96 shadow-[0_12px_44px_rgba(0,0,0,0.5)]"
+          : "flex h-full w-full flex-col overflow-hidden rounded-lg border border-line bg-surface/97 shadow-[0_12px_44px_rgba(0,0,0,0.5)]"
       }
     >
       {!hideHeader && (
-        <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-2">
-          <div className="flex min-w-0 items-baseline gap-1.5 font-mono">
-            <span className="tnum text-[15px] leading-none font-semibold text-ink">
-              {label.n}
-            </span>
-            <span className="text-[10px] tracking-[0.14em] text-muted">{label.unit}</span>
-            {label.scope && (
-              <span className="truncate text-[10px] tracking-[0.08em] text-accent">
-                · {label.scope.toUpperCase()}
+        <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-2.5">
+          <div className="flex min-w-0 items-baseline gap-1.5">
+            {label.n && (
+              <span className="tnum text-[15px] leading-none font-semibold text-ink">
+                {label.n}
               </span>
+            )}
+            <span className="text-[13px] text-muted">{label.unit}</span>
+            {label.scope && (
+              <span className="truncate text-[13px] text-accent">· {label.scope}</span>
             )}
           </div>
           <SortSelect sort={sort} searchActive={searchActive} onSortChange={onSortChange} />
@@ -111,7 +107,7 @@ export function ListingPanel({
         ) : listings.length === 0 ? (
           <EmptyState searchActive={searchActive} hoodName={hoodName} />
         ) : (
-          <ul className="flex flex-col gap-1.5 p-2">
+          <ul className="flex flex-col">
             {listings.map((l, i) => (
               <ListingCard
                 key={l.id}
@@ -144,11 +140,11 @@ export function SortSelect({
       value={sort}
       onChange={(e) => onSortChange(e.target.value as SortKey)}
       aria-label="Sort listings"
-      className="shrink-0 rounded-sm border border-line bg-elevated px-1.5 py-1 font-mono text-[10.5px] tracking-[0.04em] text-muted outline-none focus:border-line-strong"
+      className="shrink-0 rounded border border-line bg-elevated px-1.5 py-1 text-[12px] text-muted outline-none focus:border-line-strong"
     >
       <option value="newest">{searchActive ? "Best match" : "Newest"}</option>
-      <option value="price_asc">Price ↑</option>
-      <option value="price_desc">Price ↓</option>
+      <option value="price_asc">Price: low</option>
+      <option value="price_desc">Price: high</option>
     </select>
   );
 }
@@ -161,18 +157,13 @@ function EmptyState({
   hoodName?: string | null;
 }) {
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-2.5 px-6 py-10 text-center">
-      {/* Quiet empty-scope reticle — no result signal, calmly stated. */}
-      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" aria-hidden className="text-line-strong">
-        <circle cx="12" cy="12" r="8.5" stroke="currentColor" strokeWidth="1.3" />
-        <path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-      </svg>
-      <p className="font-mono text-[11px] tracking-[0.12em] text-muted uppercase">
-        {searchActive ? "No matches" : hoodName ? "Sector empty" : "No listings in view"}
+    <div className="flex h-full flex-col items-center justify-center gap-2 px-6 py-10 text-center">
+      <p className="text-[14px] font-medium text-muted">
+        {searchActive ? "No matches" : hoodName ? "No listings here" : "No listings in view"}
       </p>
-      <p className="max-w-[15rem] text-[11.5px] leading-relaxed text-faint">
+      <p className="max-w-[16rem] text-[12.5px] leading-relaxed text-faint">
         {searchActive
-          ? "Rephrase, widen the radius, or enable Hidden+Gone."
+          ? "Try rephrasing, widening the radius, or showing hidden listings."
           : hoodName
             ? "Nothing active in this neighborhood right now."
             : "Pan or zoom the map, or run a search."}
@@ -181,7 +172,7 @@ function EmptyState({
   );
 }
 
-/** Compact conic gauge for the 0–100 AI match score — instrumentation, not confetti. */
+/** Compact ring for the 0–100 AI match score. */
 function ScoreGauge({ score }: { score: number }) {
   const pct = Math.max(0, Math.min(100, score));
   return (
@@ -190,9 +181,9 @@ function ScoreGauge({ score }: { score: number }) {
       style={{
         background: `conic-gradient(var(--color-accent) ${pct * 3.6}deg, var(--color-line) 0deg)`,
       }}
-      title={`AI match score: ${Math.round(pct)}/100`}
+      title={`Match score: ${Math.round(pct)}/100`}
     >
-      <span className="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-elevated font-mono text-[10.5px] font-semibold text-accent tabular-nums">
+      <span className="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-surface text-[11px] font-semibold text-accent tabular-nums">
         {Math.round(pct)}
       </span>
     </span>
@@ -232,65 +223,48 @@ function ListingCard({
       .filter(Boolean)
       .join(" · ") || PRECISION_LABELS[l.geocodePrecision];
   const specs = [fmtBeds(l.bedrooms), fmtBaths(l.bathrooms)];
-  if (l.squareFeet) specs.push(`${l.squareFeet.toLocaleString()} SF`);
-  const approximate =
-    l.geocodePrecision === "neighborhood" || l.geocodePrecision === "city";
+  if (l.squareFeet) specs.push(`${l.squareFeet.toLocaleString()} sqft`);
 
   return (
     <li
       ref={ref}
       className={animateIn ? "animate-fade-up" : undefined}
-      style={animateIn ? { animationDelay: `${Math.min(index, 10) * 45}ms` } : undefined}
+      style={animateIn ? { animationDelay: `${Math.min(index, 10) * 40}ms` } : undefined}
     >
       <button
         type="button"
         onClick={onSelect}
         aria-pressed={selected}
-        className={`group relative flex w-full gap-2.5 overflow-hidden rounded-md border p-2 text-left transition-colors duration-150 ${
-          selected
-            ? "border-accent bg-accent-soft/40"
-            : "border-line bg-elevated/50 hover:border-line-strong hover:bg-elevated"
+        className={`group relative flex w-full gap-3 border-b border-line px-3 py-2.5 text-left transition-colors ${
+          selected ? "bg-accent-soft/50" : "hover:bg-elevated/60"
         } ${dimmed ? "opacity-55" : ""}`}
       >
-        {/* Selection rail */}
         <span
-          className={`absolute inset-y-0 left-0 w-[2px] transition-colors ${
-            selected ? "bg-accent" : "bg-transparent"
-          }`}
+          className={`absolute inset-y-0 left-0 w-[3px] ${selected ? "bg-accent" : "bg-transparent"}`}
           aria-hidden
         />
-        <div className="relative shrink-0 overflow-hidden rounded-[3px] border border-line-strong">
-          <PhotoImg
-            src={l.primaryPhotoUrl}
-            alt={l.title}
-            className="h-[82px] w-[104px] object-cover"
-          />
-          {approximate && (
-            <span
-              className="absolute right-1 bottom-1 rounded-[2px] bg-paper/80 px-1 font-mono text-[8px] tracking-[0.08em] text-muted"
-              title="Neighborhood-level (approximate) location"
-            >
-              APPROX
-            </span>
-          )}
-        </div>
+        <PhotoImg
+          src={l.primaryPhotoUrl}
+          alt={l.title}
+          className="h-[76px] w-[100px] shrink-0 rounded-md object-cover"
+        />
 
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <div className="flex items-center gap-1.5">
-            <span className="font-mono text-[15px] leading-none font-semibold tracking-tight text-ink tabular-nums">
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-[16px] leading-none font-semibold text-ink tabular-nums">
               {fmtMoney(price)}
             </span>
-            <span className="font-mono text-[9.5px] text-faint">/MO</span>
+            <span className="text-[12px] text-faint">/mo</span>
             {hasConcession && (
               <span
-                className="font-mono text-[9px] tracking-[0.06em] text-good uppercase"
+                className="text-[11px] font-medium text-good"
                 title={`Effective with concessions (advertised ${fmtMoney(l.priceMonthly)})`}
               >
-                eff
+                effective
               </span>
             )}
             {l.lastPriceChange && l.lastPriceChange.newPrice < l.lastPriceChange.oldPrice && (
-              <span className="font-mono text-[9.5px] text-faint line-through tabular-nums">
+              <span className="text-[11.5px] text-faint line-through tabular-nums">
                 {fmtMoney(l.lastPriceChange.oldPrice)}
               </span>
             )}
@@ -301,35 +275,28 @@ function ListingCard({
             )}
           </div>
 
-          <p className="truncate text-[12.5px] leading-snug font-medium text-ink" title={l.title}>
+          <p className="mt-0.5 truncate text-[13px] leading-snug text-ink" title={l.title}>
             {l.title}
           </p>
-          <p className="truncate font-mono text-[10px] tracking-[0.02em] text-muted">
-            {specs.join("  ·  ")}
-          </p>
-          <p className="truncate text-[11px] text-faint" title={location}>
+          <p className="truncate text-[12.5px] text-muted">{specs.join(" · ")}</p>
+          <p className="truncate text-[12px] text-faint" title={location}>
             {location}
           </p>
 
           {match ? (
-            <p className="mt-1 line-clamp-2 border-l-2 border-accent/50 bg-accent-soft/35 py-1 pr-1 pl-2 text-[11px] leading-snug text-accent">
-              <span className="font-mono text-[8.5px] tracking-[0.14em] text-accent/70">
-                MATCH{" "}
-              </span>
+            <p className="mt-1.5 line-clamp-2 rounded-md bg-accent-soft/60 px-2 py-1 text-[12px] leading-snug text-accent">
               {match.reason}
             </p>
           ) : (
             l.badges.length > 0 && (
-              <div className="mt-1">
+              <div className="mt-1.5">
                 <BadgeRow badges={l.badges} max={3} />
               </div>
             )
           )}
 
-          <p className="mt-1 flex items-center gap-1.5 font-mono text-[9.5px] tracking-[0.04em] text-faint">
-            <span className="truncate uppercase">{l.sourceName}</span>
-            <span aria-hidden className="text-line-strong">·</span>
-            <span className="shrink-0 tabular-nums">{relativeTime(l.lastSeenAt)}</span>
+          <p className="mt-1.5 truncate text-[11.5px] text-faint">
+            {l.sourceName} · {relativeTime(l.lastSeenAt)}
           </p>
         </div>
       </button>

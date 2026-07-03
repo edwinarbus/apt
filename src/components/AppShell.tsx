@@ -300,13 +300,12 @@ export function AppShell() {
           onHoodSelect={setSelectedHood}
           scanIds={progress.keptIds}
           radarPoints={radarPoints}
-          userLocation={locationStatus === "granted" ? location : null}
         />
       </div>
 
-      {/* Floating command module — compact, pinned top-left, never covers map center */}
-      <div className="pointer-events-none absolute top-3 left-3 z-20 w-[min(560px,calc(100%-1.5rem))]">
-        <div className="pointer-events-auto">
+      {/* Command module — pinned top-left, kept clear of the results rail */}
+      <div className="pointer-events-none absolute top-3 right-3 left-3 z-20 md:right-[404px]">
+        <div className="pointer-events-auto max-w-[520px]">
           <SearchBar
             query={query}
             onQueryChange={setQuery}
@@ -328,8 +327,8 @@ export function AppShell() {
         </div>
       </div>
 
-      {/* Floating results panel — desktop */}
-      <div className="absolute top-3 right-3 bottom-3 z-20 w-[392px] max-lg:hidden">
+      {/* Results rail — tablet + desktop */}
+      <div className="absolute top-3 right-3 bottom-3 z-20 w-[384px] max-md:hidden">
         <ListingPanel
           listings={displayed}
           reasons={reasonById}
@@ -375,21 +374,15 @@ export function AppShell() {
 
       {error && (
         <Overlay>
-          <p className="font-mono text-[10px] tracking-[0.18em] text-alert uppercase">
-            ● Feed error
-          </p>
-          <p className="mt-2 text-sm font-medium text-ink">Could not load listings</p>
-          <p className="mt-1 font-mono text-[11.5px] text-muted">{error}</p>
+          <p className="text-[15px] font-semibold text-ink">Could not load listings</p>
+          <p className="mt-1.5 text-[12.5px] text-muted">{error}</p>
         </Overlay>
       )}
       {listings !== null && listings.length === 0 && (
         <Overlay>
-          <p className="font-mono text-[10px] tracking-[0.18em] text-muted uppercase">
-            ○ No data
-          </p>
-          <p className="mt-2 text-base font-semibold text-ink">No listings yet</p>
+          <p className="text-[15px] font-semibold text-ink">No listings yet</p>
           <p className="mt-2 max-w-sm text-[12.5px] leading-relaxed text-muted">
-            Ingest real SF sources with <Code>npm run ingest -- --all</Code>, then reload.
+            Ingest SF sources with <Code>npm run ingest -- --all</Code>, then reload.
           </p>
         </Overlay>
       )}
@@ -430,7 +423,7 @@ function MobileDrawer({
 }) {
   const label = listingCountLabel({ count, searching, searchActive, hoodName });
   return (
-    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 lg:hidden">
+    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 md:hidden">
       <div
         className="pointer-events-auto relative flex flex-col overflow-hidden rounded-t-xl border-x border-t border-line bg-surface/97 shadow-[0_-10px_44px_rgba(0,0,0,0.55)] transition-[height] duration-300 ease-[cubic-bezier(0.2,0,0,1)]"
         style={{
@@ -450,14 +443,14 @@ function MobileDrawer({
             type="button"
             onClick={onToggle}
             aria-expanded={open}
-            className="flex min-w-0 flex-1 items-baseline gap-1.5 font-mono"
+            className="flex min-w-0 flex-1 items-baseline gap-1.5"
           >
-            <span className="tnum text-[15px] leading-none font-semibold text-ink">{label.n}</span>
-            <span className="text-[10px] tracking-[0.14em] text-muted">{label.unit}</span>
+            {label.n && (
+              <span className="tnum text-[15px] leading-none font-semibold text-ink">{label.n}</span>
+            )}
+            <span className="text-[13px] text-muted">{label.unit}</span>
             {label.scope && (
-              <span className="truncate text-[10px] tracking-[0.08em] text-accent">
-                · {label.scope.toUpperCase()}
-              </span>
+              <span className="truncate text-[13px] text-accent">· {label.scope}</span>
             )}
           </button>
           {open && <SortSelect sort={sort} searchActive={searchActive} onSortChange={onSortChange} />}

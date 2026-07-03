@@ -92,24 +92,24 @@ export const BADGE_LABELS: Record<BadgeKind, string> = {
  * sync with the design tokens in globals.css.
  */
 export const BADGE_COLORS: Record<BadgeKind, string> = {
-  new_today: "#35c489", // success — new
-  price_drop: "#47aede", // accent — good change
-  price_increase: "#e6a54a", // warn tone — cost went up
-  stale: "#6a7688", // stale
-  likely_unavailable: "#55606f",
-  verify_carefully: "#e6a54a", // warning
-  watch: "#c79150",
-  duplicate: "#7f8da0",
-  contacted: "#8f7fe0",
-  maybe: "#4fb6c4",
-  toured: "#3fb99f",
-  applied: "#7f8fe6",
-  saved: "#b96fd8", // saved — sparingly
-  suspicious: "#e8564d", // danger
-  source_uncertain: "#c79150",
+  new_today: "#3fbf87", // green — new
+  price_drop: "#3fbf87", // green — positive change
+  price_increase: "#c98f4a", // muted amber — cost went up
+  stale: "#6a7688", // gray — stale
+  likely_unavailable: "#586576", // gray
+  verify_carefully: "#e0a13f", // amber — verify
+  watch: "#c98f4a", // muted amber
+  duplicate: "#7f8da0", // slate
+  contacted: "#8f9bb3", // slate — user status
+  maybe: "#8f9bb3",
+  toured: "#8f9bb3",
+  applied: "#8f9bb3",
+  saved: "#b072dd", // violet — saved
+  suspicious: "#e0a13f", // amber (red reserved for source failure)
+  source_uncertain: "#c98f4a", // muted amber
 };
 
-export const DEFAULT_MARKER_COLOR = "#9fb0c6";
+export const DEFAULT_MARKER_COLOR = "#8496ad";
 
 /** The single color a listing's map marker should take (first badge wins). */
 export function markerColor(badges: BadgeKind[]): string {

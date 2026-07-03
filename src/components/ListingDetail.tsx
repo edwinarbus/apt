@@ -157,9 +157,9 @@ export function ListingDetail({
                 {/* Header */}
                 <div>
                   <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                    <span className="font-mono text-[26px] font-semibold tracking-tight text-ink tabular-nums">
+                    <span className="text-[26px] font-bold tracking-tight text-ink tabular-nums">
                       {fmtMoney(l.priceMonthly)}
-                      <span className="ml-1 font-sans text-sm font-normal text-faint">/mo</span>
+                      <span className="ml-1 text-sm font-normal text-faint">/mo</span>
                     </span>
                     {l.priceEffectiveMonthly != null &&
                       l.priceMonthly != null &&
@@ -260,8 +260,8 @@ export function ListingDetail({
                   <div className="rounded-md border border-accent/20 bg-accent-soft/40 px-4 py-3.5">
                     <div className="mb-1.5 flex items-center justify-between">
                       <SectionTitle>AI notes</SectionTitle>
-                      <span className="text-[10.5px] text-faint">
-                        {data.enrichment.model} · {relativeTime(data.enrichment.enrichedAt)}
+                      <span className="text-[11px] text-faint">
+                        {relativeTime(data.enrichment.enrichedAt)}
                       </span>
                     </div>
                     {data.enrichment.summary && (
@@ -317,8 +317,8 @@ export function ListingDetail({
                   <div className="rounded-md border border-accent/20 bg-accent-soft/40 px-4 py-3.5">
                     <div className="mb-1.5 flex items-center justify-between">
                       <SectionTitle>What the photos show</SectionTitle>
-                      <span className="text-[10.5px] text-faint">
-                        {data.vision.model} · {data.vision.imageCount} photo
+                      <span className="text-[11px] text-faint">
+                        {data.vision.imageCount} photo
                         {data.vision.imageCount === 1 ? "" : "s"} ·{" "}
                         {relativeTime(data.vision.analyzedAt)}
                       </span>

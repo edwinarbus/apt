@@ -44,11 +44,11 @@ const CLUSTER_COLOR_BROWSE = [
 ] as unknown as maplibregl.ExpressionSpecification;
 
 const LEGEND: Array<[string, string]> = [
-  [BADGE_COLORS.new_today, "New"],
-  [BADGE_COLORS.price_drop, "Drop"],
+  [DEFAULT_MARKER_COLOR, "Listing"],
+  [BADGE_COLORS.new_today, "New / price drop"],
   [BADGE_COLORS.verify_carefully, "Verify"],
   [BADGE_COLORS.saved, "Saved"],
-  [DEFAULT_MARKER_COLOR, "Listing"],
+  [BADGE_COLORS.stale, "Stale"],
 ];
 
 export interface RadarPoint {
@@ -195,87 +195,84 @@ function withRoot(inner: HTMLElement): HTMLDivElement {
   return root;
 }
 
-function makeBracketElement(): HTMLDivElement {
+/** Which status accent a listing's marker should carry. */
+function pillKind(l: ListingSummary): "verify" | "saved" | "stale" | "default" {
+  if (l.userStatus === "saved") return "saved";
+  if (l.userStatus === "hidden" || l.userStatus === "not_a_fit") return "stale";
+  const b = l.badges;
+  if (b.includes("saved")) return "saved";
+  if (b.includes("verify_carefully") || b.includes("watch") || b.includes("suspicious")) return "verify";
+  if (b.includes("stale") || b.includes("likely_unavailable")) return "stale";
+  return "default";
+}
+
+function bedsShort(l: ListingSummary): string | null {
+  if (l.bedrooms == null) return null;
+  return l.bedrooms === 0 ? "Studio" : `${l.bedrooms} bd`;
+}
+
+/** Compact price pill — the on-map listing marker at closer zoom. */
+function makePriceElement(
+  l: ListingSummary,
+  active: boolean,
+  onClick: () => void,
+): HTMLDivElement {
   const el = document.createElement("div");
-  el.className = "map-lock";
-  el.innerHTML = `
-    <svg viewBox="0 0 48 48" width="48" height="48" style="display:block">
-      <g stroke="${ACCENT}" stroke-width="2.4" fill="none" stroke-linecap="round">
-        <path d="M6,16 L6,6 L16,6" /><path d="M32,6 L42,6 L42,16" />
-        <path d="M42,32 L42,42 L32,42" /><path d="M16,42 L6,42 L6,32" />
-      </g>
-      <circle cx="24" cy="24" r="7.5" fill="none" stroke="${ACCENT}" stroke-width="1.6" class="reticle-pulse" />
-    </svg>`;
+  el.className = `price-pill pill-${pillKind(l)}${active ? " pill-active" : ""}`;
+  el.textContent = fmtMoneyShort(l.priceEffectiveMonthly ?? l.priceMonthly) ?? "—";
+  el.addEventListener("click", (e) => {
+    e.stopPropagation();
+    onClick();
+  });
   return withRoot(el);
 }
 
-function makeScanElement(): HTMLDivElement {
+/** Selected listing — the one place a photo appears on the map. */
+function makePhotoCardElement(l: ListingSummary, onClick: () => void): HTMLDivElement {
   const el = document.createElement("div");
-  el.className = "map-scan animate-rise-in";
-  el.innerHTML = `
-    <svg viewBox="0 0 40 40" width="40" height="40" style="display:block">
-      <g stroke="${HOOD}" stroke-width="1.8" fill="none" stroke-linecap="round">
-        <path d="M5,13 L5,5 L13,5" /><path d="M27,5 L35,5 L35,13" />
-        <path d="M35,27 L35,35 L27,35" /><path d="M13,35 L5,35 L5,27" />
-      </g>
-      <circle cx="20" cy="20" r="3" fill="none" stroke="${HOOD}" stroke-width="1.4" class="reticle-pulse" />
-    </svg>`;
+  el.className = "photo-card";
+  const frame = document.createElement("div");
+  frame.className = "photo-card-frame";
+  if (l.primaryPhotoUrl) {
+    const img = document.createElement("img");
+    img.className = "photo-card-img";
+    img.alt = "";
+    img.referrerPolicy = "no-referrer";
+    img.loading = "lazy";
+    img.decoding = "async";
+    img.width = 148;
+    img.height = 82;
+    img.onerror = () => frame.classList.add("no-photo");
+    img.src = l.primaryPhotoUrl;
+    frame.appendChild(img);
+  } else {
+    frame.classList.add("no-photo");
+  }
+  const bar = document.createElement("div");
+  bar.className = "photo-card-bar";
+  const price = document.createElement("span");
+  price.className = "photo-card-price";
+  price.textContent = fmtMoneyShort(l.priceEffectiveMonthly ?? l.priceMonthly) ?? "—";
+  bar.appendChild(price);
+  const beds = bedsShort(l);
+  if (beds) {
+    const meta = document.createElement("span");
+    meta.className = "photo-card-meta";
+    meta.textContent = beds;
+    bar.appendChild(meta);
+  }
+  frame.appendChild(bar);
+  el.appendChild(frame);
+  el.addEventListener("click", (e) => {
+    e.stopPropagation();
+    onClick();
+  });
   return withRoot(el);
-}
-
-/* Sonar HUD — one CSS-animated marker (sweep + 3 staggered rings). All motion
- * is GPU transform/opacity; the map paint pipeline never touches it. */
-function makeSonarElement(): HTMLDivElement {
-  const el = document.createElement("div");
-  el.className = "map-sonar";
-  el.innerHTML =
-    '<div class="edge"></div><div class="sweep"></div>' +
-    '<div class="ring"></div><div class="ring r2"></div><div class="ring r3"></div>' +
-    '<div class="core"></div>';
-  return el;
 }
 
 function makeRippleElement(): HTMLDivElement {
   const el = document.createElement("div");
   el.className = "click-ripple";
-  return withRoot(el);
-}
-
-function makeThumbElement(
-  l: ListingSummary,
-  hot: boolean,
-  onClick: () => void,
-): HTMLDivElement {
-  const el = document.createElement("div");
-  el.className = `thumb-marker${hot ? " thumb-hot" : ""}`;
-  const frame = document.createElement("div");
-  frame.className = "thumb-frame";
-  if (l.primaryPhotoUrl) {
-    const img = document.createElement("img");
-    img.className = "thumb-img";
-    img.alt = "";
-    img.referrerPolicy = "no-referrer";
-    img.loading = "lazy";
-    img.decoding = "async"; // keep photo decode off the compositor/main thread
-    img.width = 60;
-    img.height = 40;
-    img.onerror = () => img.remove();
-    img.src = l.primaryPhotoUrl;
-    frame.appendChild(img);
-  }
-  const price = document.createElement("span");
-  price.className = "thumb-price";
-  price.textContent = fmtMoneyShort(l.priceEffectiveMonthly ?? l.priceMonthly) ?? "—";
-  frame.appendChild(price);
-  el.appendChild(frame);
-  const stalk = document.createElement("span");
-  stalk.className = "thumb-stalk";
-  el.appendChild(stalk);
-  el.addEventListener("click", (e) => {
-    e.stopPropagation();
-    el.classList.add("thumb-click");
-    window.setTimeout(onClick, 130);
-  });
   return withRoot(el);
 }
 
@@ -312,7 +309,6 @@ export function MapView({
   onHoodSelect,
   scanIds,
   radarPoints,
-  userLocation,
 }: {
   listings: ListingSummary[];
   selectedId: string | null;
@@ -323,9 +319,8 @@ export function MapView({
   onHoodSelect: (name: string | null) => void;
   /** the actual shortlisted listing ids streamed mid-search */
   scanIds?: string[] | null;
-  /** id → coords for every active listing (sonar target lookup) */
+  /** id → coords for every active listing */
   radarPoints?: RadarPoint[];
-  userLocation?: { lat: number; lng: number } | null;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -333,26 +328,25 @@ export function MapView({
   const listingsRef = useRef(listings);
   const onSelectRef = useRef(onSelect);
   const onHoodSelectRef = useRef(onHoodSelect);
+  const selectedIdRef = useRef<string | null>(selectedId);
   const selectedHoodRef = useRef<string | null>(null);
   const hoveredHoodRef = useRef<string | null>(null);
   const lockMarkerRef = useRef<maplibregl.Marker | null>(null);
-  const scanMarkerRef = useRef<maplibregl.Marker | null>(null);
-  const sonarMarkerRef = useRef<maplibregl.Marker | null>(null);
-  const scanHopTimerRef = useRef<number | null>(null);
-  const pulseRafRef = useRef<number | null>(null);
   const hoodPulseRafRef = useRef<number | null>(null);
   const thumbsRef = useRef<Map<string, maplibregl.Marker>>(new Map());
   const searchActiveRef = useRef(false);
   const cleanupRef = useRef<(() => void) | null>(null);
   const refreshThumbsRef = useRef<() => void>(() => {});
 
-  /* ---------- Thumbnail markers (imperative, viewport-managed) ---------- */
+  /* ---------- Price-pill markers (imperative, viewport-managed) ----------
+   * Compact price pills at closer zoom / while isolated or searching; the
+   * selected listing gets its own photo card, so it's excluded here. */
   const refreshThumbs = () => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
     const zoom = map.getZoom();
     const hoodMode = selectedHoodRef.current != null;
-    const show = hoodMode || zoom >= 14.3;
+    const show = hoodMode || searchActiveRef.current || zoom >= 13.4;
     const thumbs = thumbsRef.current;
     if (!show) {
       for (const m of thumbs.values()) m.remove();
@@ -360,10 +354,12 @@ export function MapView({
       return;
     }
     const bounds = map.getBounds();
-    const cap = hoodMode ? 60 : 40;
+    const cap = 60;
+    const selectedId = selectedIdRef.current;
     const wanted: ListingSummary[] = [];
     for (const l of listingsRef.current) {
       if (l.latitude == null || l.longitude == null) continue;
+      if (l.id === selectedId) continue; // shown as a photo card instead
       if (!hoodMode && !bounds.contains([l.longitude, l.latitude])) continue;
       wanted.push(l);
       if (wanted.length >= cap) break;
@@ -375,28 +371,25 @@ export function MapView({
         thumbs.delete(id);
       }
     }
-    // A short stalk keeps the hover-above feel over the flat map.
     for (const l of wanted) {
       let marker = thumbs.get(l.id);
       if (!marker) {
-        const el = makeThumbElement(l, searchActiveRef.current, () => {
+        const el = makePriceElement(l, searchActiveRef.current, () => {
           spawnRipple(map, [l.longitude!, l.latitude!]);
           onSelectRef.current(l.id);
         });
-        marker = new maplibregl.Marker({ element: el, anchor: "bottom" })
+        marker = new maplibregl.Marker({ element: el, anchor: "center" })
           .setLngLat([l.longitude!, l.latitude!])
           .addTo(map);
         thumbs.set(l.id, marker);
       }
-      marker.setOffset([0, -6]);
-      const stalk = marker.getElement().querySelector<HTMLElement>(".thumb-stalk");
-      if (stalk) stalk.style.height = hoodMode ? "14px" : "0px";
     }
   };
   useEffect(() => {
     listingsRef.current = listings;
     onSelectRef.current = onSelect;
     onHoodSelectRef.current = onHoodSelect;
+    selectedIdRef.current = selectedId;
     refreshThumbsRef.current = refreshThumbs;
   });
 
@@ -421,11 +414,11 @@ export function MapView({
         container,
         style,
         center: SF_CENTER,
-        zoom: reduced ? 12.4 : 11.2,
-        pitch: reduced ? 55 : 0,
-        bearing: reduced ? -14 : 0,
+        zoom: reduced ? 12.4 : 11.4,
+        pitch: 0,
+        bearing: 0,
         minZoom: 10.4,
-        maxPitch: 72,
+        maxPitch: 60,
         maxBounds: SF_MAX_BOUNDS,
         attributionControl: { compact: true },
       });
@@ -593,8 +586,8 @@ export function MapView({
           type: "geojson",
           data: toGeoJson(listingsRef.current),
           cluster: true,
-          clusterRadius: 48,
-          clusterMaxZoom: 15,
+          clusterRadius: 50,
+          clusterMaxZoom: 13,
           promoteId: "id",
         });
         map.addLayer({
@@ -623,62 +616,16 @@ export function MapView({
           paint: { "text-color": "#e9eef5" },
         });
         map.addLayer({
-          id: "match-pulse",
-          type: "circle",
-          source: "listings",
-          filter: ["!", ["has", "point_count"]],
-          layout: { visibility: "none" },
-          paint: {
-            "circle-color": "transparent",
-            "circle-radius": 10,
-            "circle-stroke-width": 1.6,
-            "circle-stroke-color": ACCENT,
-            "circle-stroke-opacity": 0.5,
-            "circle-pitch-alignment": "map",
-          },
-        });
-        map.addLayer({
-          id: "point-selected",
-          type: "circle",
-          source: "listings",
-          filter: ["==", ["get", "id"], "__none__"],
-          paint: {
-            "circle-color": "transparent",
-            "circle-radius": 13,
-            "circle-stroke-width": 3,
-            "circle-stroke-color": ACCENT,
-          },
-        });
-        map.addLayer({
           id: "points",
           type: "circle",
           source: "listings",
           filter: ["!", ["has", "point_count"]],
           paint: {
             "circle-color": ["get", "color"],
-            "circle-radius": 5.5,
-            "circle-stroke-width": 1.5,
+            "circle-radius": 5,
+            "circle-stroke-width": 1.4,
             "circle-stroke-color": HALO,
             "circle-opacity": ["case", ["get", "approximate"], 0.5, 1],
-          },
-        });
-        map.addLayer({
-          id: "point-price",
-          type: "symbol",
-          source: "listings",
-          filter: ["!", ["has", "point_count"]],
-          minzoom: 13.4,
-          layout: {
-            "text-field": ["get", "priceShort"],
-            "text-font": ["Noto Sans Bold"],
-            "text-size": 10.5,
-            "text-offset": [0, -1.4],
-            "text-allow-overlap": false,
-          },
-          paint: {
-            "text-color": "#d7e2ef",
-            "text-halo-color": HALO,
-            "text-halo-width": 1.8,
           },
         });
 
@@ -761,11 +708,11 @@ export function MapView({
         syncData(map, listingsRef.current);
         refreshThumbsRef.current();
 
-        const intro = { center: SF_CENTER as [number, number], zoom: 12.5, pitch: 55, bearing: -14 };
+        const intro = { center: SF_CENTER as [number, number], zoom: 12.4, pitch: 0, bearing: 0 };
         if (reduced || document.visibilityState === "hidden") {
           map.jumpTo(intro);
         } else {
-          map.flyTo({ ...intro, duration: 2800, curve: 1.3 });
+          map.flyTo({ ...intro, duration: 1400, curve: 1.2 });
           window.setTimeout(() => {
             if (mapRef.current === map && map.isMoving() && map.getZoom() < 12) {
               map.stop();
@@ -779,13 +726,8 @@ export function MapView({
       ro.observe(container);
       cleanupRef.current = () => {
         ro.disconnect();
-        for (const r of [pulseRafRef, hoodPulseRafRef]) {
-          if (r.current != null) cancelAnimationFrame(r.current);
-        }
-        if (scanHopTimerRef.current != null) clearInterval(scanHopTimerRef.current);
+        if (hoodPulseRafRef.current != null) cancelAnimationFrame(hoodPulseRafRef.current);
         lockMarkerRef.current?.remove();
-        scanMarkerRef.current?.remove();
-        sonarMarkerRef.current?.remove();
         for (const m of thumbsRef.current.values()) m.remove();
         thumbsRef.current.clear();
         map.remove();
@@ -810,65 +752,21 @@ export function MapView({
     refreshThumbsRef.current();
   }, [listings]);
 
-  /* ---------- Sonar ON the map while a search scans ----------
-   * The sweep is a single CSS-animated HTML marker (GPU-composited); the real
-   * shortlisted listings are static dots. Zero per-frame map mutations — this
-   * is both the smooth path (18fps → ~60) and the restrained look. */
+  /* ---------- Search: highlight matching listings on the map ---------- */
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
-    const reduced = prefersReducedMotion();
-    const center: [number, number] =
-      userLocation &&
-      userLocation.lng > SF_MAX_BOUNDS[0][0] &&
-      userLocation.lng < SF_MAX_BOUNDS[1][0] &&
-      userLocation.lat > SF_MAX_BOUNDS[0][1] &&
-      userLocation.lat < SF_MAX_BOUNDS[1][1]
-        ? [userLocation.lng, userLocation.lat]
-        : SF_CENTER;
-
     try {
       map.setLayoutProperty("scan-target-dots", "visibility", searching ? "visible" : "none");
       if (!searching) {
         (map.getSource("scan-targets") as GeoJSONSource | undefined)?.setData(EMPTY_FC);
       }
     } catch {
-      return;
+      /* layers may not exist yet */
     }
-
-    // Fade the previous sweep out gracefully rather than yanking it off-map.
-    const prevSonar = sonarMarkerRef.current;
-    sonarMarkerRef.current = null;
-    if (prevSonar) {
-      const el = prevSonar.getElement();
-      el.style.transition = "opacity 0.3s ease";
-      el.style.opacity = "0";
-      window.setTimeout(() => prevSonar.remove(), 320);
-    }
-    if (searching && !reduced) {
-      sonarMarkerRef.current = new maplibregl.Marker({ element: makeSonarElement() })
-        .setLngLat(center)
-        .addTo(map);
-    }
-
-    if (!searching) {
-      scanMarkerRef.current?.remove();
-      scanMarkerRef.current = null;
-      if (scanHopTimerRef.current != null) {
-        clearInterval(scanHopTimerRef.current);
-        scanHopTimerRef.current = null;
-      }
-      return;
-    }
-
-    // Surveillance pull-up.
-    if (!reduced && document.visibilityState !== "hidden") {
-      map.flyTo({ center, zoom: 11.7, pitch: 30, bearing: 0, duration: 1500 });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searching]);
 
-  // Shortlist arrives: ping the REAL candidates, hop a designator, hone in.
+  // As the shortlist streams in, mark the real candidates and gently frame them.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current || !searching) return;
@@ -891,38 +789,17 @@ export function MapView({
       return;
     }
 
-    // Hone the camera in on where the candidates concentrate.
-    const bounds = new maplibregl.LngLatBounds();
-    for (const c of coords) bounds.extend(c);
-    if (!bounds.isEmpty() && !prefersReducedMotion() && document.visibilityState !== "hidden") {
-      const cam = map.cameraForBounds(bounds, {
-        padding: { top: 170, left: 100, right: 100, bottom: 100 },
-        maxZoom: 13.8,
-        bearing: -10,
-      });
-      if (cam) map.flyTo({ ...cam, pitch: 38, duration: 2600, curve: 1.2 });
-    }
-
-    // Designator hops between the actual shortlisted listings.
-    if (scanHopTimerRef.current != null) clearInterval(scanHopTimerRef.current);
-    let idx = 0;
-    const hop = () => {
-      const m = mapRef.current;
-      if (!m) return;
-      scanMarkerRef.current?.remove();
-      scanMarkerRef.current = new maplibregl.Marker({ element: makeScanElement() })
-        .setLngLat(coords[idx % coords.length])
-        .addTo(m);
-      idx++;
-    };
-    hop();
-    scanHopTimerRef.current = window.setInterval(hop, 700);
-    return () => {
-      if (scanHopTimerRef.current != null) {
-        clearInterval(scanHopTimerRef.current);
-        scanHopTimerRef.current = null;
+    if (!prefersReducedMotion() && document.visibilityState !== "hidden") {
+      const bounds = new maplibregl.LngLatBounds();
+      for (const c of coords) bounds.extend(c);
+      if (!bounds.isEmpty()) {
+        const cam = map.cameraForBounds(bounds, {
+          padding: { top: 110, left: 90, right: 90, bottom: 120 },
+          maxZoom: 13.4,
+        });
+        if (cam) map.easeTo({ ...cam, duration: 1300 });
       }
-    };
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scanIds, searching]);
 
@@ -958,16 +835,11 @@ export function MapView({
               0.035,
             ]) as unknown as maplibregl.ExpressionSpecification,
       );
-      // The isolated hood's listings show as thumbnails; hide the browse dots.
+      // The isolated hood's listings show as price pills; hide the browse dots.
       const dotVis = selectedHood ? "none" : "visible";
-      for (const id of ["points", "clusters", "cluster-count", "point-price"]) {
+      for (const id of ["points", "clusters", "cluster-count"]) {
         map.setLayoutProperty(id, "visibility", dotVis);
       }
-      map.setLayoutProperty(
-        "match-pulse",
-        "visibility",
-        !selectedHood && searchActiveRef.current && !reduced ? "visible" : "none",
-      );
       refreshThumbsRef.current();
     } catch {
       return;
@@ -1015,9 +887,9 @@ export function MapView({
         else map.easeTo({ ...cam, duration: 900 });
       }
     } else if (!selectedHood && !searchActiveRef.current) {
-      const home = { center: SF_CENTER as [number, number], zoom: 12.5, pitch: 55, bearing: -14 };
+      const home = { center: SF_CENTER as [number, number], zoom: 12.4, pitch: 0, bearing: 0 };
       if (!motionOk) map.jumpTo(home);
-      else map.flyTo({ ...home, duration: 1200, curve: 1.3 });
+      else map.easeTo({ ...home, duration: 900 });
     }
   }, [selectedHood]);
 
@@ -1033,47 +905,16 @@ export function MapView({
         "circle-color",
         searchActive ? ACCENT : (["get", "color"] as unknown as maplibregl.ExpressionSpecification),
       );
-      map.setPaintProperty("points", "circle-radius", searchActive ? 8.5 : 7);
-      map.setPaintProperty(
-        "point-price",
-        "text-color",
-        searchActive ? ACCENT : (["get", "color"] as unknown as maplibregl.ExpressionSpecification),
-      );
+      map.setPaintProperty("points", "circle-radius", searchActive ? 6 : 5);
       map.setPaintProperty(
         "clusters",
         "circle-color",
         searchActive ? ACCENT : CLUSTER_COLOR_BROWSE,
       );
-      map.setLayerZoomRange("point-price", searchActive ? 12.1 : 13.2, 24);
-      if (!selectedHoodRef.current) {
-        map.setLayoutProperty(
-          "match-pulse",
-          "visibility",
-          searchActive && !prefersReducedMotion() ? "visible" : "none",
-        );
-      }
     } catch {
       return;
     }
-
-    if (pulseRafRef.current != null) {
-      cancelAnimationFrame(pulseRafRef.current);
-      pulseRafRef.current = null;
-    }
-    if (searchActive && !prefersReducedMotion()) {
-      const tick = (t: number) => {
-        if (!mapRef.current || !searchActiveRef.current) return;
-        const k = (t % 1700) / 1700;
-        try {
-          mapRef.current.setPaintProperty("match-pulse", "circle-radius", 9 + k * 24);
-          mapRef.current.setPaintProperty("match-pulse", "circle-stroke-opacity", 0.55 * (1 - k));
-        } catch {
-          return;
-        }
-        pulseRafRef.current = requestAnimationFrame(tick);
-      };
-      pulseRafRef.current = requestAnimationFrame(tick);
-    }
+    refreshThumbsRef.current(); // matches switch to accent pills / plain pills
 
     if (searchActive && !selectedHoodRef.current) {
       const pts = listings.filter((l) => l.latitude != null && l.longitude != null);
@@ -1088,13 +929,12 @@ export function MapView({
           const cam = map.cameraForBounds(bounds, {
             padding: { top: 150, left: 90, right: 90, bottom: 90 },
             maxZoom: pts.length === 1 ? 15.6 : 14.4,
-            bearing: -14,
           });
           if (cam) {
             if (prefersReducedMotion() || document.visibilityState === "hidden") {
-              map.jumpTo({ ...cam, pitch: 55 });
+              map.jumpTo(cam);
             } else {
-              map.flyTo({ ...cam, pitch: 55, duration: 2000, curve: 1.35 });
+              map.easeTo({ ...cam, duration: 1200 });
             }
           }
         }
@@ -1103,44 +943,31 @@ export function MapView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchActive, searchActive ? listings : null]);
 
-  /* ---------- Selection: bracket lock + rooftop dive ---------- */
+  /* ---------- Selection: photo card on the selected listing ---------- */
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
-    try {
-      map.setFilter("point-selected", ["==", ["get", "id"], selectedId ?? "__none__"]);
-    } catch {
-      return;
-    }
 
     lockMarkerRef.current?.remove();
     lockMarkerRef.current = null;
+    refreshThumbsRef.current(); // drop the selected listing's pill; restore others
 
     if (selectedId) {
       const listing = listings.find((l) => l.id === selectedId);
       if (listing?.latitude != null && listing.longitude != null) {
         lockMarkerRef.current = new maplibregl.Marker({
-          element: makeBracketElement(),
-          pitchAlignment: "map",
-          rotationAlignment: "map",
+          element: makePhotoCardElement(listing, () => onSelectRef.current(listing.id)),
+          anchor: "bottom",
+          offset: [0, -8],
         })
           .setLngLat([listing.longitude, listing.latitude])
           .addTo(map);
-        if (prefersReducedMotion() || document.visibilityState === "hidden") {
-          map.jumpTo({
-            center: [listing.longitude, listing.latitude],
-            zoom: Math.max(map.getZoom(), 15.4),
-          });
-        } else {
-          map.flyTo({
-            center: [listing.longitude, listing.latitude],
-            zoom: Math.max(map.getZoom(), 15.6),
-            pitch: 60,
-            bearing: -18,
-            duration: 1200,
-            curve: 1.3,
-          });
-        }
+        const target = {
+          center: [listing.longitude, listing.latitude] as [number, number],
+          zoom: Math.max(map.getZoom(), 14.6),
+        };
+        if (prefersReducedMotion() || document.visibilityState === "hidden") map.jumpTo(target);
+        else map.easeTo({ ...target, duration: 650 });
       }
     }
   }, [selectedId, listings]);
@@ -1149,30 +976,16 @@ export function MapView({
     <div className="relative h-full w-full bg-paper">
       <div ref={containerRef} className="h-full w-full" />
       <div
-        className="pointer-events-none absolute inset-0"
-        style={{
-          background:
-            "linear-gradient(to bottom, rgba(7,13,24,0.55), rgba(7,13,24,0) 130px), radial-gradient(120% 90% at 50% 45%, rgba(0,0,0,0) 60%, rgba(0,0,0,0.32) 100%)",
-        }}
+        className="pointer-events-none absolute inset-x-0 top-0 h-24"
+        style={{ background: "linear-gradient(to bottom, rgba(6,9,15,0.45), rgba(6,9,15,0))" }}
       />
-      <div className="pointer-events-none absolute bottom-6 left-3 z-10 flex items-center gap-2.5 rounded border border-line bg-surface/92 px-2.5 py-1.5 font-mono shadow-[0_2px_10px_rgba(0,0,0,0.45)] max-sm:hidden">
-        <span className="text-[9px] tracking-[0.16em] text-faint uppercase">Legend</span>
-        <span className="h-3 w-px bg-line" aria-hidden />
+      <div className="pointer-events-none absolute bottom-4 left-3 z-10 flex items-center gap-3 rounded-md border border-line bg-surface/90 px-3 py-1.5 text-[11px] shadow-md backdrop-blur-sm max-sm:hidden">
         {LEGEND.map(([color, label]) => (
           <span key={label} className="flex items-center gap-1.5">
-            <span
-              className="h-[7px] w-[7px] rounded-[1px]"
-              style={{ backgroundColor: color }}
-            />
-            <span className="text-[10px] tracking-[0.06em] text-muted uppercase">{label}</span>
+            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
+            <span className="text-muted">{label}</span>
           </span>
         ))}
-        <span
-          className="pointer-events-auto flex h-3.5 w-3.5 cursor-help items-center justify-center rounded-[2px] border border-line text-[9px] leading-none text-faint transition-colors hover:border-line-strong hover:text-muted"
-          title="Faded markers are approximate (neighborhood-level) locations. During a search all markers become lock-on targets. Click a neighborhood to lift it out of the map."
-        >
-          i
-        </span>
       </div>
     </div>
   );

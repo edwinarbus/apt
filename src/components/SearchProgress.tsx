@@ -1,9 +1,8 @@
 "use client";
 
 /**
- * Slim live search feed. The sweep itself plays ON the main map; this panel
- * narrates the real pipeline stages as they stream in — nothing here is a
- * canned spinner script. Terse, operational, mono.
+ * Live analysis feed shown in the results rail while a search runs. Narrates the
+ * real pipeline stages as they stream in — no canned spinner, no model name.
  */
 
 export interface SearchProgressState {
@@ -34,13 +33,15 @@ function Step({
 }) {
   return (
     <li
-      className={`flex items-center gap-2.5 font-mono text-[12px] tracking-[0.02em] transition-opacity duration-300 ${
-        state === "pending" ? "opacity-35" : "opacity-100"
+      className={`flex items-start gap-2.5 text-[13px] transition-opacity duration-300 ${
+        state === "pending" ? "opacity-40" : "opacity-100"
       }`}
     >
-      <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+      <span className="mt-[3px] flex h-3.5 w-3.5 shrink-0 items-center justify-center">
         {state === "done" ? (
-          <span className="animate-rise-in text-[11px] text-good">✓</span>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" className="text-good" aria-hidden>
+            <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
         ) : state === "active" ? (
           <span className="flex items-end gap-[3px]">
             <span className="thinking-dot h-1 w-1 rounded-full bg-accent" />
@@ -51,7 +52,7 @@ function Step({
           <span className="h-1 w-1 rounded-full bg-line-strong" />
         )}
       </span>
-      <span className={state === "active" ? "scan-text" : "text-muted"}>{children}</span>
+      <span className={state === "active" ? "text-ink" : "text-muted"}>{children}</span>
     </li>
   );
 }
@@ -66,48 +67,51 @@ export function SearchProgress({
   const { candidates, kept, model, chars } = progress;
   const assembleState = candidates == null ? "active" : "done";
   const prerankState = candidates == null ? "pending" : kept == null ? "active" : "done";
-  const modelState = kept == null ? "pending" : "active";
-  const modelName = model?.includes("sonnet")
-    ? "Claude Sonnet"
-    : model?.includes("haiku")
-      ? "Claude Haiku"
-      : model?.includes("opus")
-        ? "Claude Opus"
-        : "Claude";
+  const rankState = kept == null ? "pending" : "active";
 
   return (
     <div className="animate-fade-in flex flex-col gap-4 px-4 py-5">
-      <p className="flex items-center gap-2 font-mono text-[9.5px] tracking-[0.2em] text-accent uppercase">
-        <span className="soft-pulse h-1.5 w-1.5 rounded-full bg-accent" />
-        Sweep live on map
-      </p>
-      <ol className="flex flex-col gap-2.5">
+      <div className="flex items-center gap-2">
+        <span className="flex items-end gap-[3px]" aria-hidden>
+          <span className="thinking-dot h-1.5 w-1.5 rounded-full bg-accent" />
+          <span className="thinking-dot h-1.5 w-1.5 rounded-full bg-accent" style={{ animationDelay: "0.15s" }} />
+          <span className="thinking-dot h-1.5 w-1.5 rounded-full bg-accent" style={{ animationDelay: "0.3s" }} />
+        </span>
+        <span className="text-[13px] font-medium text-ink">Analyzing listings</span>
+      </div>
+
+      <ol className="flex flex-col gap-3">
         <Step state={assembleState}>
           {candidates == null
             ? hasLocation
-              ? "Sweeping grid from your position"
-              : "Sweeping SF grid"
-            : `${candidates} live listing${candidates === 1 ? "" : "s"} in range`}
+              ? "Gathering active listings near you"
+              : "Gathering active SF listings"
+            : `Reviewing ${candidates} active listing${candidates === 1 ? "" : "s"}`}
         </Step>
         <Step state={prerankState}>
-          {kept == null ? "Prefiltering signals" : `${kept} candidates designated`}
+          {kept == null
+            ? "Filtering by location and criteria"
+            : `Shortlisted ${kept} candidate${kept === 1 ? "" : "s"}`}
         </Step>
-        <Step state={modelState}>
+        <Step state={rankState}>
           {model == null
-            ? "Model standby"
+            ? "Preparing to rank matches"
             : chars === 0
-              ? `${modelName} reading descriptions + vision`
-              : `${modelName} weighing matches`}
+              ? "Reading descriptions and photo analysis"
+              : "Weighing the best matches for your ask"}
         </Step>
       </ol>
+
       {chars > 0 && (
-        <p className="animate-fade-in pl-[26px] font-mono text-[10.5px] text-faint tabular-nums">
-          {(chars / 1000).toFixed(1)}K chars reasoning
-        </p>
+        <div className="flex items-center gap-2 pl-[26px] text-[12px] text-faint">
+          <span className="h-1 w-1 animate-pulse rounded-full bg-accent" />
+          Reasoning over the shortlist
+        </div>
       )}
-      <p className="border-t border-line pt-3 text-[11px] leading-relaxed text-faint">
-        Every ping on the map is a real listing under evaluation — cross-referenced against
-        your ask, its description, photo analysis, and SF geography.
+
+      <p className="border-t border-line pt-3 text-[12px] leading-relaxed text-faint">
+        Matches are cross-referenced against your ask, each listing’s description, photo
+        analysis, and SF geography.
       </p>
     </div>
   );
