@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { ListingDetailResponse } from "@/lib/api-types";
 import { computeBadges } from "@/lib/badges";
 import type { UserListingStatus } from "@/core/types";
@@ -48,6 +48,13 @@ export function ListingDetail({
   const [photoIndex, setPhotoIndex] = useState(0);
   const [savingStatus, setSavingStatus] = useState(false);
   const [showAll, setShowAll] = useState(false);
+  const [closing, setClosing] = useState(false);
+
+  // Play a quick fade-out before unmounting so close is animated too.
+  const requestClose = useCallback(() => {
+    setClosing(true);
+    window.setTimeout(onClose, 120);
+  }, [onClose]);
 
   useEffect(() => {
     fetch(`/api/listings/${listingId}`)
@@ -61,11 +68,11 @@ export function ListingDetail({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") requestClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [requestClose]);
 
   const setStatus = async (status: UserListingStatus | null) => {
     if (!data || savingStatus) return;
@@ -135,11 +142,15 @@ export function ListingDetail({
 
   return (
     <div
-      className="animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-[2px]"
-      onClick={onClose}
+      className={`fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-[2px] ${
+        closing ? "animate-backdrop-out" : "animate-backdrop-in"
+      }`}
+      onClick={requestClose}
     >
       <div
-        className="animate-rise-in flex max-h-[92vh] w-full max-w-xl flex-col overflow-hidden rounded-xl border border-line bg-surface shadow-[0_24px_70px_rgba(0,0,0,0.6)]"
+        className={`flex max-h-[92vh] w-full max-w-xl flex-col overflow-hidden rounded-xl border border-line bg-surface shadow-[0_24px_70px_rgba(0,0,0,0.6)] ${
+          closing ? "animate-modal-out" : "animate-modal-in"
+        }`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="panel-scroll min-h-0 flex-1 overflow-y-auto">
@@ -156,7 +167,7 @@ export function ListingDetail({
                 />
                 <button
                   type="button"
-                  onClick={onClose}
+                  onClick={requestClose}
                   className="absolute top-3 right-3 flex h-8 w-8 items-center justify-center rounded-full bg-paper/70 text-[14px] text-muted backdrop-blur transition-colors hover:text-ink"
                   aria-label="Close"
                 >

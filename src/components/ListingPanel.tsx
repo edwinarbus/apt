@@ -114,7 +114,7 @@ export function ListingPanel({
             )}
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
-            {onOpenScout && <ScoutButton badge={scoutBadge} onClick={onOpenScout} />}
+            {onOpenScout && <AutopilotButton badge={scoutBadge} onClick={onOpenScout} />}
             {onToggleSuspicious && (
               <SuspiciousToggle hideSuspicious={hideSuspicious} onToggle={onToggleSuspicious} />
             )}
@@ -138,7 +138,7 @@ export function ListingPanel({
               type="button"
               onClick={onSaveSearch}
               disabled={searchSaved}
-              title={searchSaved ? "Scout is watching this search" : "Save & have Scout watch for new matches"}
+              title={searchSaved ? "Autopilot is watching this search" : "Save & put this search on Autopilot"}
               className={`flex shrink-0 items-center gap-1 rounded-md border px-2 py-1 text-[11.5px] font-medium transition-colors ${
                 searchSaved
                   ? "border-good/40 bg-good/10 text-good"
@@ -228,18 +228,19 @@ export function SuspiciousToggle({
   );
 }
 
-/** Icon entry to the overnight Scout / watched searches, with a new-match dot. */
-export function ScoutButton({ badge, onClick }: { badge?: number; onClick: () => void }) {
+/** Icon entry to Autopilot / watched searches, with a new-match dot. */
+export function AutopilotButton({ badge, onClick }: { badge?: number; onClick: () => void }) {
   return (
     <div className="group relative">
       <button
         type="button"
         onClick={onClick}
-        aria-label="Apt Scout — watched searches"
+        aria-label="Autopilot — watched searches & applications"
         className="relative flex h-[26px] w-[26px] items-center justify-center rounded-md border border-line text-muted transition-colors hover:border-line-strong hover:text-ink"
       >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-          <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" />
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d="M12 2c3 2.5 4.5 6 4.5 10 0 2.2-.8 4.2-2 5.8L12 22l-2.5-4.2c-1.2-1.6-2-3.6-2-5.8C7.5 8 9 4.5 12 2Z" />
+          <circle cx="12" cy="10" r="2.2" />
         </svg>
         {!!badge && badge > 0 && (
           <span className="absolute -top-1 -right-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-accent px-1 text-[9px] font-bold text-paper tabular-nums">
@@ -251,7 +252,7 @@ export function ScoutButton({ badge, onClick }: { badge?: number; onClick: () =>
         role="tooltip"
         className="pointer-events-none absolute top-full right-0 z-50 mt-2 hidden w-max max-w-[214px] rounded-md border border-line-strong bg-elevated px-2.5 py-1.5 text-[11.5px] leading-snug text-muted shadow-[0_10px_28px_rgba(0,0,0,0.55)] group-hover:block"
       >
-        Apt Scout — your overnight rental agent
+        Autopilot — applies to new matches for you
       </span>
     </div>
   );
@@ -372,61 +373,60 @@ function ListingCard({
         type="button"
         onClick={onSelect}
         aria-pressed={selected}
-        className={`group relative flex w-full gap-3 border-b border-line px-3 py-2.5 text-left transition-colors ${
-          selected ? "bg-accent-soft/50" : "hover:bg-elevated/60"
+        className={`group flex w-full flex-col gap-2 border-b border-line px-3 py-2.5 text-left transition-colors ${
+          selected ? "bg-accent-soft/45" : "hover:bg-elevated/60"
         } ${dimmed ? "opacity-55" : ""}`}
       >
-        <span
-          className={`absolute inset-y-0 left-0 w-[3px] ${selected ? "bg-accent" : "bg-transparent"}`}
-          aria-hidden
-        />
-        <PhotoImg
-          src={l.primaryPhotoUrl}
-          alt={l.title}
-          className="h-[76px] w-[100px] shrink-0 rounded-md object-cover"
-        />
+        <div className="flex w-full gap-3">
+          <PhotoImg
+            src={l.primaryPhotoUrl}
+            alt={l.title}
+            className="h-[76px] w-[100px] shrink-0 rounded-md object-cover"
+          />
 
-        <div className="flex min-w-0 flex-1 flex-col">
-          <div className="flex items-baseline gap-1.5">
-            <span className="text-[16px] leading-none font-semibold text-ink tabular-nums">
-              {fmtMoney(price)}
-            </span>
-            <span className="text-[12px] text-faint">/mo</span>
-            {hasConcession && (
-              <span
-                className="text-[11px] font-medium text-good"
-                title={`Effective with concessions (advertised ${fmtMoney(l.priceMonthly)})`}
-              >
-                effective
+          <div className="flex min-w-0 flex-1 flex-col">
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-[16px] leading-none font-semibold text-ink tabular-nums">
+                {fmtMoney(price)}
               </span>
-            )}
-            {l.lastPriceChange && l.lastPriceChange.newPrice < l.lastPriceChange.oldPrice && (
-              <span className="text-[11.5px] text-faint line-through tabular-nums">
-                {fmtMoney(l.lastPriceChange.oldPrice)}
-              </span>
-            )}
-            <CompactBadge badges={l.badges} />
-            {match && (
-              <span className="ml-auto">
-                <ScoreGauge score={match.score} />
-              </span>
-            )}
-          </div>
+              <span className="text-[12px] text-faint">/mo</span>
+              {hasConcession && (
+                <span
+                  className="text-[11px] font-medium text-good"
+                  title={`Effective with concessions (advertised ${fmtMoney(l.priceMonthly)})`}
+                >
+                  effective
+                </span>
+              )}
+              {l.lastPriceChange && l.lastPriceChange.newPrice < l.lastPriceChange.oldPrice && (
+                <span className="text-[11.5px] text-faint line-through tabular-nums">
+                  {fmtMoney(l.lastPriceChange.oldPrice)}
+                </span>
+              )}
+              <CompactBadge badges={l.badges} />
+              {match && (
+                <span className="ml-auto">
+                  <ScoreGauge score={match.score} />
+                </span>
+              )}
+            </div>
 
-          <p className="mt-0.5 truncate text-[13px] leading-snug text-ink" title={l.title}>
-            {l.title}
-          </p>
-          <p className="truncate text-[12.5px] text-muted">{specs.join(" · ")}</p>
-          <p className="truncate text-[12px] text-faint" title={location}>
-            {location}
-          </p>
-
-          {match && (
-            <p className="mt-1.5 line-clamp-2 rounded-md bg-accent-soft/60 px-2 py-1 text-[12px] leading-snug text-accent">
-              {match.reason}
+            <p className="mt-0.5 truncate text-[13px] leading-snug text-ink" title={l.title}>
+              {l.title}
             </p>
-          )}
+            <p className="truncate text-[12.5px] text-muted">{specs.join(" · ")}</p>
+            <p className="truncate text-[12px] text-faint" title={location}>
+              {location}
+            </p>
+          </div>
         </div>
+
+        {/* AI fit — full width under the thumbnail; expands on hover to read it all */}
+        {match && (
+          <div className="w-full overflow-hidden rounded-md bg-accent-soft/50 transition-[max-height] duration-300 ease-out max-h-[40px] group-hover:max-h-32">
+            <p className="px-2 py-1 text-[11px] leading-snug text-accent/90">{match.reason}</p>
+          </div>
+        )}
       </button>
     </li>
   );

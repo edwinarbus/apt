@@ -1,11 +1,8 @@
 /**
- * Compose a rental-application inquiry DRAFT for a listing.
- *
- * This is the "auto-apply" the overnight Apt Scout stages for a saved search —
- * but it only ever DRAFTS. Nothing here sends email, submits a form, or
- * contacts anyone: the draft is handed to the user to review and send
- * themselves. Automated outreach is prohibited by the project's standing rules,
- * so this module deliberately has no transport of any kind.
+ * Compose a rental application for a listing — the core of Autopilot's
+ * auto-apply. It builds the message + recipient; the app hands it to the user's
+ * email client (a one-tap `mailto:` Send) so the human is always the sender.
+ * This module has no transport of its own — it never sends anything itself.
  */
 
 export interface DraftListingFacts {

@@ -17,7 +17,7 @@ import { EMPTY_PROGRESS, type SearchProgressState } from "./SearchProgress";
 import { MapView } from "./MapView";
 import { ListingPanel, SortSelect, listingCountLabel } from "./ListingPanel";
 import { ListingDetail } from "./ListingDetail";
-import { ScoutPanel } from "./ScoutPanel";
+import { AutopilotPanel } from "./AutopilotPanel";
 import { SaveSearchDialog } from "./SaveSearchDialog";
 import { WelcomeBackModal } from "./WelcomeBackModal";
 import type { SavedSearchDto } from "@/lib/api-types";
@@ -401,6 +401,7 @@ export function AppShell() {
           listings={displayed}
           selectedId={selectedId}
           onSelect={(id) => select(id)}
+          reasons={reasonById}
           searching={searching}
           searchActive={search != null}
           selectedHood={selectedHood}
@@ -503,7 +504,7 @@ export function AppShell() {
       )}
 
       {scoutOpen && (
-        <ScoutPanel
+        <AutopilotPanel
           listings={listings ?? []}
           onClose={() => setScoutOpen(false)}
           onSelect={(id) => select(id)}

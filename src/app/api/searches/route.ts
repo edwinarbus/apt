@@ -61,35 +61,38 @@ export async function GET() {
     matching.sort((a, b) => (a.firstSeenAt < b.firstSeenAt ? 1 : -1));
     const newMatches = matching.filter((r) => now - Date.parse(r.firstSeenAt) < DAY_MS);
 
-    let sampleDraft: SavedSearchDto["sampleDraft"] = null;
-    if (criteria.autoApply) {
-      const target = newMatches[0] ?? matching[0];
-      if (target) {
-        const d = draftApplication(
-          {
-            title: target.title,
-            addressRaw: target.addressRaw,
-            neighborhood: target.neighborhood,
-            bedrooms: target.bedrooms,
-            bathrooms: target.bathrooms,
+    // Auto-apply: prepare a ready-to-send application for each new match.
+    const applications: SavedSearchDto["applications"] = criteria.autoApply
+      ? (newMatches.length ? newMatches : matching).slice(0, 5).map((target) => {
+          const d = draftApplication(
+            {
+              title: target.title,
+              addressRaw: target.addressRaw,
+              neighborhood: target.neighborhood,
+              bedrooms: target.bedrooms,
+              bathrooms: target.bathrooms,
+              priceMonthly: target.priceEffectiveMonthly ?? target.priceMonthly,
+              availableDate: target.availableDate,
+              originalUrl: target.originalUrl,
+              contactEmail: target.contactEmail,
+              contactPhone: target.contactPhone,
+            },
+            { searchName: s.name },
+          );
+          return {
+            listingId: target.id,
+            listingTitle: target.title,
+            addressLine:
+              [target.addressRaw, target.neighborhood].filter(Boolean).join(" · ") || null,
             priceMonthly: target.priceEffectiveMonthly ?? target.priceMonthly,
-            availableDate: target.availableDate,
-            originalUrl: target.originalUrl,
-            contactEmail: target.contactEmail,
-            contactPhone: target.contactPhone,
-          },
-          { searchName: s.name },
-        );
-        sampleDraft = {
-          listingId: target.id,
-          listingTitle: target.title,
-          to: d.to,
-          channel: d.channel,
-          subject: d.subject,
-          body: d.body,
-        };
-      }
-    }
+            primaryPhotoUrl: target.primaryPhotoUrl,
+            to: d.to,
+            channel: d.channel,
+            subject: d.subject,
+            body: d.body,
+          };
+        })
+      : [];
 
     return {
       id: s.id,
@@ -101,7 +104,7 @@ export async function GET() {
       matchCount: matching.length,
       newMatchCount: newMatches.length,
       newMatchIds: newMatches.slice(0, 6).map((r) => r.id),
-      sampleDraft,
+      applications,
     };
   });
 

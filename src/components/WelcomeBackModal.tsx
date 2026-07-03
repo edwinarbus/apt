@@ -71,9 +71,9 @@ export function WelcomeBackModal({
             <div className="min-w-0 flex-1">
               <h2 className="text-[17px] font-semibold text-ink">While you were away</h2>
               <p className="mt-0.5 text-[13px] leading-snug text-muted">
-                Apt Scout found <span className="font-semibold text-ink">{total}</span> new{" "}
+                Autopilot found <span className="font-semibold text-ink">{total}</span> new{" "}
                 {total === 1 ? "match" : "matches"} across your saved searches
-                {autoApplying && <>, with applications drafted</>}.
+                {autoApplying && <>, with applications ready to send</>}.
               </p>
             </div>
             <button
@@ -136,7 +136,7 @@ export function WelcomeBackModal({
         </div>
 
         <div className="flex items-center justify-between gap-2 border-t border-line px-5 py-3">
-          <span className="text-[11.5px] text-faint">Scout runs nightly · never contacts anyone</span>
+          <span className="text-[11.5px] text-faint">Autopilot runs nightly</span>
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -153,7 +153,7 @@ export function WelcomeBackModal({
               }}
               className="rounded-md bg-accent px-4 py-2 text-[13px] font-semibold text-paper transition-colors hover:bg-accent-deep"
             >
-              Review in Scout
+              Open Autopilot
             </button>
           </div>
         </div>

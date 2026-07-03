@@ -396,10 +396,15 @@ function makePriceElement(
   return withRoot(el);
 }
 
-/** Selected listing — the one place a photo appears on the map. */
-function makePhotoCardElement(l: ListingSummary, onClick: () => void): HTMLDivElement {
+/** A photo card marker — for the selected listing and for the hover preview
+ * that a price pill expands into. Shows the photo, price, beds·baths·sqft, and
+ * (when a search is active) the AI fit line. */
+function makePhotoCardElement(
+  l: ListingSummary,
+  opts: { reason?: string | null; expand?: boolean; onClick: () => void },
+): HTMLDivElement {
   const el = document.createElement("div");
-  el.className = "photo-card";
+  el.className = opts.expand ? "photo-card photo-card-expand" : "photo-card";
   const frame = document.createElement("div");
   frame.className = "photo-card-frame";
   if (l.primaryPhotoUrl) {
@@ -423,18 +428,28 @@ function makePhotoCardElement(l: ListingSummary, onClick: () => void): HTMLDivEl
   price.className = "photo-card-price";
   price.textContent = fmtMoneyShort(l.priceEffectiveMonthly ?? l.priceMonthly) ?? "—";
   bar.appendChild(price);
+  const metaParts: string[] = [];
   const beds = bedsShort(l);
-  if (beds) {
+  if (beds) metaParts.push(beds);
+  if (l.bathrooms != null) metaParts.push(`${l.bathrooms} ba`);
+  if (l.squareFeet) metaParts.push(`${l.squareFeet.toLocaleString()} sqft`);
+  if (metaParts.length) {
     const meta = document.createElement("span");
     meta.className = "photo-card-meta";
-    meta.textContent = beds;
+    meta.textContent = metaParts.join(" · ");
     bar.appendChild(meta);
   }
   frame.appendChild(bar);
+  if (opts.reason) {
+    const reason = document.createElement("div");
+    reason.className = "photo-card-reason";
+    reason.textContent = opts.reason;
+    frame.appendChild(reason);
+  }
   el.appendChild(frame);
   el.addEventListener("click", (e) => {
     e.stopPropagation();
-    onClick();
+    opts.onClick();
   });
   return withRoot(el);
 }
@@ -472,6 +487,7 @@ export function MapView({
   listings,
   selectedId,
   onSelect,
+  reasons,
   searching,
   searchActive,
   selectedHood,
@@ -483,6 +499,8 @@ export function MapView({
   listings: ListingSummary[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  /** id → AI match info (score + one-line reason) for the on-map cards */
+  reasons?: Map<string, { score: number; reason: string }>;
   searching?: boolean;
   searchActive?: boolean;
   selectedHood: string | null;
@@ -509,6 +527,62 @@ export function MapView({
   const searchActiveRef = useRef(false);
   const cleanupRef = useRef<(() => void) | null>(null);
   const refreshThumbsRef = useRef<() => void>(() => {});
+  const reasonsRef = useRef(reasons);
+  // Hover preview: a price pill expands into a photo card while hovered.
+  const hoverCardRef = useRef<maplibregl.Marker | null>(null);
+  const hoverIdRef = useRef<string | null>(null);
+  const hoverTimerRef = useRef<number | null>(null);
+
+  const setPillOpacity = (id: string | null, v: string) => {
+    if (!id) return;
+    const inner = thumbsRef.current.get(id)?.getElement().firstElementChild as HTMLElement | undefined;
+    if (inner) inner.style.opacity = v;
+  };
+  const hideHoverCard = () => {
+    if (hoverTimerRef.current) {
+      window.clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+    hoverCardRef.current?.remove();
+    hoverCardRef.current = null;
+    setPillOpacity(hoverIdRef.current, "");
+    hoverIdRef.current = null;
+  };
+  const scheduleHideHoverCard = () => {
+    if (hoverTimerRef.current) window.clearTimeout(hoverTimerRef.current);
+    hoverTimerRef.current = window.setTimeout(hideHoverCard, 90);
+  };
+  const cancelHideHoverCard = () => {
+    if (hoverTimerRef.current) {
+      window.clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+  };
+  const showHoverCard = (l: ListingSummary) => {
+    const map = mapRef.current;
+    if (!map || l.latitude == null || l.longitude == null) return;
+    if (selectedIdRef.current === l.id) return; // already shown as the locked card
+    if (hoverIdRef.current === l.id) {
+      cancelHideHoverCard();
+      return;
+    }
+    hideHoverCard();
+    const el = makePhotoCardElement(l, {
+      reason: reasonsRef.current?.get(l.id)?.reason ?? null,
+      expand: true,
+      onClick: () => {
+        spawnRipple(map, [l.longitude!, l.latitude!]);
+        onSelectRef.current(l.id);
+      },
+    });
+    el.addEventListener("mouseenter", cancelHideHoverCard);
+    el.addEventListener("mouseleave", scheduleHideHoverCard);
+    hoverCardRef.current = new maplibregl.Marker({ element: el, anchor: "bottom", offset: [0, -12] })
+      .setLngLat([l.longitude, l.latitude])
+      .addTo(map);
+    hoverIdRef.current = l.id;
+    setPillOpacity(l.id, "0"); // hide the pill so the card reads as its expansion
+  };
 
   /* ---------- Price-pill markers (imperative, viewport-managed) ----------
    * Compact price pills at closer zoom / while isolated or searching; the
@@ -550,18 +624,23 @@ export function MapView({
           spawnRipple(map, [l.longitude!, l.latitude!]);
           onSelectRef.current(l.id);
         });
+        el.addEventListener("mouseenter", () => showHoverCard(l));
+        el.addEventListener("mouseleave", scheduleHideHoverCard);
         marker = new maplibregl.Marker({ element: el, anchor: "center" })
           .setLngLat([l.longitude!, l.latitude!])
           .addTo(map);
         thumbs.set(l.id, marker);
       }
     }
+    // If the hovered pill just left the viewport, drop its card.
+    if (hoverIdRef.current && !wantedIds.has(hoverIdRef.current)) hideHoverCard();
   };
   useEffect(() => {
     listingsRef.current = listings;
     onSelectRef.current = onSelect;
     onHoodSelectRef.current = onHoodSelect;
     selectedIdRef.current = selectedId;
+    reasonsRef.current = reasons;
     refreshThumbsRef.current = refreshThumbs;
   });
 
@@ -939,6 +1018,8 @@ export function MapView({
       ro.observe(container);
       cleanupRef.current = () => {
         ro.disconnect();
+        hoverCardRef.current?.remove();
+        if (hoverTimerRef.current) window.clearTimeout(hoverTimerRef.current);
         lockMarkerRef.current?.remove();
         for (const m of thumbsRef.current.values()) m.remove();
         thumbsRef.current.clear();
@@ -1197,6 +1278,7 @@ export function MapView({
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
 
+    hideHoverCard();
     lockMarkerRef.current?.remove();
     lockMarkerRef.current = null;
     refreshThumbsRef.current(); // drop the selected listing's pill; restore others
@@ -1205,20 +1287,27 @@ export function MapView({
       const listing = listings.find((l) => l.id === selectedId);
       if (listing?.latitude != null && listing.longitude != null) {
         lockMarkerRef.current = new maplibregl.Marker({
-          element: makePhotoCardElement(listing, () => onSelectRef.current(listing.id)),
+          element: makePhotoCardElement(listing, {
+            reason: reasonsRef.current?.get(listing.id)?.reason ?? null,
+            onClick: () => onSelectRef.current(listing.id),
+          }),
           anchor: "bottom",
           offset: [0, -8],
         })
           .setLngLat([listing.longitude, listing.latitude])
           .addTo(map);
+        // Clicking a listing swoops in: more tilt, a slight rotation, closer zoom.
         const target = {
           center: [listing.longitude, listing.latitude] as [number, number],
-          zoom: Math.max(map.getZoom(), 14.6),
+          zoom: Math.max(map.getZoom() + 0.8, 15.4),
+          pitch: 58,
+          bearing: -13,
         };
         if (prefersReducedMotion() || document.visibilityState === "hidden") map.jumpTo(target);
-        else map.easeTo({ ...target, duration: 650 });
+        else map.easeTo({ ...target, duration: 720 });
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, listings]);
 
   return (

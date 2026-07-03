@@ -27,7 +27,7 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Apt. — SF apartment scout",
+  title: "Apt. — SF apartment finder",
   description:
     "Private San Francisco rental radar. Monitors sources, normalizes and dedupes listings, tracks price and availability. Always verify with the original listing.",
 };

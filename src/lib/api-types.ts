@@ -111,10 +111,13 @@ export interface SearchResponse {
   error: string | null;
 }
 
-/** A drafted (never-sent) rental application the Scout stages for a match. */
+/** A rental application Autopilot has prepared for a match, ready to send. */
 export interface ApplicationDraftDto {
   listingId: string;
   listingTitle: string | null;
+  addressLine: string | null;
+  priceMonthly: number | null;
+  primaryPhotoUrl: string | null;
   to: string | null;
   channel: "email" | "phone" | "unknown";
   subject: string;
@@ -135,8 +138,8 @@ export interface SavedSearchDto {
   newMatchCount: number;
   /** ids of the freshest new matches (for the "while you were away" surface) */
   newMatchIds: string[];
-  /** for auto-apply searches, a drafted application for the freshest match */
-  sampleDraft: ApplicationDraftDto | null;
+  /** for auto-apply searches, applications Autopilot has prepared for new matches */
+  applications: ApplicationDraftDto[];
 }
 
 export interface SavedSearchesResponse {

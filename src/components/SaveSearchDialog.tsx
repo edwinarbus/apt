@@ -23,7 +23,7 @@ export function SaveSearchDialog({
   // Prefer the user's own phrasing as the name; fall back to the model's
   // interpretation only when there's no query text.
   const [name, setName] = useState(() => query.trim() || interpretation?.trim() || "");
-  const [autoApply, setAutoApply] = useState(false);
+  const [autoApply, setAutoApply] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const nameRef = useRef<HTMLInputElement | null>(null);
@@ -64,9 +64,9 @@ export function SaveSearchDialog({
             </svg>
           </span>
           <div className="min-w-0 flex-1">
-            <h2 className="text-[16px] font-semibold text-ink">Save &amp; watch this search</h2>
+            <h2 className="text-[16px] font-semibold text-ink">Put this search on Autopilot</h2>
             <p className="text-[12.5px] text-muted">
-              Apt Scout will check every night and surface new matches.
+              Autopilot checks every night and applies to new matches for you.
             </p>
           </div>
           <button
@@ -123,8 +123,8 @@ export function SaveSearchDialog({
                 Auto-apply to new matches
               </span>
               <span className="mt-0.5 block text-[12px] leading-relaxed text-muted">
-                Scout drafts a ready-to-send application for each new match.
-                <span className="text-faint"> It never sends — you review and send every one.</span>
+                Autopilot writes an application for every new match, ready in your queue.
+                <span className="text-faint"> Send it in one tap.</span>
               </span>
             </span>
           </button>

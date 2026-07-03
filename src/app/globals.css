@@ -100,6 +100,18 @@ body {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
 }
+@keyframes fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+@keyframes modal-in {
+  from { opacity: 0; transform: scale(0.985); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes modal-out {
+  from { opacity: 1; transform: scale(1); }
+  to { opacity: 0; transform: scale(0.985); }
+}
 @keyframes click-ripple {
   from { transform: scale(0.3); opacity: 0.7; }
   to { transform: scale(1.5); opacity: 0; }
@@ -108,6 +120,11 @@ body {
 .animate-fade-up { animation: fade-up 0.22s cubic-bezier(0.2, 0, 0, 1) both; }
 .animate-fade-in { animation: fade-in 0.2s ease both; }
 .animate-rise-in { animation: rise-in 0.18s cubic-bezier(0.2, 0, 0, 1) both; }
+/* Fast modal open/close — a quick opacity + subtle scale. */
+.animate-backdrop-in { animation: fade-in 0.12s ease both; }
+.animate-backdrop-out { animation: fade-out 0.11s ease both; }
+.animate-modal-in { animation: modal-in 0.13s cubic-bezier(0.2, 0, 0, 1) both; }
+.animate-modal-out { animation: modal-out 0.11s ease-in both; }
 .thinking-dot { animation: dot-bounce 1.1s ease-in-out infinite; }
 .soft-pulse { animation: soft-pulse 1.6s ease-in-out infinite; }
 
@@ -199,7 +216,25 @@ body {
   font-size: 13px; font-weight: 700; color: var(--color-ink);
   font-variant-numeric: tabular-nums;
 }
-.photo-card-meta { font-size: 11px; color: var(--color-muted); }
+.photo-card-meta { font-size: 11px; color: var(--color-muted); white-space: nowrap; }
+/* AI fit line under the card facts — matches the rail's light-blue reason. */
+.photo-card-reason {
+  padding: 0 9px 7px;
+  font-size: 10.5px;
+  line-height: 1.35;
+  color: color-mix(in srgb, var(--color-accent) 88%, white);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+/* Hover preview expands from the pill it replaces. */
+@keyframes card-expand {
+  from { opacity: 0; transform: translateY(7px) scale(0.5); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.photo-card-expand { animation: card-expand 0.17s cubic-bezier(0.2, 0, 0, 1) both; transform-origin: bottom center; }
 
 /* One-shot ripple where the user clicks a listing. */
 .click-ripple {
