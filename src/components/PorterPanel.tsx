@@ -32,6 +32,28 @@ export function PorterPanel({
   const [searches, setSearches] = useState<SavedSearchDto[] | null>(null);
   const [closing, setClosing] = useState(false);
 
+  // Auto-send: when on, Porter sends each email itself the moment it finds a
+  // match, so the drafts below read as already sent. Persisted across opens.
+  const [autoSend, setAutoSend] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return window.localStorage.getItem("apt.porterAutoSend") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleAutoSend = useCallback(() => {
+    setAutoSend((v) => {
+      const next = !v;
+      try {
+        window.localStorage.setItem("apt.porterAutoSend", next ? "1" : "0");
+      } catch {
+        /* best effort */
+      }
+      return next;
+    });
+  }, []);
+
   // Play a scale-down before unmounting so close is animated too.
   const requestClose = useCallback(() => {
     setClosing(true);
@@ -131,11 +153,19 @@ export function PorterPanel({
                 <span className="font-semibold text-ink">{newTotal}</span> new{" "}
                 {newTotal === 1 ? "match" : "matches"}
                 {applications.length > 0 ? (
-                  <>
-                    , and wrote{" "}
-                    <span className="font-semibold text-ink">{applications.length}</span>{" "}
-                    {applications.length === 1 ? "email" : "emails"} to the properties — ready to send below.
-                  </>
+                  autoSend ? (
+                    <>
+                      , and sent{" "}
+                      <span className="font-semibold text-ink">{applications.length}</span>{" "}
+                      {applications.length === 1 ? "email" : "emails"} to the properties on your behalf.
+                    </>
+                  ) : (
+                    <>
+                      , and wrote{" "}
+                      <span className="font-semibold text-ink">{applications.length}</span>{" "}
+                      {applications.length === 1 ? "email" : "emails"} to the properties — ready to send below.
+                    </>
+                  )
                 ) : (
                   <>.</>
                 )}
@@ -143,11 +173,43 @@ export function PorterPanel({
             </div>
           )}
 
-          {/* Emails Porter drafted — one tap to send */}
+          {/* Auto-send — Porter sends each email itself, no tap needed */}
+          {applications.length > 0 && (
+            <div className="mb-3 flex items-center justify-between gap-3 rounded-lg border border-line bg-elevated/25 px-3.5 py-2.5">
+              <div className="min-w-0">
+                <p className="text-[12.5px] font-medium text-ink">Auto-send</p>
+                <p className="text-[11.5px] leading-snug text-faint">
+                  Porter sends each email itself the moment it finds a match.
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={autoSend}
+                aria-label="Auto-send emails"
+                onClick={toggleAutoSend}
+                className={`relative flex h-5 w-9 shrink-0 items-center rounded-full px-0.5 transition-colors ${
+                  autoSend ? "bg-accent" : "bg-line-strong"
+                }`}
+              >
+                <span
+                  className={`h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
+                    autoSend ? "translate-x-4" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </div>
+          )}
+
+          {/* Emails Porter drafted (or sent, when auto-send is on) */}
           <div className="mb-2 flex items-baseline justify-between">
-            <h3 className="text-[13px] font-semibold text-ink">Emails Porter drafted</h3>
+            <h3 className="text-[13px] font-semibold text-ink">
+              {autoSend ? "Emails Porter sent" : "Emails Porter drafted"}
+            </h3>
             {applications.length > 0 && (
-              <span className="text-[12px] text-faint">{applications.length} ready</span>
+              <span className="text-[12px] text-faint">
+                {applications.length} {autoSend ? "sent" : "ready"}
+              </span>
             )}
           </div>
 
@@ -164,7 +226,13 @@ export function PorterPanel({
           ) : (
             <ul className="flex flex-col gap-2">
               {applications.map((a) => (
-                <ApplicationCard key={a.listingId} app={a} onSelect={onSelect} onClose={requestClose} />
+                <ApplicationCard
+                  key={a.listingId}
+                  app={a}
+                  sent={autoSend}
+                  onSelect={onSelect}
+                  onClose={requestClose}
+                />
               ))}
             </ul>
           )}
@@ -226,7 +294,9 @@ export function PorterPanel({
             {[
               ["Scans every night", "Pulls new listings from all your sources, then enriches and photo-analyzes them."],
               ["Emails properties for you", "Writes a tailored email — with your details — to every new match on your auto-apply searches."],
-              ["You send in one tap", "Every email is queued here — review it and send it from your inbox in a tap."],
+              autoSend
+                ? ["Sends automatically", "With auto-send on, Porter sends each email itself — they show up here already sent."]
+                : ["You send in one tap", "Every email is queued here — review it and send it from your inbox in a tap."],
             ].map(([title, body]) => (
               <li key={title} className="flex gap-2.5">
                 <span aria-hidden className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
@@ -242,13 +312,16 @@ export function PorterPanel({
   );
 }
 
-/** One email Porter drafted: the property + a one-tap "Email property", expandable to preview. */
+/** One email Porter drafted: the property + a one-tap "Email property", expandable to preview.
+ *  When `sent` (auto-send is on), it reads as already sent instead of offering the button. */
 function ApplicationCard({
   app: a,
+  sent,
   onSelect,
   onClose,
 }: {
   app: ApplicationDraftDto;
+  sent: boolean;
   onSelect: (id: string) => void;
   onClose: () => void;
 }) {
@@ -274,11 +347,24 @@ function ApplicationCard({
               <span className="truncate text-[12px] text-muted">{a.listingTitle}</span>
             </div>
             <p className="truncate text-[11.5px] text-faint">
-              {a.to ? <>Email drafted to {a.to}</> : a.addressLine}
+              {a.to ? (
+                <>
+                  {sent ? "Sent" : "Email drafted"} to {a.to}
+                </>
+              ) : (
+                a.addressLine
+              )}
             </p>
           </div>
         </button>
-        {href ? (
+        {sent && a.to ? (
+          <span className="flex shrink-0 items-center gap-1.5 rounded-md border border-good/40 bg-good/10 px-2.5 py-1.5 text-[12.5px] font-semibold text-good">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M20 6 9 17l-5-5" />
+            </svg>
+            Sent
+          </span>
+        ) : href ? (
           <a
             href={href}
             className="flex shrink-0 items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-[12.5px] font-semibold text-paper transition-colors hover:bg-accent-deep"

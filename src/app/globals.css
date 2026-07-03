@@ -55,12 +55,14 @@ body {
   font-feature-settings: "tnum";
 }
 
-/* Floating panels (search bar, results rail): a barely-there grayscale grain +
- * a crisp top sheen so the lighter surface reads as a real, tactile pane rather
- * than a flat fill. The grain is a tiny cached SVG, so it's cheap. */
+/* Floating panels (search bar, results rail): a barely-there grayscale grain so
+ * the lighter surface reads as a real, tactile pane rather than a flat fill.
+ * The grain is a tiny cached SVG, so it's cheap.
+ * NOTE: the top sheen + drop shadow live in each panel's own `shadow-[...]`
+ * utility (a single box-shadow list), NOT here — a `box-shadow` on `.textured`
+ * would override the utility and swallow the drop shadow. */
 .textured {
   position: relative;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 .textured::before {
   content: "";

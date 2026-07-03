@@ -95,7 +95,7 @@ export function ListingPanel({
       className={
         chromeless
           ? "flex h-full w-full flex-col overflow-hidden"
-          : "textured flex h-full w-full flex-col overflow-hidden rounded-xl border-2 border-white/25 bg-panel/96 shadow-[0_30px_80px_-10px_rgba(0,0,0,0.92)] backdrop-blur-xl"
+          : "textured flex h-full w-full flex-col overflow-hidden rounded-xl border-2 border-white/25 bg-panel/96 shadow-[inset_0_1px_0_rgba(255,255,255,0.09),-14px_0_50px_-8px_rgba(0,0,0,0.9),0_28px_70px_-12px_rgba(0,0,0,0.92)] backdrop-blur-xl"
       }
     >
       {/* While searching, the thinking feed owns the panel — no duplicate
