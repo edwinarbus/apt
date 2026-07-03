@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import type { GeoJSONSource, MapGeoJSONFeature, StyleSpecification } from "maplibre-gl";
 import type { ListingSummary } from "@/lib/api-types";
@@ -515,6 +515,10 @@ export function MapView({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const loadedRef = useRef(false);
+  // Flips true once the map's `load` fires. Threaded into the camera/layer
+  // effects so that a search fired DURING boot (before they could run) is
+  // applied as soon as the map is ready, instead of being stranded at home.
+  const [mapLoaded, setMapLoaded] = useState(false);
   const listingsRef = useRef(listings);
   const onSelectRef = useRef(onSelect);
   const onHoodSelectRef = useRef(onHoodSelect);
@@ -988,6 +992,7 @@ export function MapView({
         map.on("zoomend", () => refreshThumbsRef.current());
 
         loadedRef.current = true;
+        setMapLoaded(true);
         map.resize();
         syncData(map, listingsRef.current);
         refreshThumbsRef.current();
@@ -1043,7 +1048,7 @@ export function MapView({
     if (!map || !loadedRef.current) return;
     syncData(map, listings);
     refreshThumbsRef.current();
-  }, [listings]);
+  }, [listings, mapLoaded]);
 
   /* ---------- Search: highlight matching listings on the map ---------- */
   useEffect(() => {
@@ -1057,7 +1062,7 @@ export function MapView({
     } catch {
       /* layers may not exist yet */
     }
-  }, [searching]);
+  }, [searching, mapLoaded]);
 
   // As the shortlist streams in, mark the real candidates and gently frame them.
   useEffect(() => {
@@ -1096,7 +1101,7 @@ export function MapView({
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scanIds, searching]);
+  }, [scanIds, searching, mapLoaded]);
 
   /* ---------- Neighborhood isolate: highlight the hood + show terrain ---------- */
   useEffect(() => {
@@ -1163,7 +1168,7 @@ export function MapView({
       if (!motionOk) map.jumpTo(home);
       else map.flyTo({ ...home, duration: 1300, curve: 1.3 });
     }
-  }, [selectedHood]);
+  }, [selectedHood, mapLoaded]);
 
   /* --- Search highlight: a neighborhood named in the query gets centered,
    * tilted, outlined, and shown with real terrain relief — the same "here's
@@ -1211,7 +1216,7 @@ export function MapView({
     } catch {
       /* layers not ready yet */
     }
-  }, [highlightHood, selectedHood]);
+  }, [highlightHood, selectedHood, mapLoaded]);
 
   /* ---------- Target mode (search results) ---------- */
   useEffect(() => {
@@ -1271,7 +1276,7 @@ export function MapView({
       else map.flyTo({ ...home, duration: 1200, curve: 1.3 });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchActive, searchActive ? listings : null]);
+  }, [searchActive, searchActive ? listings : null, mapLoaded]);
 
   /* ---------- Selection: photo card on the selected listing ---------- */
   useEffect(() => {
@@ -1308,7 +1313,7 @@ export function MapView({
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId, listings]);
+  }, [selectedId, listings, mapLoaded]);
 
   return (
     <div className="relative h-full w-full bg-paper">
