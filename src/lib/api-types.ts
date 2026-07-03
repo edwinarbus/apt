@@ -144,6 +144,10 @@ export interface SavedSearchDto {
 
 export interface SavedSearchesResponse {
   searches: SavedSearchDto[];
+  /** true when Porter's shortlists were curated away from remembered dislikes */
+  curated: boolean;
+  /** a tiny, non-preachy note for the Porter UI when curation is active */
+  curationNote: string | null;
 }
 
 export interface ListingEventPayload {

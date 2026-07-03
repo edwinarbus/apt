@@ -1,15 +1,39 @@
 import { NextResponse } from "next/server";
 import { desc } from "drizzle-orm";
 import { getDb, newId, nowIso } from "@/db/client";
-import { listings, savedSearches, userListingStates } from "@/db/schema";
+import { listings, listingVision, savedSearches, userListingStates } from "@/db/schema";
 import { evaluateListing, type MatchableListing, type SavedSearchCriteria } from "@/core/match";
 import { draftApplication } from "@/core/application-draft";
+import { characteristicTags, type DislikeFacts } from "@/memory/characteristics";
+import { curateMatches, curationNote, inferAversions } from "@/memory/curate";
 import type { UserListingStatus } from "@/core/types";
 import type { SavedSearchDto, SavedSearchesResponse } from "@/lib/api-types";
 
 export const dynamic = "force-dynamic";
 
 const DAY_MS = 24 * 3600 * 1000;
+
+type ListingRow = typeof listings.$inferSelect;
+
+/** The basic characteristics of one apartment, for dislike-recurrence matching. */
+function factsFor(row: ListingRow, visualTags: string[]): DislikeFacts {
+  return {
+    title: row.title,
+    addressRaw: row.addressRaw,
+    bedrooms: row.bedrooms,
+    bathrooms: row.bathrooms,
+    priceMonthly: row.priceEffectiveMonthly ?? row.priceMonthly,
+    neighborhood: row.neighborhood,
+    parking: row.parkingNormalized,
+    laundry: row.laundryNormalized,
+    catsAllowed: row.catsAllowed,
+    dogsAllowed: row.dogsAllowed,
+    squareFeet: row.squareFeet,
+    propertyType: row.propertyType,
+    visualTags,
+    description: row.description,
+  };
+}
 
 function toMatchable(row: typeof listings.$inferSelect): MatchableListing {
   return {
@@ -42,11 +66,40 @@ export async function GET() {
   const statusById = new Map(
     db.select().from(userListingStates).all().map((s) => [s.listingId, s.status as UserListingStatus]),
   );
+  const visualTagsById = new Map(
+    db
+      .select({ listingId: listingVision.listingId, features: listingVision.features })
+      .from(listingVision)
+      .all()
+      .map((v) => [v.listingId, v.features ?? []]),
+  );
+  const rowsById = new Map(rows.map((r) => [r.id, r]));
   const now = Date.now();
 
   const active = rows.filter(
     (r) => r.listingStatus === "active" && r.staleStatus !== "likely_unavailable",
   );
+
+  // Learn what the user keeps passing on. The disliked set is every listing the
+  // user thumbs-downed (marked not_a_fit); recurring characteristics across them
+  // become light "aversions" Porter steers the shortlist away from. Tags are
+  // computed lazily and only when there's actually something to curate against.
+  const dislikedRows = [...statusById.entries()]
+    .filter(([, status]) => status === "not_a_fit")
+    .map(([id]) => rowsById.get(id))
+    .filter((r): r is ListingRow => r != null);
+  const aversions = inferAversions(
+    dislikedRows.map((r) => characteristicTags(factsFor(r, visualTagsById.get(r.id) ?? []))),
+  );
+  const tagCache = new Map<string, string[]>();
+  const tagsFor = (r: ListingRow): string[] => {
+    let tags = tagCache.get(r.id);
+    if (!tags) {
+      tags = characteristicTags(factsFor(r, visualTagsById.get(r.id) ?? []));
+      tagCache.set(r.id, tags);
+    }
+    return tags;
+  };
 
   const dtos: SavedSearchDto[] = searches.map((s) => {
     const criteria = (s.criteria ?? {}) as SavedSearchCriteria;
@@ -59,11 +112,17 @@ export async function GET() {
     });
     // Freshest match first.
     matching.sort((a, b) => (a.firstSeenAt < b.firstSeenAt ? 1 : -1));
-    const newMatches = matching.filter((r) => now - Date.parse(r.firstSeenAt) < DAY_MS);
+    // Curate the surfaced shortlist toward the least-shared aversions (best fit
+    // first), dropping the few that hit a strong recurring dislike. matchCount
+    // stays the raw criteria count; only what Porter surfaces is curated.
+    const shortlist = aversions.length
+      ? curateMatches(matching.map((r) => ({ item: r, tags: tagsFor(r) })), aversions).kept
+      : matching;
+    const newMatches = shortlist.filter((r) => now - Date.parse(r.firstSeenAt) < DAY_MS);
 
     // Auto-apply: prepare a ready-to-send application for each new match.
     const applications: SavedSearchDto["applications"] = criteria.autoApply
-      ? (newMatches.length ? newMatches : matching).slice(0, 5).map((target) => {
+      ? (newMatches.length ? newMatches : shortlist).slice(0, 5).map((target) => {
           const d = draftApplication({
             title: target.title,
             addressRaw: target.addressRaw,
@@ -105,7 +164,11 @@ export async function GET() {
     };
   });
 
-  return NextResponse.json({ searches: dtos } satisfies SavedSearchesResponse);
+  return NextResponse.json({
+    searches: dtos,
+    curated: aversions.length > 0,
+    curationNote: curationNote(aversions),
+  } satisfies SavedSearchesResponse);
 }
 
 interface CreateBody {

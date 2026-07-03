@@ -1,7 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { ApplicationDraftDto, ListingSummary, SavedSearchDto } from "@/lib/api-types";
+import type {
+  ApplicationDraftDto,
+  ListingSummary,
+  SavedSearchDto,
+  SavedSearchesResponse,
+} from "@/lib/api-types";
 import { fmtMoney, relativeTime } from "@/lib/format";
 import { PhotoImg } from "./PhotoImg";
 import { BellIcon } from "./ListingPanel";
@@ -30,6 +35,7 @@ export function PorterPanel({
   onChanged?: () => void;
 }) {
   const [searches, setSearches] = useState<SavedSearchDto[] | null>(null);
+  const [curationNote, setCurationNote] = useState<string | null>(null);
   const [closing, setClosing] = useState(false);
 
   // Auto-send: when on, Porter sends each email itself the moment it finds a
@@ -69,8 +75,12 @@ export function PorterPanel({
   useEffect(() => {
     let live = true;
     fetch("/api/searches")
-      .then((r) => (r.ok ? r.json() : { searches: [] }))
-      .then((d: { searches: SavedSearchDto[] }) => live && setSearches(d.searches))
+      .then((r) => (r.ok ? r.json() : { searches: [], curated: false, curationNote: null }))
+      .then((d: SavedSearchesResponse) => {
+        if (!live) return;
+        setSearches(d.searches);
+        setCurationNote(d.curated ? d.curationNote : null);
+      })
       .catch(() => live && setSearches([]));
     return () => {
       live = false;
@@ -212,6 +222,16 @@ export function PorterPanel({
               </span>
             )}
           </div>
+
+          {/* Tiny signal that dislikes shaped this shortlist. */}
+          {curationNote && (
+            <p className="mb-2 flex items-center gap-1 text-[11px] text-faint">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3Z" />
+              </svg>
+              {curationNote}
+            </p>
+          )}
 
           {searches === null ? (
             <p className="rounded-lg border border-line bg-elevated/40 px-3 py-5 text-center text-[12.5px] text-faint">

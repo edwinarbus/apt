@@ -1,5 +1,6 @@
 import "@/lib/load-env";
 import Anthropic from "@anthropic-ai/sdk";
+import { STORE_DESCRIPTION, STORE_NAME } from "@/memory/store";
 
 /**
  * Provision the overnight "Porter" Claude Managed Agent (beta) that picks up
@@ -40,6 +41,7 @@ Each night:
 
 Hard rules — follow all:
 - You PREPARE applications; the human sends them with one tap. Never send a message yourself.
+- CURATE FROM DISLIKES: the user thumbs-downs apartments that aren't a fit. These are persisted in the Apt "disliked apartments" memory store and mirrored as \`not_a_fit\` rows in data/apt.db (read those + their basic characteristics: price band, beds, neighborhood, parking, laundry, flooring, pets). Before ranking, find the characteristics that RECUR across SEVERAL disliked apartments and steer the shortlist away from them — prefer matches that share the FEWEST. Weigh this LIGHTLY: never drop a listing over a single dislike, only over a characteristic that clearly recurs; and only ever reason about the unit, never about people or neighborhoods.
 - Never make definitive fraud/scam claims; use "verify carefully" / "needs review".
 - Never infer protected-class or demographic qualities of any person or neighborhood.
 - The original listing is the source of truth; when unsure, say so and leave fields unknown.
@@ -70,7 +72,8 @@ async function main() {
     console.log("Dry run — nothing was created. Re-run with --deploy to provision:");
     console.log("  1. a self-hosted environment (env_…)");
     console.log("  2. the Porter agent (agent_…)");
-    console.log("  3. a scheduled deployment firing nightly (depl_…)");
+    console.log("  3. a 'disliked apartments' memory store (memstore_…) the app writes to");
+    console.log("  4. a scheduled deployment firing nightly (depl_…)");
     console.log("\nThen keep a worker running so the nightly session can execute tools:");
     console.log("  npm run porter:worker");
     return;
@@ -106,6 +109,24 @@ async function main() {
     console.log(`reusing agent ${agentId}`);
   }
 
+  // The durable "disliked apartments" memory store. The app writes to it on
+  // every thumbs-down (see src/memory/store.ts); it's the workspace-scoped,
+  // API-inspectable record of the user's dislikes. Porter's sandbox is
+  // self-hosted, where memory-store MOUNTS aren't yet supported, so Porter
+  // reads the same dislikes from data/apt.db (the not_a_fit rows) — the store
+  // is the persistent managed-agents copy the app keeps in sync.
+  let memoryStoreId = process.env.APT_MEMORY_STORE_ID ?? null;
+  if (!memoryStoreId) {
+    const store = await client.beta.memoryStores.create({
+      name: STORE_NAME,
+      description: STORE_DESCRIPTION,
+    });
+    memoryStoreId = store.id;
+    console.log(`created memory store ${memoryStoreId}`);
+  } else {
+    console.log(`reusing memory store ${memoryStoreId}`);
+  }
+
   const deployment = await client.beta.deployments.create({
     name: "Porter — nightly",
     agent: agentId,
@@ -123,6 +144,7 @@ async function main() {
     "\nSave these for reuse:\n" +
       `  export APT_PORTER_ENV_ID=${environmentId}\n` +
       `  export APT_PORTER_AGENT_ID=${agentId}\n` +
+      `  export APT_MEMORY_STORE_ID=${memoryStoreId}   # the app writes dislikes here\n` +
       "\nNow keep a worker running so the nightly session can execute its tools:\n" +
       "  npm run porter:worker\n" +
       "\nTest it now without waiting for 3am:\n" +

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ListingDetailResponse } from "@/lib/api-types";
 import { computeBadges } from "@/lib/badges";
 import type { UserListingStatus } from "@/core/types";
@@ -13,17 +13,6 @@ import {
   relativeTime,
 } from "@/lib/format";
 import { PhotoImg } from "./PhotoImg";
-
-/** Secondary statuses live in a small menu; Save + Hide get their own buttons. */
-const STATUS_MENU: Array<{ status: UserListingStatus; label: string }> = [
-  { status: "maybe", label: "Maybe" },
-  { status: "contacted", label: "Contacted" },
-  { status: "toured", label: "Toured" },
-  { status: "applied", label: "Applied" },
-  { status: "not_a_fit", label: "Not a fit" },
-  { status: "suspicious", label: "Suspicious" },
-];
-const MENU_STATUSES = new Set(STATUS_MENU.map((s) => s.status));
 
 const EVENT_LABELS: Record<string, string> = {
   first_seen: "First seen",
@@ -49,6 +38,13 @@ export function ListingDetail({
   const [savingStatus, setSavingStatus] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const [closing, setClosing] = useState(false);
+  // One-shot "Remembered" feedback that floats up off the thumbs-down button.
+  // `tick` re-keys the element so a rapid re-click replays the animation.
+  const [remembered, setRemembered] = useState({ on: false, tick: 0 });
+  const rememberTimer = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (rememberTimer.current) window.clearTimeout(rememberTimer.current);
+  }, []);
 
   // Play a quick fade-out before unmounting so close is animated too.
   const requestClose = useCallback(() => {
@@ -102,6 +98,46 @@ export function ListingDetail({
     }
   };
 
+  // Thumbs-down: mark the apartment not-a-fit (drops it from results, like the
+  // old Hide) AND remember its characteristics so Porter learns to steer away
+  // from what recurs across your dislikes. Toggling off clears both.
+  const toggleDislike = async () => {
+    if (!data || savingStatus) return;
+    const disliked = data.listing.userStatus !== "not_a_fit";
+    setSavingStatus(true);
+    try {
+      const res = await fetch(`/api/listings/${listingId}/dislike`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ disliked }),
+      });
+      if (res.ok) {
+        const next: UserListingStatus | null = disliked ? "not_a_fit" : null;
+        const badges = computeBadges({
+          firstSeenAt: data.listing.firstSeenAt,
+          staleStatus: data.listing.staleStatus,
+          scamRiskLevel: data.listing.scamRiskLevel,
+          duplicateGroupId: data.listing.duplicateGroupId,
+          userStatus: next,
+          lastPriceChange: data.listing.lastPriceChange,
+          sourceLastRunStatus: data.listing.sourceLastRunStatus,
+        });
+        setData({ ...data, listing: { ...data.listing, userStatus: next, badges } });
+        onStatusChange(listingId, next);
+        if (disliked) {
+          setRemembered((r) => ({ on: true, tick: r.tick + 1 }));
+          if (rememberTimer.current) window.clearTimeout(rememberTimer.current);
+          rememberTimer.current = window.setTimeout(
+            () => setRemembered((r) => ({ ...r, on: false })),
+            1000,
+          );
+        }
+      }
+    } finally {
+      setSavingStatus(false);
+    }
+  };
+
   const l = data?.listing;
   const photos = l?.photos ?? [];
 
@@ -130,7 +166,7 @@ export function ListingDetail({
     if (deposit) facts.push({ label: "Deposit", value: deposit });
   }
 
-  const menuValue = l && l.userStatus && MENU_STATUSES.has(l.userStatus) ? l.userStatus : "";
+  const disliked = l?.userStatus === "not_a_fit";
   const specs = l
     ? [fmtBeds(l.bedrooms), fmtBaths(l.bathrooms), l.squareFeet ? `${l.squareFeet.toLocaleString()} sqft` : null]
         .filter(Boolean)
@@ -221,60 +257,74 @@ export function ListingDetail({
                   </p>
                 )}
 
-                {/* Primary action + status */}
-                <div className="flex flex-wrap items-center gap-2">
-                  <a
-                    href={l.originalUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex-1 rounded-md bg-accent px-4 py-2 text-center text-[13.5px] font-semibold text-paper transition-colors hover:bg-accent-deep"
-                  >
-                    View original listing ↗
-                  </a>
-                  <button
-                    type="button"
-                    disabled={savingStatus}
-                    onClick={() => setStatus("saved")}
-                    aria-pressed={l.userStatus === "saved"}
-                    className={`rounded-md border px-3 py-2 text-[13px] font-medium transition-colors disabled:opacity-50 ${
-                      l.userStatus === "saved"
-                        ? "border-saved bg-saved/15 text-saved"
-                        : "border-line text-muted hover:border-faint hover:text-ink"
-                    }`}
-                  >
-                    {l.userStatus === "saved" ? "★ Saved" : "☆ Save"}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={savingStatus}
-                    onClick={() => setStatus("hidden")}
-                    aria-pressed={l.userStatus === "hidden"}
-                    className="rounded-md border border-line px-3 py-2 text-[13px] font-medium text-muted transition-colors hover:border-faint hover:text-ink disabled:opacity-50"
-                  >
-                    {l.userStatus === "hidden" ? "Hidden" : "Hide"}
-                  </button>
-                  <select
-                    aria-label="Set status"
-                    value={menuValue}
-                    disabled={savingStatus}
-                    onChange={(e) => setStatus((e.target.value || null) as UserListingStatus | null)}
-                    className="rounded-md border border-line bg-elevated px-2 py-2 text-[13px] text-muted outline-none focus:border-line-strong"
-                  >
-                    <option value="">Status…</option>
-                    {STATUS_MENU.map((s) => (
-                      <option key={s.status} value={s.status}>{s.label}</option>
-                    ))}
-                  </select>
-                  {l.applicationUrl && (
+                {/* Primary CTA */}
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
                     <a
-                      href={l.applicationUrl}
+                      href={l.originalUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="rounded-md border border-line px-3 py-2 text-[13px] font-medium text-muted transition-colors hover:border-faint hover:text-ink"
+                      className="flex-1 rounded-md bg-accent px-4 py-2.5 text-center text-[13.5px] font-semibold text-paper transition-colors hover:bg-accent-deep"
                     >
-                      Apply ↗
+                      View original listing ↗
                     </a>
-                  )}
+                    {l.applicationUrl && (
+                      <a
+                        href={l.applicationUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="rounded-md border border-line-strong px-3 py-2.5 text-[13px] font-medium text-muted transition-colors hover:border-faint hover:text-ink"
+                      >
+                        Apply ↗
+                      </a>
+                    )}
+                  </div>
+
+                  {/* Save + thumbs-down — the two prominent verdicts */}
+                  <div className="flex items-stretch gap-2">
+                    <button
+                      type="button"
+                      disabled={savingStatus}
+                      onClick={() => setStatus("saved")}
+                      aria-pressed={l.userStatus === "saved"}
+                      className={`flex flex-1 items-center justify-center gap-1.5 rounded-md border px-4 py-2.5 text-[13.5px] font-semibold transition-colors disabled:opacity-50 ${
+                        l.userStatus === "saved"
+                          ? "border-saved bg-saved/15 text-saved"
+                          : "border-line-strong bg-elevated/60 text-ink hover:border-saved/50 hover:text-saved"
+                      }`}
+                    >
+                      <span aria-hidden>{l.userStatus === "saved" ? "★" : "☆"}</span>
+                      {l.userStatus === "saved" ? "Saved" : "Save"}
+                    </button>
+                    <div className="relative flex flex-1">
+                      <button
+                        type="button"
+                        disabled={savingStatus}
+                        onClick={toggleDislike}
+                        aria-pressed={disliked}
+                        aria-label={disliked ? "Remove not-a-fit" : "Not a fit — remember to skip these"}
+                        className={`flex w-full items-center justify-center gap-1.5 rounded-md border px-4 py-2.5 text-[13.5px] font-semibold transition-colors disabled:opacity-50 ${
+                          disliked
+                            ? "border-warn/50 bg-warn/10 text-warn"
+                            : "border-line-strong bg-elevated/60 text-muted hover:border-warn/50 hover:text-warn"
+                        }`}
+                      >
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill={disliked ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                          <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3H10Z" />
+                          <path d="M17 2h2.67A1.33 1.33 0 0 1 21 3.33v8.34A1.33 1.33 0 0 1 19.67 13H17" />
+                        </svg>
+                        Not a fit
+                      </button>
+                      {remembered.on && (
+                        <span
+                          key={remembered.tick}
+                          className="animate-remember pointer-events-none absolute bottom-full left-1/2 mb-1 whitespace-nowrap rounded-md bg-ink px-2 py-1 text-[11px] font-semibold text-paper shadow-[0_6px_18px_rgba(0,0,0,0.5)]"
+                        >
+                          Remembered
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
                 {/* Essential facts */}
