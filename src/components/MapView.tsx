@@ -245,6 +245,11 @@ function processDemTile(url: string): Promise<ArrayBuffer> {
       mcanvas.height = 256;
       const mctx = mcanvas.getContext("2d", { willReadFrequently: true })!;
       mctx.fillStyle = "#fff";
+      // Feather the mask edge. A hard 0→boost step makes a vertical cliff that
+      // the terrain mesher tessellates into a jagged sawtooth rim; blurring the
+      // mask ramps the boost in over a few DEM pixels so the sides are a clean
+      // slope. Boost is then scaled by the (now-graded) mask alpha below.
+      mctx.filter = "blur(2px)";
       mctx.beginPath();
       for (const poly of hood.geometry.coordinates) {
         for (const ring of poly) {
@@ -261,8 +266,9 @@ function processDemTile(url: string): Promise<ArrayBuffer> {
       const mask = mctx.getImageData(0, 0, 256, 256).data;
 
       for (let i = 0; i < d.length; i += 4) {
-        if (mask[i + 3] === 0) continue;
-        const raw = d[i] * 256 + d[i + 1] + d[i + 2] / 256 + HOOD_BOOST_M;
+        const a = mask[i + 3];
+        if (a === 0) continue;
+        const raw = d[i] * 256 + d[i + 1] + d[i + 2] / 256 + (HOOD_BOOST_M * a) / 255;
         const whole = Math.floor(raw);
         d[i] = (whole >> 8) & 255;
         d[i + 1] = whole & 255;
