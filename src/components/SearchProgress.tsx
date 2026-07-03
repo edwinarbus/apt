@@ -41,20 +41,13 @@ function fmtSeconds(ms: number): string {
   return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
 }
 
-/** Small four-point spark — the "reasoning" mark. */
-function Spark() {
+/** Quiet ring spinner in the app palette — a faint track with an accent arc. */
+function Spinner() {
   return (
-    <svg
-      width="13"
-      height="13"
-      viewBox="0 0 24 24"
-      fill="currentColor"
+    <span
       aria-hidden
-      className="soft-pulse shrink-0 text-accent"
-    >
-      <path d="M12 2.5c.8 4.6 2.9 6.7 7.5 7.5-4.6.8-6.7 2.9-7.5 7.5-.8-4.6-2.9-6.7-7.5-7.5 4.6-.8 6.7-2.9 7.5-7.5Z" />
-      <path d="M19 14.5c.4 2.1 1.4 3.1 3.5 3.5-2.1.4-3.1 1.4-3.5 3.5-.4-2.1-1.4-3.1-3.5-3.5 2.1-.4 3.1-1.4 3.5-3.5Z" opacity="0.65" />
-    </svg>
+      className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-line-strong border-t-accent motion-reduce:animate-none"
+    />
   );
 }
 
@@ -83,7 +76,7 @@ export function SearchProgress({ progress }: { progress: SearchProgressState }) 
   return (
     <div className="animate-fade-in flex h-full min-h-0 flex-col px-4 pt-4 pb-2">
       <div className="flex shrink-0 items-center gap-2">
-        <Spark />
+        <Spinner />
         <span className="shimmer-text text-[13px] font-semibold">{label}</span>
         {elapsed > 2000 && (
           <span className="tnum ml-auto text-[11.5px] text-faint">{fmtSeconds(elapsed)}</span>
