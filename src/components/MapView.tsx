@@ -245,11 +245,8 @@ function processDemTile(url: string): Promise<ArrayBuffer> {
       mcanvas.height = 256;
       const mctx = mcanvas.getContext("2d", { willReadFrequently: true })!;
       mctx.fillStyle = "#fff";
-      // Feather the mask edge. A hard 0→boost step makes a vertical cliff that
-      // the terrain mesher tessellates into a jagged sawtooth rim; blurring the
-      // mask ramps the boost in over a few DEM pixels so the sides are a clean
-      // slope. Boost is then scaled by the (now-graded) mask alpha below.
-      mctx.filter = "blur(2px)";
+      mctx.strokeStyle = "#fff";
+      mctx.lineJoin = "round";
       mctx.beginPath();
       for (const poly of hood.geometry.coordinates) {
         for (const ring of poly) {
@@ -263,6 +260,19 @@ function processDemTile(url: string): Promise<ArrayBuffer> {
         }
       }
       mctx.fill("evenodd");
+      // Feather the boost INWARD only: carve a blurred rim just inside the edge
+      // so the boost is full in the interior and ramps to zero AT the polygon
+      // boundary (never past it). Two wins: (1) a hard step would tessellate into
+      // a jagged cliff — the ramp is a smooth slope; (2) the whole slope stays
+      // inside the hood, so the satellite reveal (cut at the sharp polygon)
+      // covers it and the satellite→dark edge lands on flat ground, not mid-slope
+      // where it scallops along the mesh.
+      mctx.globalCompositeOperation = "destination-out";
+      mctx.filter = "blur(2.5px)";
+      mctx.lineWidth = 4;
+      mctx.stroke();
+      mctx.globalCompositeOperation = "source-over";
+      mctx.filter = "none";
       const mask = mctx.getImageData(0, 0, 256, 256).data;
 
       for (let i = 0; i < d.length; i += 4) {
@@ -779,7 +789,16 @@ export function MapView({
           type: "raster",
           source: "satellite",
           layout: { visibility: "none" },
-          paint: { "raster-opacity": 0.92, "raster-saturation": -0.15 },
+          // Grade the imagery to read as cool recon intelligence, not a warm
+          // chunk of Google Earth: desaturate, add contrast, pull the highlights
+          // down and nudge the hue toward the tactical blue.
+          paint: {
+            "raster-opacity": 0.9,
+            "raster-saturation": -0.4,
+            "raster-contrast": 0.15,
+            "raster-brightness-max": 0.9,
+            "raster-hue-rotate": 8,
+          },
         });
         map.addSource("hood-reveal", { type: "geojson", data: hoodRevealMask(null) });
         map.addLayer({
