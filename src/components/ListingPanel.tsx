@@ -95,13 +95,16 @@ export function ListingPanel({
       className={
         chromeless
           ? "flex h-full w-full flex-col overflow-hidden"
-          : "textured flex h-full w-full flex-col overflow-hidden rounded-xl border border-white/20 bg-panel/96 shadow-[0_14px_48px_rgba(0,0,0,0.6)] backdrop-blur-xl"
+          : "textured flex h-full w-full flex-col overflow-hidden rounded-xl border-2 border-white/25 bg-panel/96 shadow-[0_30px_80px_-10px_rgba(0,0,0,0.92)] backdrop-blur-xl"
       }
     >
       {/* While searching, the thinking feed owns the panel — no duplicate
           "Searching…" header, no dead sort dropdown. */}
       {!hideHeader && !searching && (
-        <div className="animate-fade-in flex items-center justify-between gap-2 border-b border-line px-3 py-2.5">
+        <div
+          className="animate-fade-in relative flex items-center justify-between gap-2 border-b border-line px-3 py-2.5"
+          style={{ zIndex: 40 }}
+        >
           <div className="flex min-w-0 items-baseline gap-1.5">
             {label.n && (
               <span className="tnum text-[15px] leading-none font-semibold text-ink">
@@ -218,7 +221,8 @@ export function SuspiciousToggle({
       </button>
       <span
         role="tooltip"
-        className="pointer-events-none absolute top-full right-0 z-50 mt-2 hidden w-max max-w-[214px] rounded-md border border-line-strong bg-elevated px-2.5 py-1.5 text-[11.5px] leading-snug text-muted shadow-[0_10px_28px_rgba(0,0,0,0.55)] group-hover:block"
+        style={{ zIndex: 60 }}
+        className="pointer-events-none absolute top-full right-0 mt-2 hidden w-max max-w-[210px] rounded-md border border-line-strong bg-elevated px-2.5 py-1.5 text-center text-[11.5px] leading-snug text-muted shadow-[0_10px_28px_rgba(0,0,0,0.6)] group-hover:block"
       >
         {hideSuspicious
           ? "Showing everything, including potential scams."
@@ -240,7 +244,7 @@ export function PorterButton({ badge, onClick }: { badge?: number; onClick: () =
     >
       <BellIcon size={15} />
       {!!badge && badge > 0 && (
-        <span className="absolute -top-1 -right-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-accent px-1 text-[9px] font-bold text-paper tabular-nums">
+        <span className="absolute -top-2.5 -right-2.5 z-10 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[9px] font-bold text-paper tabular-nums shadow-[0_1px_4px_rgba(0,0,0,0.5)]">
           {badge > 99 ? "99" : badge}
         </span>
       )}
