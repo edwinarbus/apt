@@ -88,7 +88,7 @@ const CITY_BOUNDS: [[number, number], [number, number]] = (() => {
 /** Camera that frames the whole city in the current viewport at the browse tilt. */
 function cityCamera(map: maplibregl.Map) {
   const cam = map.cameraForBounds(CITY_BOUNDS, {
-    padding: { top: 28, bottom: 24, left: 30, right: 30 },
+    padding: { top: 16, bottom: 14, left: 16, right: 16 },
     bearing: 0,
   });
   if (!cam || cam.zoom == null || !cam.center) {
@@ -96,7 +96,7 @@ function cityCamera(map: maplibregl.Map) {
   }
   // Pitching shows more than the flat fit, so ease the zoom back a hair to keep
   // the whole city comfortably in frame with sky above it.
-  return { center: cam.center, zoom: cam.zoom - 0.2, pitch: BROWSE_PITCH, bearing: 0 };
+  return { center: cam.center, zoom: cam.zoom - 0.1, pitch: BROWSE_PITCH, bearing: 0 };
 }
 
 const WORLD_RING: [number, number][] = [
