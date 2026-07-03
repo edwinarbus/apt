@@ -95,7 +95,7 @@ export function ListingPanel({
       className={
         chromeless
           ? "flex h-full w-full flex-col overflow-hidden"
-          : "textured flex h-full w-full flex-col overflow-hidden rounded-xl border border-line-strong/55 bg-elevated/96 shadow-[0_14px_48px_rgba(0,0,0,0.55)] backdrop-blur-xl"
+          : "textured flex h-full w-full flex-col overflow-hidden rounded-xl border border-line-strong/65 bg-panel/96 shadow-[0_14px_48px_rgba(0,0,0,0.6)] backdrop-blur-xl"
       }
     >
       {/* While searching, the thinking feed owns the panel — no duplicate
@@ -125,7 +125,7 @@ export function ListingPanel({
 
       {/* How the model read the ask + a way to hand it to the overnight Scout. */}
       {!hideHeader && !searching && searchActive && (interpretation || onSaveSearch) && (
-        <div className="animate-fade-in flex items-start gap-2 border-b border-line bg-accent-soft/25 px-3 py-2">
+        <div className="animate-fade-in flex items-start gap-2 border-b border-line/70 bg-accent/10 px-3 py-2">
           {interpretation ? (
             <p className="line-clamp-2 min-w-0 flex-1 text-[12px] leading-snug text-muted" title={interpretation}>
               {interpretation}
@@ -373,8 +373,8 @@ function ListingCard({
         type="button"
         onClick={onSelect}
         aria-pressed={selected}
-        className={`group flex w-full flex-col gap-2 border-b border-line px-3 py-2.5 text-left transition-colors ${
-          selected ? "bg-accent-soft/45" : "hover:bg-elevated/60"
+        className={`group flex w-full flex-col gap-2 border-b border-line/70 px-3 py-2.5 text-left transition-colors ${
+          selected ? "bg-accent/20" : "hover:bg-white/[0.06]"
         } ${dimmed ? "opacity-55" : ""}`}
       >
         <div className="flex w-full gap-3">
@@ -423,8 +423,8 @@ function ListingCard({
 
         {/* AI fit — full width under the thumbnail; expands on hover to read it all */}
         {match && (
-          <div className="w-full overflow-hidden rounded-md bg-accent-soft/50 transition-[max-height] duration-300 ease-out max-h-[40px] group-hover:max-h-32">
-            <p className="px-2 py-1 text-[11px] leading-snug text-accent/90">{match.reason}</p>
+          <div className="w-full overflow-hidden rounded-md bg-accent/12 transition-[max-height] duration-300 ease-out max-h-[40px] group-hover:max-h-32">
+            <p className="px-2 py-1 text-[11px] leading-snug text-accent">{match.reason}</p>
           </div>
         )}
       </button>

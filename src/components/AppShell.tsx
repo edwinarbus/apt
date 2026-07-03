@@ -570,7 +570,7 @@ function MobileDrawer({
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 md:hidden">
       <div
-        className="pointer-events-auto relative flex flex-col overflow-hidden rounded-t-xl border-x border-t border-line bg-surface/97 shadow-[0_-10px_44px_rgba(0,0,0,0.55)] transition-[height] duration-300 ease-[cubic-bezier(0.2,0,0,1)]"
+        className="textured pointer-events-auto relative flex flex-col overflow-hidden rounded-t-xl border-x border-t border-line-strong/60 bg-panel/97 shadow-[0_-10px_44px_rgba(0,0,0,0.6)] transition-[height] duration-300 ease-[cubic-bezier(0.2,0,0,1)]"
         style={{
           height: open
             ? "min(70dvh, 560px)"

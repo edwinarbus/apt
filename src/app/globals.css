@@ -15,8 +15,9 @@
  */
 @theme {
   --color-paper: #070b12;          /* app background */
-  --color-surface: #151d2b;        /* panels — lifted well clear of the dark map */
+  --color-surface: #151d2b;        /* modals / dialog surfaces */
   --color-elevated: #1e2836;       /* raised surfaces, inputs */
+  --color-panel: #2f4058;          /* floating panels over the map (rail, search) */
   --color-line: #2a3646;           /* hairline border */
   --color-line-strong: #3a4a5e;    /* stronger border */
 
