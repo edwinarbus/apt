@@ -26,7 +26,7 @@ function getSpeechCtor(): SpeechRecognitionCtor | null {
 
 export type LocationStatus = "idle" | "prompting" | "granted" | "denied" | "unavailable";
 
-const PLACEHOLDER = "Search apartments — try “studios near Japantown”";
+const PLACEHOLDER = "Search apartments…";
 
 /**
  * The app header: the brand mark and the search field are one bar. Everything
@@ -105,26 +105,13 @@ export function SearchBar({
   return (
     <div className="overflow-hidden rounded-xl border border-line bg-surface/92 shadow-[0_10px_34px_rgba(0,0,0,0.46)] backdrop-blur-md">
       <div className="flex items-center gap-2.5 px-3 py-2">
-        {/* Brand mark */}
-        <div className="flex shrink-0 items-center gap-1.5">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
-            <path
-              d="M12 21c4.2-4.6 7-8 7-11a7 7 0 1 0-14 0c0 3 2.8 6.4 7 11Z"
-              fill="var(--color-accent)"
-              fillOpacity="0.16"
-              stroke="var(--color-accent)"
-              strokeWidth="1.6"
-              strokeLinejoin="round"
-            />
-            <circle cx="12" cy="10" r="2.4" fill="var(--color-accent)" />
-          </svg>
-          <span
-            className="text-[19px] leading-none font-bold tracking-[-0.02em] text-ink"
-            style={{ fontFamily: "var(--font-brand)" }}
-          >
-            Apt
-          </span>
-        </div>
+        {/* Brand wordmark */}
+        <span
+          className="shrink-0 text-[19px] leading-none font-bold tracking-[-0.02em] text-ink"
+          style={{ fontFamily: "var(--font-brand)" }}
+        >
+          Apt.
+        </span>
 
         <span aria-hidden className="h-5 w-px shrink-0 bg-line" />
 

@@ -13,9 +13,8 @@ import {
   fmtBeds,
   fmtMoney,
   PRECISION_LABELS,
-  relativeTime,
 } from "@/lib/format";
-import { BadgeRow } from "./Badges";
+import { CompactBadge } from "./Badges";
 import { PhotoImg } from "./PhotoImg";
 
 /** Shared readout so the panel header and the mobile drawer handle agree. */
@@ -48,6 +47,8 @@ export function ListingPanel({
   onSelect,
   sort,
   onSortChange,
+  hideSuspicious,
+  onToggleSuspicious,
   chromeless,
   hideHeader,
 }: {
@@ -61,6 +62,8 @@ export function ListingPanel({
   onSelect: (id: string) => void;
   sort: SortKey;
   onSortChange: (s: SortKey) => void;
+  hideSuspicious?: boolean;
+  onToggleSuspicious?: () => void;
   /** Drawer mode: drop the panel's own border/rounding/shadow. */
   chromeless?: boolean;
   /** Drawer mode: the handle supplies the count + sort, so skip the header. */
@@ -94,7 +97,27 @@ export function ListingPanel({
               <span className="truncate text-[13px] text-accent">· {label.scope}</span>
             )}
           </div>
-          <SortSelect sort={sort} searchActive={searchActive} onSortChange={onSortChange} />
+          <div className="flex shrink-0 items-center gap-1.5">
+            {onToggleSuspicious && (
+              <button
+                type="button"
+                onClick={onToggleSuspicious}
+                aria-pressed={hideSuspicious}
+                title={hideSuspicious ? "Showing all listings" : "Hide verify-carefully / suspicious listings"}
+                className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11.5px] font-medium transition-colors ${
+                  hideSuspicious
+                    ? "border-warn/40 bg-warn/10 text-warn"
+                    : "border-line text-muted hover:border-line-strong hover:text-ink"
+                }`}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M10.3 5.2a11 11 0 0 1 1.7-.2c6 0 9 6 9 7a12.6 12.6 0 0 1-2 2.7M6.6 6.6C3.7 8.3 2 11.4 2 12c0 1 3 7 10 7 2 0 3.7-.5 5.1-1.3M3 3l18 18" />
+                </svg>
+                {hideSuspicious ? "Suspicious hidden" : "Hide suspicious"}
+              </button>
+            )}
+            <SortSelect sort={sort} searchActive={searchActive} onSortChange={onSortChange} />
+          </div>
         </div>
       )}
 
@@ -265,6 +288,7 @@ function ListingCard({
                 {fmtMoney(l.lastPriceChange.oldPrice)}
               </span>
             )}
+            <CompactBadge badges={l.badges} />
             {match && (
               <span className="ml-auto">
                 <ScoreGauge score={match.score} />
@@ -280,21 +304,11 @@ function ListingCard({
             {location}
           </p>
 
-          {match ? (
+          {match && (
             <p className="mt-1.5 line-clamp-2 rounded-md bg-accent-soft/60 px-2 py-1 text-[12px] leading-snug text-accent">
               {match.reason}
             </p>
-          ) : (
-            l.badges.length > 0 && (
-              <div className="mt-1.5">
-                <BadgeRow badges={l.badges} max={3} />
-              </div>
-            )
           )}
-
-          <p className="mt-1.5 truncate text-[11.5px] text-faint">
-            {l.sourceName} · {relativeTime(l.lastSeenAt)}
-          </p>
         </div>
       </button>
     </li>

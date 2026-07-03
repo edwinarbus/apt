@@ -203,9 +203,9 @@ export function ListingDetail({
                   </p>
                 </div>
 
-                {/* 2 — Worth opening: one-line editorial brief */}
+                {/* 2 — Worth opening: the editorial brief (full, not clamped) */}
                 {data.enrichment?.summary && (
-                  <p className="line-clamp-2 text-[13.5px] leading-relaxed text-muted">
+                  <p className="text-[13.5px] leading-relaxed text-muted">
                     {data.enrichment.summary}
                   </p>
                 )}
@@ -278,23 +278,11 @@ export function ListingDetail({
                   </div>
                 )}
 
-                {/* 3 — Verify: one quiet persistent note */}
-                <p className="flex items-start gap-2 border-t border-line pt-3 text-[12px] leading-relaxed text-faint">
-                  <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-warn" aria-hidden />
-                  <span>
-                    Scraped data — verify price, availability, fees &amp; terms on the original before
-                    contacting or paying.
-                    {l.scamWarnings.length > 0 && (
-                      <span className="text-warn"> Some suspicious signals flagged (see details).</span>
-                    )}
-                  </span>
-                </p>
-
-                {/* 4 — Progressive disclosure */}
+                {/* Progressive disclosure */}
                 <button
                   type="button"
                   onClick={() => setShowAll((v) => !v)}
-                  className="-mt-1 flex items-center gap-1 self-start text-[13px] font-medium text-accent transition-colors hover:text-accent-deep"
+                  className="flex items-center gap-1 self-start text-[13px] font-medium text-accent transition-colors hover:text-accent-deep"
                 >
                   {showAll ? "Hide details" : "More details"}
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className={`transition-transform ${showAll ? "rotate-180" : ""}`} aria-hidden>
@@ -312,57 +300,14 @@ export function ListingDetail({
                       </Section>
                     )}
 
-                    <Section title="Details">
-                      <div className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3">
-                        <Fact label="Beds" value={fmtBeds(l.bedrooms)} />
-                        <Fact label="Baths" value={fmtBaths(l.bathrooms)} />
-                        {l.squareFeet != null && (
-                          <Fact label="Size" value={`${l.squareFeet.toLocaleString()} sqft`} />
-                        )}
-                        {l.pricePerSquareFoot != null && (
-                          <Fact label="$/sqft" value={`$${l.pricePerSquareFoot}`} />
-                        )}
-                        {l.leaseTermRaw && <Fact label="Lease" value={l.leaseTermRaw} />}
-                        {l.applicationFeeRaw && <Fact label="App fee" value={l.applicationFeeRaw} />}
-                        {l.brokerFeeRaw && <Fact label="Broker fee" value={l.brokerFeeRaw} />}
-                        {l.utilitiesIncluded.length > 0 && (
-                          <Fact label="Utilities" value={l.utilitiesIncluded.join(", ")} />
-                        )}
-                        {l.concessionsRaw && <Fact label="Concessions" value={l.concessionsRaw} highlight />}
-                      </div>
-                    </Section>
-
-                    {l.amenitiesRaw.length > 0 && (
-                      <Section title="Amenities">
-                        <p className="text-[13px] leading-relaxed text-muted">
-                          {l.amenitiesRaw.join(" · ")}
-                        </p>
-                      </Section>
-                    )}
-
-                    {data.enrichment && (
-                      <Section title="AI notes">
-                        {data.enrichment.verifyBeforeContacting.length > 0 && (
-                          <MiniList label="Verify" items={data.enrichment.verifyBeforeContacting} />
-                        )}
-                        {data.enrichment.questionsForLandlord.length > 0 && (
-                          <MiniList label="Ask" items={data.enrichment.questionsForLandlord} />
-                        )}
-                        {data.enrichment.riskReasons.length > 0 && (
-                          <MiniList label="Risk signals" items={data.enrichment.riskReasons} tone="warn" />
-                        )}
-                        <p className="mt-1.5 text-[11px] text-faint">
-                          AI-generated from listing text — may be wrong. Not a substitute for the original.
-                        </p>
-                      </Section>
-                    )}
-
-                    {data.vision?.visualSummary && (
-                      <Section title="What the photos show">
-                        <p className="text-[13px] leading-relaxed text-ink/85">{data.vision.visualSummary}</p>
-                        {data.vision.features.length > 0 && (
-                          <p className="mt-1.5 text-[12.5px] text-muted">{data.vision.features.join(" · ")}</p>
-                        )}
+                    {/* Risk signals — kept; the rest of the AI notes are dropped. */}
+                    {data.enrichment && data.enrichment.riskReasons.length > 0 && (
+                      <Section title="Risk signals">
+                        <ul className="list-disc pl-4 text-[12.5px] leading-relaxed text-warn/90">
+                          {data.enrichment.riskReasons.map((it) => (
+                            <li key={it}>{it}</li>
+                          ))}
+                        </ul>
                       </Section>
                     )}
 
@@ -372,6 +317,29 @@ export function ListingDetail({
                           {l.scamWarnings.map((w) => w.replaceAll("_", " ")).join(" · ")}
                         </p>
                         <p className="mt-1 text-[11px] text-faint">Heuristic signals, not conclusions.</p>
+                      </Section>
+                    )}
+
+                    {/* Extra terms not already shown up top. */}
+                    {(l.leaseTermRaw ||
+                      l.applicationFeeRaw ||
+                      l.brokerFeeRaw ||
+                      l.utilitiesIncluded.length > 0 ||
+                      l.pricePerSquareFoot != null ||
+                      l.concessionsRaw) && (
+                      <Section title="Terms">
+                        <div className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3">
+                          {l.leaseTermRaw && <Fact label="Lease" value={l.leaseTermRaw} />}
+                          {l.applicationFeeRaw && <Fact label="App fee" value={l.applicationFeeRaw} />}
+                          {l.brokerFeeRaw && <Fact label="Broker fee" value={l.brokerFeeRaw} />}
+                          {l.utilitiesIncluded.length > 0 && (
+                            <Fact label="Utilities" value={l.utilitiesIncluded.join(", ")} />
+                          )}
+                          {l.pricePerSquareFoot != null && (
+                            <Fact label="$/sqft" value={`$${l.pricePerSquareFoot}`} />
+                          )}
+                          {l.concessionsRaw && <Fact label="Concessions" value={l.concessionsRaw} highlight />}
+                        </div>
                       </Section>
                     )}
 
@@ -445,19 +413,6 @@ function Section({ title, children }: { title: string; children: React.ReactNode
     <div>
       <h3 className="mb-1.5 text-[11px] font-semibold tracking-wide text-faint uppercase">{title}</h3>
       {children}
-    </div>
-  );
-}
-
-function MiniList({ label, items, tone }: { label: string; items: string[]; tone?: "warn" }) {
-  return (
-    <div className="mt-1 first:mt-0">
-      <p className={`text-[11.5px] font-medium ${tone === "warn" ? "text-warn" : "text-muted"}`}>{label}</p>
-      <ul className="mt-0.5 list-disc pl-4 text-[12.5px] text-muted">
-        {items.map((it) => (
-          <li key={it}>{it}</li>
-        ))}
-      </ul>
     </div>
   );
 }

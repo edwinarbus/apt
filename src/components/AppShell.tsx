@@ -8,6 +8,7 @@ import type {
   SearchResponse,
 } from "@/lib/api-types";
 import { computeBadges } from "@/lib/badges";
+import { matchNeighborhood } from "@/core/neighborhoods";
 import { pointInMultiPolygon, type MultiPolygonCoords } from "@/lib/geo";
 import hoodsData from "@/data/sf-neighborhoods.json";
 import type { UserListingStatus } from "@/core/types";
@@ -16,6 +17,7 @@ import { EMPTY_PROGRESS, type SearchProgressState } from "./SearchProgress";
 import { MapView } from "./MapView";
 import { ListingPanel, SortSelect, listingCountLabel } from "./ListingPanel";
 import { ListingDetail } from "./ListingDetail";
+import { ScoutPanel } from "./ScoutPanel";
 
 /** One NDJSON line from /api/search. */
 type SearchStreamEvent =
@@ -58,6 +60,16 @@ export function AppShell() {
 
   // Neighborhood isolate (click a hood polygon on the map)
   const [selectedHood, setSelectedHood] = useState<string | null>(null);
+
+  // Optional filter: hide listings flagged verify-carefully / suspicious.
+  const [hideSuspicious, setHideSuspicious] = useState(false);
+
+  // Overnight scout panel
+  const [scoutOpen, setScoutOpen] = useState(false);
+  const newTodayCount = useMemo(
+    () => (listings ?? []).filter((l) => l.badges.includes("new_today")).length,
+    [listings],
+  );
 
   // Mobile results drawer (below lg the panel becomes a bottom sheet).
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -223,6 +235,13 @@ export function AppShell() {
     return f ? ((f.geometry as GeoJSON.MultiPolygon).coordinates as MultiPolygonCoords) : null;
   }, [selectedHood]);
 
+  // A neighborhood named in the search ("studios near Japantown") — highlighted
+  // on the map while the search runs and after it lands.
+  const searchHood = useMemo(() => {
+    const q = search?.query ?? (searching ? query : "");
+    return q ? (matchNeighborhood(q)?.name ?? null) : null;
+  }, [search, searching, query]);
+
   const displayed = useMemo(() => {
     if (!listings) return [];
     const price = (l: ListingSummary) =>
@@ -255,12 +274,19 @@ export function AppShell() {
       );
     }
 
+    if (hideSuspicious) {
+      result = result.filter(
+        (l) =>
+          !l.badges.includes("suspicious") && !l.badges.includes("verify_carefully"),
+      );
+    }
+
     if (sort === "price_asc") return [...result].sort((a, b) => price(a) - price(b));
     if (sort === "price_desc") return [...result].sort((a, b) => price(b) - price(a));
     // default: search → keep score order; browse → newest first
     if (search) return result;
     return [...result].sort((a, b) => (a.firstSeenAt < b.firstSeenAt ? 1 : -1));
-  }, [listings, search, showHiddenGone, sort, hoodPolygon]);
+  }, [listings, search, showHiddenGone, sort, hoodPolygon, hideSuspicious]);
 
   const select = useCallback((id: string | null, openDetail = true) => {
     setSelectedId(id);
@@ -304,13 +330,14 @@ export function AppShell() {
           searchActive={search != null}
           selectedHood={selectedHood}
           onHoodSelect={setSelectedHood}
+          highlightHood={searchHood}
           scanIds={progress.keptIds}
           radarPoints={radarPoints}
         />
       </div>
 
-      {/* App header — brand + search, one bar; kept clear of the results rail */}
-      <div className="pointer-events-none absolute top-3 right-3 left-3 z-20 md:right-[404px]">
+      {/* App header — brand + search, one compact bar (top-left) */}
+      <div className="pointer-events-none absolute top-3 right-3 left-3 z-20 md:right-auto md:w-[420px]">
         <div className="pointer-events-auto">
           <SearchBar
             query={query}
@@ -337,6 +364,8 @@ export function AppShell() {
           onSelect={(id) => select(id)}
           sort={sort}
           onSortChange={setSort}
+          hideSuspicious={hideSuspicious}
+          onToggleSuspicious={() => setHideSuspicious((v) => !v)}
         />
       </div>
 
@@ -382,12 +411,40 @@ export function AppShell() {
         </Overlay>
       )}
 
+      {/* Overnight scout entry — bottom-left, clear of the rail */}
+      <button
+        type="button"
+        onClick={() => setScoutOpen(true)}
+        title="Overnight rental scout"
+        className="pointer-events-auto absolute bottom-5 left-4 z-20 flex items-center gap-2 rounded-full border border-line bg-surface/92 py-2 pr-3.5 pl-2.5 text-[12.5px] font-medium text-muted shadow-[0_8px_28px_rgba(0,0,0,0.4)] backdrop-blur-md transition-colors hover:border-line-strong hover:text-ink max-md:hidden"
+      >
+        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent/15 text-accent">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" />
+          </svg>
+        </span>
+        Scout
+        {newTodayCount > 0 && (
+          <span className="rounded-full bg-accent/15 px-1.5 py-0.5 text-[10.5px] font-semibold text-accent tabular-nums">
+            {newTodayCount}
+          </span>
+        )}
+      </button>
+
       {detailOpen && selected && (
         <ListingDetail
           key={selected.id}
           listingId={selected.id}
           onClose={() => setDetailOpen(false)}
           onStatusChange={handleStatusChange}
+        />
+      )}
+
+      {scoutOpen && (
+        <ScoutPanel
+          listings={listings ?? []}
+          onClose={() => setScoutOpen(false)}
+          onSelect={(id) => select(id)}
         />
       )}
     </div>

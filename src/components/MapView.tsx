@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import maplibregl from "maplibre-gl";
 import type { GeoJSONSource, MapGeoJSONFeature, StyleSpecification } from "maplibre-gl";
 import type { ListingSummary } from "@/lib/api-types";
-import { BADGE_COLORS, DEFAULT_MARKER_COLOR, markerColor } from "@/lib/badges";
+import { DEFAULT_MARKER_COLOR } from "@/lib/badges";
 import { fmtMoneyShort } from "@/lib/format";
 import { multiPolygonBounds, type MultiPolygonCoords } from "@/lib/geo";
 import hoodsData from "@/data/sf-neighborhoods.json";
@@ -40,20 +40,14 @@ const HOOD = "#4a90b8"; // neighborhood geometry — controlled steel-cyan
 const HALO = "#06090f"; // marker stroke = background, for a crisp cut-out edge
 /** Real-terrain relief exaggeration while a neighborhood is shown in 3D. */
 const TERRAIN_EXAGGERATION = 1.4;
+/** Resting tilt of the browse map — enough to read as a 3D scene, not top-down. */
+const BROWSE_PITCH = 12;
 
 // Clusters are aggregates of mixed status → neutral graphite, denser = lighter.
 const CLUSTER_COLOR_BROWSE = [
   "step", ["get", "point_count"],
   "#17212e", 10, "#1f2c3a", 40, "#293845",
 ] as unknown as maplibregl.ExpressionSpecification;
-
-const LEGEND: Array<[string, string]> = [
-  [DEFAULT_MARKER_COLOR, "Listing"],
-  [BADGE_COLORS.new_today, "New / price drop"],
-  [BADGE_COLORS.verify_carefully, "Verify"],
-  [BADGE_COLORS.saved, "Saved"],
-  [BADGE_COLORS.stale, "Stale"],
-];
 
 export interface RadarPoint {
   id: string;
@@ -334,17 +328,6 @@ function withRoot(inner: HTMLElement): HTMLDivElement {
   return root;
 }
 
-/** Which status accent a listing's marker should carry. */
-function pillKind(l: ListingSummary): "verify" | "saved" | "stale" | "default" {
-  if (l.userStatus === "saved") return "saved";
-  if (l.userStatus === "hidden" || l.userStatus === "not_a_fit") return "stale";
-  const b = l.badges;
-  if (b.includes("saved")) return "saved";
-  if (b.includes("verify_carefully") || b.includes("watch") || b.includes("suspicious")) return "verify";
-  if (b.includes("stale") || b.includes("likely_unavailable")) return "stale";
-  return "default";
-}
-
 function bedsShort(l: ListingSummary): string | null {
   if (l.bedrooms == null) return null;
   return l.bedrooms === 0 ? "Studio" : `${l.bedrooms} bd`;
@@ -357,7 +340,7 @@ function makePriceElement(
   onClick: () => void,
 ): HTMLDivElement {
   const el = document.createElement("div");
-  el.className = `price-pill pill-${pillKind(l)}${active ? " pill-active" : ""}`;
+  el.className = `price-pill${active ? " pill-active" : ""}`;
   el.textContent = fmtMoneyShort(l.priceEffectiveMonthly ?? l.priceMonthly) ?? "—";
   el.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -428,7 +411,7 @@ function toGeoJson(listings: ListingSummary[]) {
         },
         properties: {
           id: l.id,
-          color: markerColor(l.badges),
+          color: DEFAULT_MARKER_COLOR,
           priceShort: fmtMoneyShort(l.priceEffectiveMonthly ?? l.priceMonthly),
           approximate: l.geocodePrecision === "neighborhood" || l.geocodePrecision === "city",
         },
@@ -446,6 +429,7 @@ export function MapView({
   searchActive,
   selectedHood,
   onHoodSelect,
+  highlightHood,
   scanIds,
   radarPoints,
 }: {
@@ -456,6 +440,8 @@ export function MapView({
   searchActive?: boolean;
   selectedHood: string | null;
   onHoodSelect: (name: string | null) => void;
+  /** a neighborhood named by the search — highlighted (outline only, no isolate) */
+  highlightHood?: string | null;
   /** the actual shortlisted listing ids streamed mid-search */
   scanIds?: string[] | null;
   /** id → coords for every active listing */
@@ -469,6 +455,7 @@ export function MapView({
   const onHoodSelectRef = useRef(onHoodSelect);
   const selectedIdRef = useRef<string | null>(selectedId);
   const selectedHoodRef = useRef<string | null>(null);
+  const highlightHoodRef = useRef<string | null>(null);
   const hoveredHoodRef = useRef<string | null>(null);
   const lockMarkerRef = useRef<maplibregl.Marker | null>(null);
   const thumbsRef = useRef<Map<string, maplibregl.Marker>>(new Map());
@@ -553,7 +540,7 @@ export function MapView({
         style,
         center: SF_CENTER,
         zoom: reduced ? 12.4 : 11.4,
-        pitch: 0,
+        pitch: BROWSE_PITCH,
         bearing: 0,
         minZoom: 10.4,
         maxPitch: 68,
@@ -879,7 +866,7 @@ export function MapView({
         syncData(map, listingsRef.current);
         refreshThumbsRef.current();
 
-        const intro = { center: SF_CENTER as [number, number], zoom: 12.4, pitch: 0, bearing: 0 };
+        const intro = { center: SF_CENTER as [number, number], zoom: 12.4, pitch: BROWSE_PITCH, bearing: 0 };
         if (reduced || document.visibilityState === "hidden") {
           map.jumpTo(intro);
         } else {
@@ -1034,11 +1021,31 @@ export function MapView({
         else map.flyTo({ ...cam, pitch: 62, duration: 2000, curve: 1.4 });
       }
     } else if (!selectedHood && !searchActiveRef.current) {
-      const home = { center: SF_CENTER as [number, number], zoom: 12.4, pitch: 0, bearing: 0 };
+      const home = { center: SF_CENTER as [number, number], zoom: 12.4, pitch: BROWSE_PITCH, bearing: 0 };
       if (!motionOk) map.jumpTo(home);
       else map.flyTo({ ...home, duration: 1300, curve: 1.3 });
     }
   }, [selectedHood]);
+
+  /* --- Search highlight: outline the neighborhood a search named (no isolate) --- */
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current) return;
+    highlightHoodRef.current = highlightHood ?? null;
+    // A full isolate owns the outline; don't fight it.
+    if (selectedHood) return;
+    const name = highlightHood ?? null;
+    try {
+      const filt = ["==", ["get", "name"], name ?? "__none__"] as never;
+      map.setFilter("hood-selected-line", filt);
+      map.setFilter("hood-selected-glow", filt);
+      map.setPaintProperty("hood-selected-line", "line-opacity", name ? 0.9 : 0);
+      map.setPaintProperty("hood-selected-glow", "line-opacity", name ? 0.5 : 0);
+      map.setPaintProperty("hoods-label", "text-opacity", name ? 0.9 : 0.8);
+    } catch {
+      /* layers not ready yet */
+    }
+  }, [highlightHood, selectedHood]);
 
   /* ---------- Target mode (search results) ---------- */
   useEffect(() => {
@@ -1071,6 +1078,13 @@ export function MapView({
           if (l.latitude! > 37.6 && l.latitude! < 37.85 && l.longitude! > -122.56 && l.longitude! < -122.3) {
             bounds.extend([l.longitude!, l.latitude!]);
           }
+        }
+        // If the search named a neighborhood, keep it in frame so its highlight is visible.
+        const hood = hoodByName(highlightHoodRef.current);
+        if (hood) {
+          const [[w, s], [e, n]] = multiPolygonBounds(hood.geometry.coordinates);
+          bounds.extend([w, s]);
+          bounds.extend([e, n]);
         }
         if (!bounds.isEmpty()) {
           const cam = map.cameraForBounds(bounds, {
@@ -1126,14 +1140,6 @@ export function MapView({
         className="pointer-events-none absolute inset-x-0 top-0 h-24"
         style={{ background: "linear-gradient(to bottom, rgba(6,9,15,0.45), rgba(6,9,15,0))" }}
       />
-      <div className="pointer-events-none absolute bottom-4 left-3 z-10 flex items-center gap-3 rounded-md border border-line bg-surface/90 px-3 py-1.5 text-[11px] shadow-md backdrop-blur-sm max-sm:hidden">
-        {LEGEND.map(([color, label]) => (
-          <span key={label} className="flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
-            <span className="text-muted">{label}</span>
-          </span>
-        ))}
-      </div>
     </div>
   );
 }
