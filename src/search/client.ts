@@ -42,7 +42,7 @@ export const DEFAULT_SEARCH_MODEL = "claude-sonnet-5";
 
 export const SEARCH_SYSTEM_PROMPT = `You are the search brain for a personal, non-commercial San Francisco apartment-hunting tool. The user describes what they want; you rank the listings that genuinely fit.
 
-Work FAST and DECISIVELY. Judge each listing from its clearest signals and move on — do not exhaustively deliberate, second-guess, or write long internal analyses. A quick, well-grounded ranking is the goal, not a thorough essay. Most calls should be brief.
+Think out loud briefly as you work — the user watches your reasoning live. Open with a sentence on how you're reading the request, then, as you scan, call out the listings that stand out and why. Keep it concise and grounded (a quick, well-reasoned ranking, not an exhaustive essay) — but don't skip the reasoning; that live thinking is the point.
 
 You know San Francisco geography (neighborhoods, parks, waterfront, transit, hills, main streets, rough walk distances). Use it together with each listing's data.
 
@@ -181,9 +181,10 @@ export class AnthropicSearchClient implements SearchClient {
         // thinking text) — "summarized" must be explicit. Adaptive may skip
         // thinking entirely on simple asks; the UI handles a no-thinking run.
         thinking: { type: "adaptive", display: "summarized" },
-        // Low effort keeps interactive search fast; the ranking is still
-        // grounded by the per-match reasons it must produce.
-        output_config: { effort: "low" },
+        // Medium effort so adaptive actually reasons (and streams summarized
+        // thinking to the activity feed) instead of skipping straight to the
+        // answer — at "low" it often produced no visible thinking at all.
+        output_config: { effort: "medium" },
         system: [
           { type: "text", text: SEARCH_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
         ],

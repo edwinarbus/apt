@@ -259,26 +259,14 @@ export function ListingDetail({
 
                 {/* Primary CTA */}
                 <div className="flex flex-col gap-2">
-                  <div className="flex items-center gap-2">
-                    <a
-                      href={l.originalUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex-1 rounded-md bg-accent px-4 py-2.5 text-center text-[13.5px] font-semibold text-paper transition-colors hover:bg-accent-deep"
-                    >
-                      View original listing ↗
-                    </a>
-                    {l.applicationUrl && (
-                      <a
-                        href={l.applicationUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="rounded-md border border-line-strong px-3 py-2.5 text-[13px] font-medium text-muted transition-colors hover:border-faint hover:text-ink"
-                      >
-                        Apply ↗
-                      </a>
-                    )}
-                  </div>
+                  <a
+                    href={l.originalUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="rounded-md bg-accent px-4 py-2.5 text-center text-[13.5px] font-semibold text-paper transition-colors hover:bg-accent-deep"
+                  >
+                    View original listing ↗
+                  </a>
 
                   {/* Save + thumbs-down — the two prominent verdicts */}
                   <div className="flex items-stretch gap-2">

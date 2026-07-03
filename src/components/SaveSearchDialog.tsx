@@ -123,8 +123,8 @@ export function SaveSearchDialog({
                 Auto-apply to new matches
               </span>
               <span className="mt-0.5 block text-[12px] leading-relaxed text-muted">
-                Porter writes an application for every new match, ready in your queue.
-                <span className="text-faint"> Send it in one tap.</span>
+                Porter writes an application for every new match.
+                <span className="text-faint"> Auto-send emails while you’re away, or manually review matches.</span>
               </span>
             </span>
           </button>

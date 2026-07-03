@@ -151,45 +151,29 @@ export function PorterPanel({
         </div>
 
         <div className="panel-scroll min-h-0 flex-1 overflow-y-auto px-5 py-4">
-          {/* Activity report — what Porter did while you were away */}
+          {/* Activity report — one concise line. The email count lives in the
+              emails section header, so it isn't repeated here. */}
           {searches && searches.length > 0 && (
-            <div className="mb-5 flex items-start gap-2.5 rounded-lg border border-accent/25 bg-accent/10 px-3.5 py-3">
+            <div className="mb-4 flex items-start gap-2.5 rounded-lg border border-accent/25 bg-accent/10 px-3.5 py-3">
               <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent/20 text-accent">
                 <BellIcon size={13} />
               </span>
               <p className="text-[12.5px] leading-relaxed text-muted">
                 <span className="font-medium text-ink">While you were away,</span> Porter checked your{" "}
-                {searches.length} watched {searches.length === 1 ? "search" : "searches"}, found{" "}
+                {searches.length} watched {searches.length === 1 ? "search" : "searches"} and found{" "}
                 <span className="font-semibold text-ink">{newTotal}</span> new{" "}
-                {newTotal === 1 ? "match" : "matches"}
-                {applications.length > 0 ? (
-                  autoSend ? (
-                    <>
-                      , and sent{" "}
-                      <span className="font-semibold text-ink">{applications.length}</span>{" "}
-                      {applications.length === 1 ? "email" : "emails"} to the properties on your behalf.
-                    </>
-                  ) : (
-                    <>
-                      , and wrote{" "}
-                      <span className="font-semibold text-ink">{applications.length}</span>{" "}
-                      {applications.length === 1 ? "email" : "emails"} to the properties — ready to send below.
-                    </>
-                  )
-                ) : (
-                  <>.</>
-                )}
+                {newTotal === 1 ? "match" : "matches"}.
               </p>
             </div>
           )}
 
-          {/* Auto-send — Porter sends each email itself, no tap needed */}
+          {/* Auto-send — one control that says what both states do. */}
           {applications.length > 0 && (
             <div className="mb-3 flex items-center justify-between gap-3 rounded-lg border border-line bg-elevated/25 px-3.5 py-2.5">
               <div className="min-w-0">
                 <p className="text-[12.5px] font-medium text-ink">Auto-send</p>
                 <p className="text-[11.5px] leading-snug text-faint">
-                  Porter sends each email itself the moment it finds a match.
+                  Send emails automatically while you’re away, or review each below.
                 </p>
               </div>
               <button
@@ -240,8 +224,8 @@ export function PorterPanel({
           ) : applications.length === 0 ? (
             <p className="rounded-lg border border-line bg-elevated/40 px-3 py-5 text-center text-[12.5px] leading-relaxed text-faint">
               Turn on <span className="font-medium text-muted">Auto-apply</span> when you save a
-              search, and Porter will email each matching property for you — every draft shows up
-              here to send in one tap.
+              search, and Porter drafts an email to each matching property — ready here to review
+              and send.
             </p>
           ) : (
             <ul className="flex flex-col gap-2">
@@ -307,25 +291,6 @@ export function PorterPanel({
               </ul>
             </>
           )}
-
-          {/* How it works */}
-          <h3 className="mt-6 mb-2 text-[13px] font-semibold text-ink">How Porter works</h3>
-          <ul className="flex flex-col gap-2.5">
-            {[
-              ["Scans every night", "Pulls new listings from all your sources, then enriches and photo-analyzes them."],
-              ["Emails properties for you", "Writes a tailored email — with your details — to every new match on your auto-apply searches."],
-              autoSend
-                ? ["Sends automatically", "With auto-send on, Porter sends each email itself — they show up here already sent."]
-                : ["You send in one tap", "Every email is queued here — review it and send it from your inbox in a tap."],
-            ].map(([title, body]) => (
-              <li key={title} className="flex gap-2.5">
-                <span aria-hidden className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
-                <p className="text-[12.5px] leading-relaxed text-muted">
-                  <span className="font-medium text-ink">{title}.</span> {body}
-                </p>
-              </li>
-            ))}
-          </ul>
         </div>
       </div>
     </div>
