@@ -7,6 +7,7 @@ import type { ListingSummary } from "@/lib/api-types";
 import { DEFAULT_MARKER_COLOR } from "@/lib/badges";
 import { fmtMoneyShort } from "@/lib/format";
 import { multiPolygonBounds, type MultiPolygonCoords } from "@/lib/geo";
+import { neighborhoodCentroid } from "@/core/neighborhoods";
 import hoodsData from "@/data/sf-neighborhoods.json";
 
 /**
@@ -1188,26 +1189,34 @@ export function MapView({
       const filt = ["==", ["get", "name"], name ?? "__none__"] as never;
       map.setFilter("hood-selected-line", filt);
       map.setFilter("hood-selected-glow", filt);
-      map.setPaintProperty("hood-selected-line", "line-opacity", name ? 0.95 : 0);
-      map.setPaintProperty("hood-selected-glow", "line-opacity", name ? 0.6 : 0);
+      // The outline only renders when the named neighborhood is an actual map
+      // polygon (37 of them). Many searchable sub-neighborhoods (Hayes Valley,
+      // Japantown, the Tenderloin…) aren't polygons — those get no outline but
+      // still center + tilt + show terrain via their centroid below.
+      map.setPaintProperty("hood-selected-line", "line-opacity", hood ? 0.95 : 0);
+      map.setPaintProperty("hood-selected-glow", "line-opacity", hood ? 0.6 : 0);
       map.setPaintProperty("hoods-label", "text-opacity", name ? 0.9 : 0.8);
 
-      if (name && hood) {
+      if (name) {
         enableTerrain(map);
-        // Center + tilt onto the neighborhood. cameraForBounds is computed flat,
-        // then we pitch in the flyTo so the whole hood stays comfortably framed.
-        const [[w, s], [e, n]] = multiPolygonBounds(hood.geometry.coordinates);
-        const cam = map.cameraForBounds(
-          [
-            [w, s],
-            [e, n],
-          ],
-          { padding: { top: 150, left: 120, right: 120, bottom: 130 }, bearing: 0, maxZoom: 14 },
-        );
-        if (cam) {
-          const target = { ...cam, pitch: 54 };
-          if (!motionOk) map.jumpTo(target);
-          else map.flyTo({ ...target, duration: 1600, curve: 1.5 });
+        const applyCam = (t: maplibregl.CameraOptions) => {
+          if (!motionOk) map.jumpTo(t);
+          else map.flyTo({ ...t, duration: 1600, curve: 1.5 });
+        };
+        // Prefer the polygon's bounds; fall back to the neighborhood centroid.
+        if (hood) {
+          const [[w, s], [e, n]] = multiPolygonBounds(hood.geometry.coordinates);
+          const cam = map.cameraForBounds(
+            [
+              [w, s],
+              [e, n],
+            ],
+            { padding: { top: 150, left: 120, right: 120, bottom: 130 }, bearing: 0, maxZoom: 14 },
+          );
+          if (cam) applyCam({ ...cam, pitch: 54 });
+        } else {
+          const c = neighborhoodCentroid(name);
+          if (c) applyCam({ center: [c.lng, c.lat], zoom: 14, pitch: 54, bearing: 0 });
         }
       } else if (prev) {
         // Cleared the highlight: drop terrain (camera home is handled on search clear).
