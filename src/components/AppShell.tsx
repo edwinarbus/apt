@@ -19,6 +19,8 @@ import { ListingPanel, SortSelect, listingCountLabel } from "./ListingPanel";
 import { ListingDetail } from "./ListingDetail";
 import { ScoutPanel } from "./ScoutPanel";
 import { SaveSearchDialog } from "./SaveSearchDialog";
+import { WelcomeBackModal } from "./WelcomeBackModal";
+import type { SavedSearchDto } from "@/lib/api-types";
 
 /** One NDJSON line from /api/search. */
 type SearchStreamEvent =
@@ -69,10 +71,44 @@ export function AppShell() {
   const [scoutOpen, setScoutOpen] = useState(false);
   const [saveOpen, setSaveOpen] = useState(false);
   const [savedQueries, setSavedQueries] = useState<Set<string>>(new Set());
-  const newTodayCount = useMemo(
-    () => (listings ?? []).filter((l) => l.badges.includes("new_today")).length,
-    [listings],
+  const [savedDtos, setSavedDtos] = useState<SavedSearchDto[] | null>(null);
+  const [welcomeOpen, setWelcomeOpen] = useState(false);
+  const welcomeCheckedRef = useRef(false);
+
+  const refreshSavedSearches = useCallback(() => {
+    fetch("/api/searches")
+      .then((r) => (r.ok ? r.json() : { searches: [] }))
+      .then((d: { searches: SavedSearchDto[] }) => setSavedDtos(d.searches))
+      .catch(() => setSavedDtos([]));
+  }, []);
+  useEffect(() => refreshSavedSearches(), [refreshSavedSearches]);
+
+  // Total new matches the overnight Scout surfaced across watched searches.
+  const scoutNewCount = useMemo(
+    () => (savedDtos ?? []).reduce((n, s) => n + s.newMatchCount, 0),
+    [savedDtos],
   );
+
+  // First open of the session: if the Scout found new matches while away, greet
+  // the user with them. Once per browser session.
+  useEffect(() => {
+    if (welcomeCheckedRef.current || !listings || !savedDtos) return;
+    welcomeCheckedRef.current = true;
+    let seen = false;
+    try {
+      seen = sessionStorage.getItem("apt.welcomed") === "1";
+    } catch {
+      /* sessionStorage may be unavailable */
+    }
+    if (!seen && savedDtos.some((s) => s.newMatchCount > 0)) {
+      setWelcomeOpen(true);
+      try {
+        sessionStorage.setItem("apt.welcomed", "1");
+      } catch {
+        /* ignore */
+      }
+    }
+  }, [listings, savedDtos]);
 
   // Mobile results drawer (below lg the panel becomes a bottom sheet).
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -237,9 +273,10 @@ export function AppShell() {
       }
       setSavedQueries((s) => new Set(s).add(q));
       setSaveOpen(false);
+      refreshSavedSearches(); // update the Scout badge + panel
       setScoutOpen(true); // reveal the watched search + what Scout will do
     },
-    [query],
+    [query, refreshSavedSearches],
   );
 
   const reasonById = useMemo(() => {
@@ -357,8 +394,9 @@ export function AppShell() {
 
   return (
     <div className="relative h-full min-h-0 flex-1 overflow-hidden">
-      {/* Full-bleed 3D stage */}
-      <div className="absolute inset-0">
+      {/* 3D stage — its own viewport, LEFT of the results rail on desktop so the
+          city is never framed behind the panel; full-bleed on mobile. */}
+      <div className="absolute inset-0 md:right-[396px]">
         <MapView
           listings={displayed}
           selectedId={selectedId}
@@ -406,6 +444,8 @@ export function AppShell() {
           onToggleSuspicious={() => setHideSuspicious((v) => !v)}
           onSaveSearch={() => setSaveOpen(true)}
           searchSaved={savedQueries.has(query.trim())}
+          onOpenScout={() => setScoutOpen(true)}
+          scoutBadge={scoutNewCount}
         />
       </div>
 
@@ -453,26 +493,6 @@ export function AppShell() {
         </Overlay>
       )}
 
-      {/* Overnight scout entry — bottom-left, clear of the rail */}
-      <button
-        type="button"
-        onClick={() => setScoutOpen(true)}
-        title="Overnight rental scout"
-        className="pointer-events-auto absolute bottom-5 left-4 z-20 flex items-center gap-2 rounded-full border border-line bg-surface/92 py-2 pr-3.5 pl-2.5 text-[12.5px] font-medium text-muted shadow-[0_8px_28px_rgba(0,0,0,0.4)] backdrop-blur-md transition-colors hover:border-line-strong hover:text-ink max-md:hidden"
-      >
-        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent/15 text-accent">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" />
-          </svg>
-        </span>
-        Scout
-        {newTodayCount > 0 && (
-          <span className="rounded-full bg-accent/15 px-1.5 py-0.5 text-[10.5px] font-semibold text-accent tabular-nums">
-            {newTodayCount}
-          </span>
-        )}
-      </button>
-
       {detailOpen && selected && (
         <ListingDetail
           key={selected.id}
@@ -497,6 +517,16 @@ export function AppShell() {
           matchCount={displayed.length}
           onClose={() => setSaveOpen(false)}
           onConfirm={saveCurrentSearch}
+        />
+      )}
+
+      {welcomeOpen && savedDtos && listings && (
+        <WelcomeBackModal
+          searches={savedDtos}
+          listings={listings}
+          onSelect={(id) => select(id)}
+          onOpenScout={() => setScoutOpen(true)}
+          onClose={() => setWelcomeOpen(false)}
         />
       )}
     </div>

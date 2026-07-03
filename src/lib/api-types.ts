@@ -133,6 +133,8 @@ export interface SavedSearchDto {
   matchCount: number;
   /** of those, how many are new in the last 24h */
   newMatchCount: number;
+  /** ids of the freshest new matches (for the "while you were away" surface) */
+  newMatchIds: string[];
   /** for auto-apply searches, a drafted application for the freshest match */
   sampleDraft: ApplicationDraftDto | null;
 }

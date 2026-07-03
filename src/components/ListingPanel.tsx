@@ -52,6 +52,8 @@ export function ListingPanel({
   onToggleSuspicious,
   onSaveSearch,
   searchSaved,
+  onOpenScout,
+  scoutBadge,
   chromeless,
   hideHeader,
 }: {
@@ -72,6 +74,10 @@ export function ListingPanel({
   /** open the "save & watch this search" dialog (desktop rail only) */
   onSaveSearch?: () => void;
   searchSaved?: boolean;
+  /** open the Apt Scout / watched-searches panel */
+  onOpenScout?: () => void;
+  /** count shown on the Scout entry (new matches / new today) */
+  scoutBadge?: number;
   /** Drawer mode: drop the panel's own border/rounding/shadow. */
   chromeless?: boolean;
   /** Drawer mode: the handle supplies the count + sort, so skip the header. */
@@ -89,7 +95,7 @@ export function ListingPanel({
       className={
         chromeless
           ? "flex h-full w-full flex-col overflow-hidden"
-          : "flex h-full w-full flex-col overflow-hidden rounded-xl border border-line-strong/55 bg-surface/96 shadow-[0_14px_48px_rgba(0,0,0,0.55)] backdrop-blur-xl"
+          : "textured flex h-full w-full flex-col overflow-hidden rounded-xl border border-line-strong/55 bg-elevated/96 shadow-[0_14px_48px_rgba(0,0,0,0.55)] backdrop-blur-xl"
       }
     >
       {/* While searching, the thinking feed owns the panel — no duplicate
@@ -108,6 +114,7 @@ export function ListingPanel({
             )}
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
+            {onOpenScout && <ScoutButton badge={scoutBadge} onClick={onOpenScout} />}
             {onToggleSuspicious && (
               <SuspiciousToggle hideSuspicious={hideSuspicious} onToggle={onToggleSuspicious} />
             )}
@@ -199,16 +206,15 @@ export function SuspiciousToggle({
         onClick={onToggle}
         aria-pressed={hideSuspicious}
         aria-label={hideSuspicious ? "Show suspicious listings" : "Hide suspicious listings"}
-        className={`flex h-[26px] items-center gap-1.5 rounded-md border px-2 text-[11.5px] font-medium transition-colors ${
+        className={`flex h-[26px] w-[26px] items-center justify-center rounded-md border transition-colors ${
           hideSuspicious
             ? "border-warn/45 bg-warn/12 text-warn"
             : "border-line text-muted hover:border-line-strong hover:text-ink"
         }`}
       >
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
           <path d="M10.3 5.2a11 11 0 0 1 1.7-.2c6 0 9 6 9 7a12.6 12.6 0 0 1-2 2.7M6.6 6.6C3.7 8.3 2 11.4 2 12c0 1 3 7 10 7 2 0 3.7-.5 5.1-1.3M3 3l18 18" />
         </svg>
-        Suspicious
       </button>
       <span
         role="tooltip"
@@ -217,6 +223,35 @@ export function SuspiciousToggle({
         {hideSuspicious
           ? "Showing everything, including potential scams."
           : "Potential scams identified by Claude will be hidden."}
+      </span>
+    </div>
+  );
+}
+
+/** Icon entry to the overnight Scout / watched searches, with a new-match dot. */
+export function ScoutButton({ badge, onClick }: { badge?: number; onClick: () => void }) {
+  return (
+    <div className="group relative">
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label="Apt Scout — watched searches"
+        className="relative flex h-[26px] w-[26px] items-center justify-center rounded-md border border-line text-muted transition-colors hover:border-line-strong hover:text-ink"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" />
+        </svg>
+        {!!badge && badge > 0 && (
+          <span className="absolute -top-1 -right-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-accent px-1 text-[9px] font-bold text-paper tabular-nums">
+            {badge > 99 ? "99" : badge}
+          </span>
+        )}
+      </button>
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute top-full right-0 z-50 mt-2 hidden w-max max-w-[214px] rounded-md border border-line-strong bg-elevated px-2.5 py-1.5 text-[11.5px] leading-snug text-muted shadow-[0_10px_28px_rgba(0,0,0,0.55)] group-hover:block"
+      >
+        Apt Scout — your overnight rental agent
       </span>
     </div>
   );

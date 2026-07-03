@@ -52,7 +52,10 @@ export async function GET() {
     const criteria = (s.criteria ?? {}) as SavedSearchCriteria;
     const matching = active.filter((r) => {
       const res = evaluateListing(toMatchable(r), criteria, statusById.get(r.id) ?? null);
-      return res.eligible && res.matched;
+      // Count a match only when known criteria pass AND, if the search names a
+      // neighborhood, the listing is actually IN it (not merely unknown) — so a
+      // "watched: Outer Richmond" count never includes unplaced listings.
+      return res.eligible && res.matched && !res.unknowns.includes("neighborhood");
     });
     // Freshest match first.
     matching.sort((a, b) => (a.firstSeenAt < b.firstSeenAt ? 1 : -1));
@@ -97,6 +100,7 @@ export async function GET() {
       createdAt: s.createdAt,
       matchCount: matching.length,
       newMatchCount: newMatches.length,
+      newMatchIds: newMatches.slice(0, 6).map((r) => r.id),
       sampleDraft,
     };
   });

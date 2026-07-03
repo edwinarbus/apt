@@ -24,8 +24,10 @@ export interface SearchOptions {
   maxRank?: number;
 }
 
-/** Default number of candidates handed to the ranking model. Keeps one call fast. */
-export const DEFAULT_MAX_RANK = 60;
+/** Default number of candidates handed to the ranking model. Smaller = less to
+ * read and deliberate over = a noticeably faster, less over-thought call. The
+ * local relevance pre-rank already surfaces the best candidates. */
+export const DEFAULT_MAX_RANK = 36;
 
 const STOP_WORDS = new Set([
   "the", "and", "with", "within", "near", "for", "from", "into", "onto", "that",

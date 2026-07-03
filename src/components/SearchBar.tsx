@@ -117,7 +117,7 @@ export function SearchBar({
   const hasSearch = search != null;
 
   return (
-    <div className="overflow-hidden rounded-xl border border-line-strong/60 bg-surface/95 shadow-[0_10px_38px_rgba(0,0,0,0.5)] backdrop-blur-xl">
+    <div className="textured overflow-hidden rounded-xl border border-line-strong/60 bg-elevated/95 shadow-[0_10px_38px_rgba(0,0,0,0.5)] backdrop-blur-xl">
       <div className="flex items-center gap-2.5 px-3 py-2">
         {/* Brand wordmark */}
         <span

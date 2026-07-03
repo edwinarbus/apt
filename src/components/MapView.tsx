@@ -64,6 +64,41 @@ interface HoodFeature {
 }
 const HOODS = (hoodsData as unknown as { features: HoodFeature[] }).features;
 
+/** Bounding box of every neighborhood = the city extent, used to frame the
+ * resting "home" view so the whole city fits whatever width the map viewport
+ * has (it lives left of the results rail, so that width varies). */
+const CITY_BOUNDS: [[number, number], [number, number]] = (() => {
+  let w = 180,
+    s = 90,
+    e = -180,
+    n = -90;
+  for (const f of HOODS) {
+    const [[fw, fs], [fe, fn]] = multiPolygonBounds(f.geometry.coordinates);
+    w = Math.min(w, fw);
+    s = Math.min(s, fs);
+    e = Math.max(e, fe);
+    n = Math.max(n, fn);
+  }
+  return [
+    [w, s],
+    [e, n],
+  ];
+})();
+
+/** Camera that frames the whole city in the current viewport at the browse tilt. */
+function cityCamera(map: maplibregl.Map) {
+  const cam = map.cameraForBounds(CITY_BOUNDS, {
+    padding: { top: 28, bottom: 24, left: 30, right: 30 },
+    bearing: 0,
+  });
+  if (!cam || cam.zoom == null || !cam.center) {
+    return { center: SF_CENTER, zoom: BROWSE_ZOOM, pitch: BROWSE_PITCH, bearing: 0 };
+  }
+  // Pitching shows more than the flat fit, so ease the zoom back a hair to keep
+  // the whole city comfortably in frame with sky above it.
+  return { center: cam.center, zoom: cam.zoom - 0.2, pitch: BROWSE_PITCH, bearing: 0 };
+}
+
 const WORLD_RING: [number, number][] = [
   [-180, -85],
   [180, -85],
@@ -878,13 +913,21 @@ export function MapView({
         syncData(map, listingsRef.current);
         refreshThumbsRef.current();
 
-        const intro = { center: SF_CENTER as [number, number], zoom: BROWSE_ZOOM, pitch: BROWSE_PITCH, bearing: 0 };
+        const intro = cityCamera(map);
         if (reduced || document.visibilityState === "hidden") {
           map.jumpTo(intro);
         } else {
           map.flyTo({ ...intro, duration: 1500, curve: 1.2 });
           window.setTimeout(() => {
-            if (mapRef.current === map && map.isMoving() && map.getZoom() < 11.4) {
+            // Only rescue a stuck intro — never yank the camera back if a
+            // search, highlight, or isolate has since taken it somewhere.
+            if (
+              mapRef.current === map &&
+              map.isMoving() &&
+              !searchActiveRef.current &&
+              !highlightHoodRef.current &&
+              !selectedHoodRef.current
+            ) {
               map.stop();
               map.jumpTo(intro);
             }
@@ -1035,7 +1078,7 @@ export function MapView({
         else map.flyTo({ ...cam, pitch: 62, duration: 2000, curve: 1.4 });
       }
     } else if (!selectedHood && !searchActiveRef.current && !highlightHoodRef.current) {
-      const home = { center: SF_CENTER as [number, number], zoom: BROWSE_ZOOM, pitch: BROWSE_PITCH, bearing: 0 };
+      const home = cityCamera(map);
       if (!motionOk) map.jumpTo(home);
       else map.flyTo({ ...home, duration: 1300, curve: 1.3 });
     }
