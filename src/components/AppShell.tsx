@@ -15,7 +15,7 @@ import type { UserListingStatus } from "@/core/types";
 import { SearchBar, type LocationStatus } from "./SearchBar";
 import { EMPTY_PROGRESS, type SearchProgressState } from "./SearchProgress";
 import { MapView } from "./MapView";
-import { ListingPanel, SortSelect, listingCountLabel } from "./ListingPanel";
+import { AutopilotButton, ListingPanel, SortSelect, listingCountLabel } from "./ListingPanel";
 import { ListingDetail } from "./ListingDetail";
 import { AutopilotPanel } from "./AutopilotPanel";
 import { SaveSearchDialog } from "./SaveSearchDialog";
@@ -462,6 +462,8 @@ export function AppShell() {
         onSortChange={setSort}
         hideSuspicious={hideSuspicious}
         onToggleSuspicious={() => setHideSuspicious((v) => !v)}
+        onOpenScout={() => setScoutOpen(true)}
+        scoutBadge={scoutNewCount}
       >
         <ListingPanel
           chromeless
@@ -546,6 +548,8 @@ function MobileDrawer({
   onSortChange,
   hideSuspicious,
   onToggleSuspicious,
+  onOpenScout,
+  scoutBadge,
   children,
 }: {
   open: boolean;
@@ -558,6 +562,8 @@ function MobileDrawer({
   onSortChange: (s: SortKey) => void;
   hideSuspicious?: boolean;
   onToggleSuspicious?: () => void;
+  onOpenScout?: () => void;
+  scoutBadge?: number;
   children: React.ReactNode;
 }) {
   const label = listingCountLabel({ count, searching, searchActive, hoodName });
@@ -611,6 +617,7 @@ function MobileDrawer({
             </button>
           )}
           {open && <SortSelect sort={sort} searchActive={searchActive} onSortChange={onSortChange} />}
+          {open && onOpenScout && <AutopilotButton badge={scoutBadge} onClick={onOpenScout} />}
           <button
             type="button"
             onClick={onToggle}
