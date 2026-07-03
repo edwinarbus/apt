@@ -41,6 +41,14 @@ const HALO = "#06090f"; // marker stroke = background, for a crisp cut-out edge
 /** How far a selected neighborhood is raised out of the map (baked into the DEM). */
 const HOOD_BOOST_M = 88;
 const TERRAIN_EXAGGERATION = 1.35;
+/**
+ * The terrain cliff is cut this far OUTSIDE the neighborhood line. The visible
+ * cut (satellite edge + highlight ring) then sits on flat plateau: boundary
+ * buildings keep their whole footprint supported instead of jutting out of the
+ * wall, and the satellite never smears down the cliff face (the wall is dark
+ * base map). See the mask dilation in processDemTile.
+ */
+const HOOD_MARGIN_M = 60;
 
 // Clusters are aggregates of mixed status → neutral graphite, denser = lighter.
 const CLUSTER_COLOR_BROWSE = [
@@ -215,7 +223,16 @@ function processDemTile(url: string): Promise<ArrayBuffer> {
     const latN = tile2lat(y, z);
     const latS = tile2lat(y + 1, z);
     const [[bw, bs], [be, bn]] = multiPolygonBounds(hood.geometry.coordinates);
-    if (lngE < bw || lngW > be || latN < bs || latS > bn) {
+    // Pad the intersection test by the outward margin so tiles that only
+    // touch the dilated rim still get re-encoded (no seams at the cliff).
+    const padLat = (HOOD_MARGIN_M * 2) / 111320;
+    const padLng = padLat / Math.cos((((latN + latS) / 2) * Math.PI) / 180);
+    if (
+      lngE < bw - padLng ||
+      lngW > be + padLng ||
+      latN < bs - padLat ||
+      latS > bn + padLat
+    ) {
       demTileCache.set(url, buf);
       return buf;
     }
@@ -250,11 +267,23 @@ function processDemTile(url: string): Promise<ArrayBuffer> {
         }
       }
       mctx.fill("evenodd");
-      // Hard-edged mask (no inward feather): the boost is applied at full value
-      // right up to the polygon boundary, so the neighborhood reads as a slab
-      // cleanly cut out and lifted — a near-vertical wall, not a tapered skirt.
-      // The exact top edge is defined by the satellite reveal mask + the
-      // highlight outline, so the crisp cut stays polygon-accurate.
+      // Cut the slab OUTSIDE the neighborhood line: dilate the boost mask
+      // outward by a fixed ground margin (a stroke over the already-opaque
+      // fill only grows the mask outward). Two edge artifacts die here:
+      //  1. MapLibre raises each building extrusion by ONE sampled terrain
+      //     height, so a footprint crossing the cut line used to overhang the
+      //     cliff — with the coplanar margin its whole footprint stays
+      //     supported on the plateau.
+      //  2. The satellite can't smear down the wall: the imagery ends at the
+      //     polygon (flat ground) and the cliff ~60m out is dark base map.
+      // The small blur bevels only the outer rim, smoothing mesh aliasing.
+      const mPerPx =
+        (40075016.686 * Math.cos((((latN + latS) / 2) * Math.PI) / 180)) /
+        (256 * 2 ** z);
+      mctx.filter = "blur(1.5px)";
+      mctx.lineWidth = (HOOD_MARGIN_M / mPerPx) * 2;
+      mctx.stroke();
+      mctx.filter = "none";
       const mask = mctx.getImageData(0, 0, 256, 256).data;
 
       for (let i = 0; i < d.length; i += 4) {
@@ -296,12 +325,15 @@ function registerDemProtocol() {
 const SAT_TILE_URL = (z: number, x: number, y: number) =>
   `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`;
 
-/** Tile x/y range covering a hood's bbox at a zoom, clamped to the world. */
+/** Tile x/y range covering a hood's bbox (+ the cliff margin) at a zoom. */
 function hoodTileRange(
   hood: HoodFeature,
   zoom: number,
 ): Array<[number, number, number]> {
-  const [[bw, bs], [be, bn]] = multiPolygonBounds(hood.geometry.coordinates);
+  let [[bw, bs], [be, bn]] = multiPolygonBounds(hood.geometry.coordinates);
+  const padLat = (HOOD_MARGIN_M * 2) / 111320;
+  const padLng = padLat / Math.cos((((bs + bn) / 2) * Math.PI) / 180);
+  [bw, bs, be, bn] = [bw - padLng, bs - padLat, be + padLng, bn + padLat];
   const n = 2 ** zoom;
   const xMin = Math.max(0, Math.floor(((bw + 180) / 360) * n));
   const xMax = Math.min(n - 1, Math.floor(((be + 180) / 360) * n));
