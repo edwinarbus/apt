@@ -1,30 +1,76 @@
 import { createDb } from "@/db/client";
 import { formatSummaryLine, runAllEnabled } from "@/ingest/runner";
 import { computeDigest, formatDigestConsole } from "@/ingest/digest";
+import { enrichListings, formatEnrichSummary } from "@/enrich/enricher";
+import { AnthropicEnrichmentClient } from "@/enrich/client";
+import { runVision, formatVisionSummary } from "@/vision/vision";
+import { AnthropicVisionClient } from "@/vision/client";
 
 /**
- * The scheduled daily loop: ingest every enabled source, then compute the
- * saved-search digest. This is the single entry point a cron/launchd job runs.
- * It is intentionally conservative (the underlying runner already caps request
- * volume, respects robots.txt, and never marks listings missing after a
- * failed/partial run) and it never contacts anyone — the digest is a local
- * report.
+ * The scheduled daily loop — the single entry point a cron/launchd job (or the
+ * overnight "Apt Scout" managed agent) runs to pick up new listings overnight:
  *
- *   npm run daily
+ *   ingest every enabled source  →  enrich new/changed  →  vision new/changed
+ *   →  saved-search digest
+ *
+ * Ingest is always run. Enrichment and vision are AI passes (they cost money),
+ * so they run only when an API key is present and are bounded by a cost cap;
+ * the job degrades gracefully to ingest + digest without a key. It stays
+ * conservative (the runner caps request volume and respects robots.txt) and it
+ * never contacts anyone — the digest is a local report.
+ *
+ *   npm run daily                              full pipeline
  *   npm run daily -- --no-geocode
+ *   npm run daily -- --no-enrich --no-vision   ingest + digest only
+ *   npm run daily -- --enrich-cap 0.50 --vision-cap 1.00
  */
+
+function numFlag(args: string[], name: string, fallback: number): number {
+  const i = args.indexOf(name);
+  if (i >= 0 && args[i + 1]) {
+    const v = Number(args[i + 1]);
+    if (Number.isFinite(v)) return v;
+  }
+  return fallback;
+}
 
 async function main() {
   const args = process.argv.slice(2);
   const noGeocode = args.includes("--no-geocode");
+  const hasKey = Boolean(process.env.ANTHROPIC_API_KEY);
+  const doEnrich = !args.includes("--no-enrich") && hasKey;
+  const doVision = !args.includes("--no-vision") && hasKey;
+  const enrichCap = numFlag(args, "--enrich-cap", 1.0);
+  const visionCap = numFlag(args, "--vision-cap", 2.0);
   const db = createDb();
   const log = (m: string) => console.log(`  ${m}`);
+  const stamp = () => new Date().toISOString();
 
-  console.log(`[${new Date().toISOString()}] daily run: ingesting enabled sources…`);
+  console.log(`[${stamp()}] daily run: ingesting enabled sources…`);
   const summaries = await runAllEnabled(db, { geocode: !noGeocode, log });
   for (const s of summaries) console.log(formatSummaryLine(s));
 
-  console.log(`\n[${new Date().toISOString()}] computing saved-search digest…`);
+  if (doEnrich) {
+    console.log(`\n[${stamp()}] enriching new/changed listings (cap $${enrichCap})…`);
+    const summary = await enrichListings(db, new AnthropicEnrichmentClient(), {
+      costCapUsd: enrichCap,
+      log,
+    });
+    console.log(formatEnrichSummary(summary));
+  } else if (!hasKey) {
+    console.log(`\n[${stamp()}] skipping enrichment + vision (no ANTHROPIC_API_KEY)`);
+  }
+
+  if (doVision) {
+    console.log(`\n[${stamp()}] analyzing photos for new/changed listings (cap $${visionCap})…`);
+    const summary = await runVision(db, new AnthropicVisionClient(), {
+      costCapUsd: visionCap,
+      log,
+    });
+    console.log(formatVisionSummary(summary));
+  }
+
+  console.log(`\n[${stamp()}] computing saved-search digest…`);
   const digest = computeDigest(db, { dryRun: false });
   console.log(formatDigestConsole(digest));
 

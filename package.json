@@ -23,6 +23,8 @@
     "digest": "tsx scripts/digest.ts",
     "daily": "tsx scripts/daily.ts",
     "schedule:install": "tsx scripts/install-schedule.ts",
+    "scout:deploy": "tsx scripts/scout-agent.ts",
+    "scout:worker": "tsx scripts/scout-worker.ts",
     "enrich": "tsx scripts/enrich.ts",
     "vision": "tsx scripts/vision.ts",
     "test:adapters": "vitest run tests/adapters-craigslist.test.ts tests/adapters-rentsfnow.test.ts tests/adapters-rentbt.test.ts tests/adapters-mosser.test.ts"

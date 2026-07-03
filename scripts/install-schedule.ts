@@ -7,7 +7,7 @@ import path from "node:path";
  * it does NOT touch the system itself (installing a launchd agent is a
  * user-owned action). On Linux, use the printed cron line instead.
  *
- *   npm run schedule:install            daily at 08:00
+ *   npm run schedule:install            overnight at 03:00
  *   npm run schedule:install -- --hour 7 --minute 30
  */
 
@@ -20,7 +20,7 @@ function arg(name: string, fallback: number): number {
   return fallback;
 }
 
-const hour = arg("hour", 8);
+const hour = arg("hour", 3);
 const minute = arg("minute", 0);
 const cwd = process.cwd();
 const label = "us.edwinarb.apt.daily";

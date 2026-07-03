@@ -92,25 +92,44 @@ precisely the nightly-shortlist problem.
 - **Cost/scale**: overnight Opus judgment over a shortlist is cheap; don't have it
   re-vision every listing every night — reuse Apt's "new/changed only" gating.
 
-## Sketch (not wired up)
+## How it's wired up
 
-```ts
-// scripts/scout-agent.ts (sketch) — create once, then schedule.
-import Anthropic from "@anthropic-ai/sdk";
-const anthropic = new Anthropic({
-  defaultHeaders: { "anthropic-beta": "managed-agents-2026-04-01" },
-});
+This is implemented, using a **self-hosted sandbox** — the honest fit, since
+Apt's data (SQLite + API key) is local. The agent loop (the judgment) runs on
+Anthropic's orchestration layer; tool execution (bash/files) runs in a container
+*you* control via a local worker, so the agent runs the real pipeline against
+your `data/apt.db` and stages drafts on your machine. Nothing leaves your box.
 
-const agent = await anthropic.beta.agents.create({
-  model: "claude-opus-4-8",
-  systemPrompt: SCOUT_SYSTEM_PROMPT, // ranks new SF listings vs. saved criteria,
-                                     // drafts (never sends) outreach, writes a digest
-  tools: [{ type: "bash" }, { type: "web_search" }],
-  // + an MCP server exposing the Apt DB read + "stage draft" write
-});
-// Then attach a scheduled deployment (cron) that opens a session against `agent.id`.
+Two layers, both runnable:
+
+**1. The overnight pickup (works today, no cloud needed)** — `npm run daily`
+now runs the full pipeline (`ingest → enrich → vision → digest`, AI passes
+cost-capped and skipped without a key). Schedule it overnight:
+
+```
+npm run schedule:install        # writes a launchd plist for 3:00am; you load it
 ```
 
-Wiring this up (the MCP bridge to Apt's DB, the scheduled deployment, and the
-in-app "overnight inbox" + draft-review surface) is the natural next step — the
-pipeline it would drive already exists.
+**2. The managed agent (the cloud brain)** — three scripts:
+
+```
+npm run scout:deploy               # dry run: prints the plan, creates nothing
+npm run scout:deploy -- --deploy   # creates env (self-hosted) + agent + nightly deployment
+npm run scout:worker               # keep running so the 3am session can execute its tools
+```
+
+- `scripts/scout-agent.ts` — creates a self-hosted environment, the **Apt Scout**
+  agent (`claude-opus-4-8`, `agent_toolset_20260401`, the scout system prompt
+  with the no-auto-send rule baked in), and a **scheduled deployment** firing
+  `0 3 * * *` `America/Los_Angeles`. Create-once: reuse via `APT_SCOUT_ENV_ID` /
+  `APT_SCOUT_AGENT_ID`.
+- `scripts/scout-worker.ts` — the local `EnvironmentWorker` that long-polls
+  Anthropic and executes the agent's tool calls in this repo (outbound-only).
+
+Each night the deployment opens a session; the agent runs `npm run daily`,
+queries the DB for what's new since yesterday, ranks it against saved criteria,
+writes a report under `data/reports/`, and **stages** (never sends) outreach
+drafts for listings you've marked interested.
+
+Still worth building next: the in-app "overnight inbox" + draft-review surface
+so the staged reports and drafts show up in the UI.
