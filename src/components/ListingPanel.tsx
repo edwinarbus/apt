@@ -5,7 +5,6 @@ import type { ListingSummary } from "@/lib/api-types";
 import type { MatchInfo, SortKey } from "./AppShell";
 import {
   EMPTY_PROGRESS,
-  SearchActivitySummary,
   SearchProgress,
   type SearchProgressState,
 } from "./SearchProgress";
@@ -44,7 +43,6 @@ export function ListingPanel({
   searchActive,
   searching,
   progress,
-  hasLocation,
   hoodName,
   selectedId,
   onSelect,
@@ -58,7 +56,6 @@ export function ListingPanel({
   searchActive?: boolean;
   searching?: boolean;
   progress?: SearchProgressState;
-  hasLocation?: boolean;
   hoodName?: string | null;
   selectedId: string | null;
   onSelect: (id: string) => void;
@@ -103,29 +100,23 @@ export function ListingPanel({
 
       <div className="panel-scroll min-h-0 flex-1 overflow-y-auto">
         {searching ? (
-          <SearchProgress progress={progress ?? EMPTY_PROGRESS} hasLocation={!!hasLocation} />
+          <SearchProgress progress={progress ?? EMPTY_PROGRESS} />
+        ) : listings.length === 0 ? (
+          <EmptyState searchActive={searchActive} hoodName={hoodName} />
         ) : (
-          <>
-            {/* Auto-collapsed activity from the finished search — re-expandable. */}
-            {searchActive && progress && <SearchActivitySummary progress={progress} />}
-            {listings.length === 0 ? (
-              <EmptyState searchActive={searchActive} hoodName={hoodName} />
-            ) : (
-              <ul className="flex flex-col">
-                {listings.map((l, i) => (
-                  <ListingCard
-                    key={l.id}
-                    listing={l}
-                    match={reasons?.get(l.id)}
-                    animateIn={searchActive}
-                    index={i}
-                    selected={l.id === selectedId}
-                    onSelect={() => onSelect(l.id)}
-                  />
-                ))}
-              </ul>
-            )}
-          </>
+          <ul className="flex flex-col">
+            {listings.map((l, i) => (
+              <ListingCard
+                key={l.id}
+                listing={l}
+                match={reasons?.get(l.id)}
+                animateIn={searchActive}
+                index={i}
+                selected={l.id === selectedId}
+                onSelect={() => onSelect(l.id)}
+              />
+            ))}
+          </ul>
         )}
       </div>
     </aside>

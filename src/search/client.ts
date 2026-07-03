@@ -180,6 +180,9 @@ export class AnthropicSearchClient implements SearchClient {
         // thinking text) — "summarized" must be explicit. Adaptive may skip
         // thinking entirely on simple asks; the UI handles a no-thinking run.
         thinking: { type: "adaptive", display: "summarized" },
+        // Low effort keeps interactive search fast; the ranking is still
+        // grounded by the per-match reasons it must produce.
+        output_config: { effort: "low" },
         system: [
           { type: "text", text: SEARCH_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
         ],

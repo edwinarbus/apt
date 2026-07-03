@@ -154,7 +154,6 @@ export function AppShell() {
           setProgress((p) => ({ ...p, chars: event.chars }));
         } else if (event.type === "done") {
           finished = true;
-          setProgress((p) => ({ ...p, elapsedMs: Date.now() - startedAt }));
           setSearch(event.result);
         } else if (event.type === "error") {
           finished = true;
@@ -333,7 +332,6 @@ export function AppShell() {
           searchActive={search != null}
           searching={searching}
           progress={progress}
-          hasLocation={locationStatus === "granted"}
           hoodName={selectedHood}
           selectedId={selectedId}
           onSelect={(id) => select(id)}
@@ -361,7 +359,6 @@ export function AppShell() {
           searchActive={search != null}
           searching={searching}
           progress={progress}
-          hasLocation={locationStatus === "granted"}
           hoodName={selectedHood}
           selectedId={selectedId}
           onSelect={(id) => select(id)}
