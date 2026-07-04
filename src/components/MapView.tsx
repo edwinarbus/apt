@@ -471,6 +471,7 @@ export function MapView({
   scanIds,
   radarPoints,
   drawerOpen,
+  detailOpen,
 }: {
   listings: ListingSummary[];
   selectedId: string | null;
@@ -484,6 +485,11 @@ export function MapView({
   /** mobile results sheet is expanded → it overlays the bottom of the map, so
    * the camera frames content into the visible strip above it, not center-screen */
   drawerOpen?: boolean;
+  /** the full-screen listing detail modal is open — it completely covers the
+   * map (fixed inset-0 backdrop), so the selection camera flight below would
+   * animate somewhere entirely invisible; skip it (jump instead) to free the
+   * main thread/GPU for the modal's own render instead of fighting it. */
+  detailOpen?: boolean;
   /** a neighborhood named by the search — highlighted (outline only, no isolate) */
   highlightHood?: string | null;
   /** bumped once per search ATTEMPT — lets the camera effects tell "a new
@@ -1423,8 +1429,14 @@ export function MapView({
           pitch: 58,
           bearing: -13,
         };
-        if (prefersReducedMotion() || document.visibilityState === "hidden") map.jumpTo(target);
-        else map.easeTo({ ...target, duration: 720 });
+        // The detail modal is about to cover the whole screen — animating the
+        // camera underneath it burns CPU/GPU on frames nobody sees (worst on
+        // mobile), so jump straight there instead of easing.
+        if (prefersReducedMotion() || document.visibilityState === "hidden" || detailOpen) {
+          map.jumpTo(target);
+        } else {
+          map.easeTo({ ...target, duration: 720 });
+        }
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

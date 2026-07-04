@@ -285,5 +285,16 @@ export async function GET(
     enrichment,
     vision,
   };
-  return NextResponse.json(body);
+  // Cache at Vercel's edge so reopening the same listing is instant instead of
+  // paying a fresh serverless invocation + ~9-query DB round-trip every time
+  // (same trade-off as /api/listings: a status/dislike change made just
+  // before reopening can lag up to the s-maxage window before a stale cached
+  // copy refreshes — acceptable for a personal single-user tool).
+  return NextResponse.json(body, {
+    headers: {
+      "Cache-Control": "public, max-age=0, must-revalidate",
+      "CDN-Cache-Control": "public, s-maxage=60, stale-while-revalidate=86400",
+      "Vercel-CDN-Cache-Control": "public, s-maxage=60, stale-while-revalidate=86400",
+    },
+  });
 }

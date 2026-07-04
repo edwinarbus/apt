@@ -475,6 +475,7 @@ export function AppShell() {
           scanIds={progress.keptIds}
           radarPoints={radarPoints}
           drawerOpen={drawerOpen}
+          detailOpen={detailOpen}
         />
       </div>
 
