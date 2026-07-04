@@ -21,15 +21,18 @@ import { PhotoImg } from "./PhotoImg";
 export function listingCountLabel({
   count,
   searching,
+  loading,
   searchActive,
   hoodName,
 }: {
   count: number;
   searching?: boolean;
+  loading?: boolean;
   searchActive?: boolean;
   hoodName?: string | null;
 }): { n: string; unit: string; scope: string | null } {
   if (searching) return { n: "", unit: "Searching…", scope: hoodName ?? null };
+  if (loading) return { n: "", unit: "Loading…", scope: null };
   const unit = searchActive
     ? count === 1 ? "match" : "matches"
     : count === 1 ? "listing" : "listings";
@@ -41,6 +44,7 @@ export function ListingPanel({
   reasons,
   searchActive,
   searching,
+  loading,
   progress,
   interpretation,
   hoodName,
@@ -61,6 +65,10 @@ export function ListingPanel({
   reasons?: Map<string, MatchInfo>;
   searchActive?: boolean;
   searching?: boolean;
+  /** The initial /api/listings fetch hasn't resolved yet — show a loading
+   * state instead of the "no listings" empty state, which would otherwise
+   * be indistinguishable from a genuinely empty result. */
+  loading?: boolean;
   progress?: SearchProgressState;
   /** the model's one-line restatement of what the search asked for */
   interpretation?: string | null;
@@ -171,6 +179,8 @@ export function ListingPanel({
       <div className="panel-scroll min-h-0 flex-1 overflow-y-auto">
         {searching ? (
           <SearchProgress progress={progress ?? EMPTY_PROGRESS} />
+        ) : loading ? (
+          <LoadingState />
         ) : listings.length === 0 ? (
           <EmptyState searchActive={searchActive} hoodName={hoodName} />
         ) : (
@@ -307,6 +317,23 @@ function EmptyState({
             : "Pan or zoom the map, or run a search."}
       </p>
     </div>
+  );
+}
+
+function LoadingState() {
+  return (
+    <ul className="flex flex-col" aria-busy="true" aria-label="Loading listings">
+      {Array.from({ length: 6 }, (_, i) => (
+        <li key={i} className="flex gap-3 border-b border-line px-3 py-3">
+          <div className="h-16 w-16 shrink-0 animate-pulse rounded-lg bg-elevated" />
+          <div className="flex min-w-0 flex-1 flex-col justify-center gap-2">
+            <div className="h-3 w-2/3 animate-pulse rounded bg-elevated" />
+            <div className="h-2.5 w-1/2 animate-pulse rounded bg-elevated" />
+            <div className="h-2.5 w-1/3 animate-pulse rounded bg-elevated" />
+          </div>
+        </li>
+      ))}
+    </ul>
   );
 }
 

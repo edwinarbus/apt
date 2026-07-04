@@ -24,8 +24,6 @@ function getSpeechCtor(): SpeechRecognitionCtor | null {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
 }
 
-export type LocationStatus = "idle" | "prompting" | "granted" | "denied" | "unavailable";
-
 const PLACEHOLDER = "Search apartments…";
 
 /**

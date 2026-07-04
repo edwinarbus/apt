@@ -12,7 +12,7 @@ import { matchNeighborhood } from "@/core/neighborhoods";
 import { pointInMultiPolygon, type MultiPolygonCoords } from "@/lib/geo";
 import hoodsData from "@/data/sf-neighborhoods.json";
 import type { UserListingStatus } from "@/core/types";
-import { SearchBar, type LocationStatus } from "./SearchBar";
+import { SearchBar } from "./SearchBar";
 import { EMPTY_PROGRESS, type SearchProgressState } from "./SearchProgress";
 import { MapView } from "./MapView";
 import { PorterButton, ListingPanel, SortSelect, listingCountLabel } from "./ListingPanel";
@@ -58,14 +58,9 @@ export function AppShell() {
   // merely shrinks the current results never does (it doesn't bump this).
   const [searchSeq, setSearchSeq] = useState(0);
   // Hidden/unavailable listings stay filtered out (the toggle was removed as
-  // chrome); search still anchors to the browser location when it's granted.
+  // chrome).
   const showHiddenGone = false;
-  const radiusMi = 10;
   const abortRef = useRef<AbortController | null>(null);
-
-  // Location state
-  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
-  const [locationStatus, setLocationStatus] = useState<LocationStatus>("idle");
 
   // Neighborhood isolate (click a hood polygon on the map)
   const [selectedHood, setSelectedHood] = useState<string | null>(null);
@@ -144,29 +139,6 @@ export function AppShell() {
       .catch((e) => setError(e.message));
   }, []);
 
-  const requestLocation = useCallback(() => {
-    if (typeof navigator === "undefined" || !navigator.geolocation) {
-      setLocationStatus("unavailable");
-      return;
-    }
-    setLocationStatus("prompting");
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-        setLocationStatus("granted");
-      },
-      () => setLocationStatus("denied"),
-      { timeout: 8000, maximumAge: 300_000 },
-    );
-  }, []);
-
-  // Ask for location on load (default radius 10mi); the user can also trigger it.
-  useEffect(() => {
-    // Requesting geolocation is a genuine mount side effect, not derived state.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    requestLocation();
-  }, [requestLocation]);
-
   const doSearch = useCallback(async () => {
     const q = query.trim();
     if (!q) {
@@ -191,8 +163,8 @@ export function AppShell() {
         signal: controller.signal,
         body: JSON.stringify({
           query: q,
-          location: locationStatus === "granted" ? location : null,
-          radiusMi: locationStatus === "granted" ? radiusMi : null,
+          location: null,
+          radiusMi: null,
           includeHiddenGone: showHiddenGone,
         }),
       });
@@ -247,7 +219,7 @@ export function AppShell() {
         setSearching(false);
       }
     }
-  }, [query, location, locationStatus, radiusMi, showHiddenGone]);
+  }, [query, showHiddenGone]);
 
   const clearSearch = useCallback(() => {
     abortRef.current?.abort();
@@ -504,6 +476,7 @@ export function AppShell() {
           reasons={reasonById}
           searchActive={search != null}
           searching={searching}
+          loading={listings === null}
           progress={progress}
           interpretation={search?.interpretation ?? null}
           hoodName={selectedHood}
@@ -526,6 +499,7 @@ export function AppShell() {
         onToggle={() => setDrawerOpen((v) => !v)}
         count={displayed.length}
         searching={searching}
+        loading={listings === null}
         searchActive={search != null}
         hoodName={selectedHood}
         sort={sort}
@@ -542,6 +516,7 @@ export function AppShell() {
           reasons={reasonById}
           searchActive={search != null}
           searching={searching}
+          loading={listings === null}
           progress={progress}
           hoodName={selectedHood}
           selectedId={selectedId}
@@ -613,6 +588,7 @@ function MobileDrawer({
   onToggle,
   count,
   searching,
+  loading,
   searchActive,
   hoodName,
   sort,
@@ -627,6 +603,7 @@ function MobileDrawer({
   onToggle: () => void;
   count: number;
   searching?: boolean;
+  loading?: boolean;
   searchActive?: boolean;
   hoodName?: string | null;
   sort: SortKey;
@@ -637,7 +614,7 @@ function MobileDrawer({
   scoutBadge?: number;
   children: React.ReactNode;
 }) {
-  const label = listingCountLabel({ count, searching, searchActive, hoodName });
+  const label = listingCountLabel({ count, searching, loading, searchActive, hoodName });
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 md:hidden">
       <div
