@@ -167,6 +167,11 @@ export function AppShell() {
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
+    // Drop any selected listing (and its pinned photo card): a new search is a
+    // fresh context, and leaving one selected means its camera effect re-fires
+    // when the results update `listings` and yanks the map back onto the old
+    // apartment — overriding the fly-in to a neighborhood named in the query.
+    setSelectedId(null);
     setSearching(true);
     setSearchError(null);
     setSearch(null);
