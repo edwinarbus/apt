@@ -53,13 +53,32 @@ export function SearchBar({
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    // Enter submits (the field wraps on its own, so a newline is never needed).
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
+  // Latest submit closure, read by the beforeinput listener below (which is
+  // attached once) so it always sees the current query/searching.
+  const submitRef = useRef(() => {});
+  useEffect(() => {
+    submitRef.current = () => {
       if (!searching && query.trim()) onSearch();
-    }
-  };
+    };
+  }, [searching, query, onSearch]);
+
+  // Enter submits. On iOS Safari, preventDefault on `keydown` does NOT stop a
+  // textarea from inserting a newline — the line break lands first and only a
+  // second Return "sends". `beforeinput`'s insertLineBreak IS cancelable there,
+  // so intercept that instead: block the newline and submit. It fires for Enter
+  // on desktop too, so it's the single, reliable submit path.
+  useEffect(() => {
+    const el = fieldRef.current;
+    if (!el) return;
+    const onBeforeInput = (e: Event) => {
+      if ((e as InputEvent).inputType === "insertLineBreak") {
+        e.preventDefault();
+        submitRef.current();
+      }
+    };
+    el.addEventListener("beforeinput", onBeforeInput);
+    return () => el.removeEventListener("beforeinput", onBeforeInput);
+  }, []);
 
   const hasSearch = search != null;
 
@@ -79,8 +98,9 @@ export function SearchBar({
         <textarea
           ref={fieldRef}
           value={query}
-          onChange={(e) => onQueryChange(e.target.value)}
-          onKeyDown={onKeyDown}
+          // Collapse any newline (e.g. from a paste, or a stray line break that
+          // slipped past beforeinput) to a space — this is a one-line query.
+          onChange={(e) => onQueryChange(e.target.value.replace(/\r?\n/g, " "))}
           placeholder={PLACEHOLDER}
           rows={1}
           spellCheck={false}

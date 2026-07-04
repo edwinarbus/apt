@@ -299,7 +299,11 @@ export function PorterFab({
       onClick={onClick}
       aria-label="Porter — watched searches & applications"
       title="Porter"
-      className={`textured group relative flex aspect-square min-h-12 shrink-0 items-center justify-center rounded-full border-2 border-white/30 bg-panel/98 text-ink shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_18px_45px_-8px_rgba(0,0,0,0.9),0_5px_16px_-3px_rgba(0,0,0,0.8)] backdrop-blur-xl transition-colors hover:bg-elevated ${className}`}
+      // Fixed h-12/w-12 (not aspect-square + stretch): the header row uses
+      // items-stretch, so when the search bar wraps to two lines a stretchable
+      // Porter would grow into a tall oval — an explicit width AND height keeps
+      // it a perfect circle regardless of the row height.
+      className={`textured group relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-2 border-white/30 bg-panel/98 text-ink shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_18px_45px_-8px_rgba(0,0,0,0.9),0_5px_16px_-3px_rgba(0,0,0,0.8)] backdrop-blur-xl transition-colors hover:bg-elevated ${className}`}
     >
       <BellIcon size={20} className={drawAttention ? "animate-bell-wiggle" : undefined} />
       {!!badge && badge > 0 && (
@@ -307,8 +311,13 @@ export function PorterFab({
         // and is deliberately large so a real count reads at a glance, while
         // the bell stays centered in the circle. A ring in the button's own
         // surface color carves a clean gap between the chip and the icon.
+        // NOTE: position/zIndex are set inline, not via `absolute`/`z-10`,
+        // because `.textured > *` is UNLAYERED CSS that would otherwise force
+        // this child back to position:relative — which would drop it into the
+        // flex flow and shove the bell off-center. Inline styles outrank it.
         <span
-          className={`absolute -top-2.5 -right-2.5 z-10 flex h-6 min-w-6 items-center justify-center rounded-full bg-accent px-1.5 text-[12px] leading-none font-bold text-paper tabular-nums ring-2 ring-panel shadow-[0_2px_8px_rgba(0,0,0,0.7)] ${
+          style={{ position: "absolute", zIndex: 2 }}
+          className={`-top-2.5 -right-2.5 flex h-6 min-w-6 items-center justify-center rounded-full bg-accent px-1.5 text-[12px] leading-none font-bold text-paper tabular-nums ring-2 ring-panel shadow-[0_2px_8px_rgba(0,0,0,0.7)] ${
             drawAttention ? "animate-badge-pop" : ""
           }`}
         >
