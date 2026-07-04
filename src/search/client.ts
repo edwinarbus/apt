@@ -76,10 +76,10 @@ function fmtCandidate(c: CandidateProfile): string {
   const addr = c.addressRaw ? ` @ ${c.addressRaw}` : "";
   const dist = c.distanceMi != null ? ` | ${c.distanceMi.toFixed(1)}mi from user` : "";
   const pets = `cats:${c.catsAllowed == null ? "?" : c.catsAllowed ? "y" : "n"} dogs:${c.dogsAllowed == null ? "?" : c.dogsAllowed ? "y" : "n"}`;
-  const amen = c.amenities.length ? ` | amenities: ${c.amenities.slice(0, 6).join(", ")}` : "";
-  const vis = c.visualFeatures.length ? ` | vision: ${c.visualFeatures.slice(0, 8).join(", ")}` : "";
-  const visSum = c.visualSummary ? ` (${c.visualSummary.slice(0, 120)})` : "";
-  const desc = c.descriptionSnippet ? ` | desc: ${c.descriptionSnippet.slice(0, 140)}` : "";
+  const amen = c.amenities.length ? ` | amenities: ${c.amenities.slice(0, 5).join(", ")}` : "";
+  const vis = c.visualFeatures.length ? ` | vision: ${c.visualFeatures.slice(0, 6).join(", ")}` : "";
+  const visSum = c.visualSummary ? ` (${c.visualSummary.slice(0, 80)})` : "";
+  const desc = c.descriptionSnippet ? ` | desc: ${c.descriptionSnippet.slice(0, 90)}` : "";
   return `[${c.id}] ${beds}/${baths}${sqft} | ${price} | ${area}${addr}${dist} | laundry:${c.laundry ?? "?"} parking:${c.parking ?? "?"} ${pets}${amen}${vis}${visSum}${desc}`;
 }
 

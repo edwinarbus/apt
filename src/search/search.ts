@@ -25,9 +25,11 @@ export interface SearchOptions {
 }
 
 /** Default number of candidates handed to the ranking model. Smaller = less to
- * read and deliberate over = a noticeably faster, less over-thought call. The
- * local relevance pre-rank already surfaces the best candidates. */
-export const DEFAULT_MAX_RANK = 36;
+ * read and deliberate over = a noticeably faster, less over-thought call (fewer
+ * prefill tokens → the model's first thought lands sooner). The local relevance
+ * pre-rank already surfaces the best candidates, so the top 24 hold the genuine
+ * matches; the rest were tail results the model would have dropped anyway. */
+export const DEFAULT_MAX_RANK = 24;
 
 const STOP_WORDS = new Set([
   "the", "and", "with", "within", "near", "for", "from", "into", "onto", "that",
