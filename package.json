@@ -30,6 +30,8 @@
     "backfill:junk-addresses": "tsx scripts/backfill-junk-addresses.ts",
     "porter:deploy": "tsx scripts/porter-agent.ts",
     "porter:worker": "tsx scripts/porter-worker.ts",
+    "porter:sessions": "tsx scripts/porter-sessions.ts",
+    "worker:install": "tsx scripts/install-worker.ts",
     "db:copy-to-turso": "tsx scripts/copy-to-turso.ts",
     "db:migrate:prod": "tsx scripts/migrate-turso.ts",
     "build:sf-boundary": "tsx scripts/build-sf-boundary.ts"
