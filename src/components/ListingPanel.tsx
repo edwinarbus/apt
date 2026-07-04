@@ -250,11 +250,12 @@ export function PorterButton({ badge, onClick }: { badge?: number; onClick: () =
 /** Porter's own entry point — pulled OUT of the results panel/drawer entirely
  * (see AppShell) and placed inline next to the search bar, so it stays
  * visible and reachable regardless of panel/drawer state on any screen size.
- * `aspect-square` + a stretched flex parent makes it match the search bar's
- * actual rendered height exactly, however tall that is (a wrapped multi-line
- * query, an error banner) — never a hardcoded guess. Bigger and more visually
+ * A fixed h-12/w-12 circle (see the className note) — bigger and more visually
  * weighted than a chrome icon: this is Porter's front door, not a utility
  * toggle. */
+const WIGGLE_DELAY_MS = 500; // beat after the count arrives before the bell moves
+const WIGGLE_DURATION_MS = 700; // matches @keyframes bell-wiggle (0.7s)
+
 export function PorterFab({
   badge,
   onClick,
@@ -264,22 +265,37 @@ export function PorterFab({
   onClick: () => void;
   className?: string;
 }) {
-  // Draw the eye the first time there's something to see: when the badge goes
-  // from nothing to a real count (typically right after the saved-searches
-  // fetch resolves on page load), wiggle the bell and pop the badge in once,
-  // instead of the count just silently appearing.
-  const [drawAttention, setDrawAttention] = useState(false);
-  const prevBadgeRef = useRef(badge ?? 0);
+  // First time a real count arrives (badge 0 → n, right after the
+  // saved-searches fetch resolves once the listings are up): hold a beat, then
+  // wiggle the bell to draw the eye, and only reveal the badge AFTER the wiggle
+  // finishes — the motion leads, the number lands second, instead of both
+  // appearing at once.
+  const [wiggling, setWiggling] = useState(false);
+  const [introDone, setIntroDone] = useState(false);
+  const startedRef = useRef(false);
+  const timersRef = useRef<number[]>([]);
+  // Kick the intro off exactly once, the first time a real count arrives
+  // (badge 0 → n, right after the saved-searches fetch resolves once the
+  // listings are up): hold WIGGLE_DELAY_MS, wiggle the bell, then flip introDone
+  // so the badge pops in only after the wiggle. All state changes happen in the
+  // timer callbacks, so the effect body itself never setState-cascades.
   useEffect(() => {
-    const prev = prevBadgeRef.current;
-    const cur = badge ?? 0;
-    prevBadgeRef.current = cur;
-    if (cur > 0 && cur !== prev) {
-      setDrawAttention(true);
-      const t = window.setTimeout(() => setDrawAttention(false), 700);
-      return () => window.clearTimeout(t);
-    }
+    if ((badge ?? 0) <= 0 || startedRef.current) return;
+    startedRef.current = true;
+    timersRef.current.push(
+      window.setTimeout(() => setWiggling(true), WIGGLE_DELAY_MS),
+      window.setTimeout(() => {
+        setWiggling(false);
+        setIntroDone(true);
+      }, WIGGLE_DELAY_MS + WIGGLE_DURATION_MS),
+    );
   }, [badge]);
+  // Clear pending timers only on unmount — a mid-intro count change must NOT
+  // abort the sequence (that would leave the badge hidden forever).
+  useEffect(() => () => timersRef.current.forEach((t) => window.clearTimeout(t)), []);
+
+  // The badge only shows once the wiggle intro has finished.
+  const badgeShown = introDone && !!badge && badge > 0;
 
   return (
     <button
@@ -293,21 +309,21 @@ export function PorterFab({
       // it a perfect circle regardless of the row height.
       className={`textured group relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-2 border-white/30 bg-panel/98 text-ink shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_18px_45px_-8px_rgba(0,0,0,0.9),0_5px_16px_-3px_rgba(0,0,0,0.8)] backdrop-blur-xl transition-colors hover:bg-elevated ${className}`}
     >
-      <BellIcon size={20} className={drawAttention ? "animate-bell-wiggle" : undefined} />
-      {!!badge && badge > 0 && (
+      <BellIcon size={20} className={wiggling ? "animate-bell-wiggle" : undefined} />
+      {badgeShown && !!badge && badge > 0 && (
         // Badge sits proud of the top-right corner (not tucked into the rim)
         // and is deliberately large so a real count reads at a glance, while
         // the bell stays centered in the circle. A ring in the button's own
         // surface color carves a clean gap between the chip and the icon.
+        // It only mounts once badgeShown flips true (after the wiggle), so the
+        // one-shot animate-badge-pop plays exactly when the number lands.
         // NOTE: position/zIndex are set inline, not via `absolute`/`z-10`,
         // because `.textured > *` is UNLAYERED CSS that would otherwise force
         // this child back to position:relative — which would drop it into the
         // flex flow and shove the bell off-center. Inline styles outrank it.
         <span
           style={{ position: "absolute", zIndex: 2 }}
-          className={`-top-2.5 -right-2.5 flex h-6 min-w-6 items-center justify-center rounded-full bg-accent px-1.5 text-[12px] leading-none font-bold text-paper tabular-nums ring-2 ring-panel shadow-[0_2px_8px_rgba(0,0,0,0.7)] ${
-            drawAttention ? "animate-badge-pop" : ""
-          }`}
+          className="animate-badge-pop -top-2.5 -right-2.5 flex h-6 min-w-6 items-center justify-center rounded-full bg-accent px-1.5 text-[12px] leading-none font-bold text-paper tabular-nums ring-2 ring-panel shadow-[0_2px_8px_rgba(0,0,0,0.7)]"
         >
           {badge > 99 ? "99+" : badge}
         </span>
