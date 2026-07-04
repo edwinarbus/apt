@@ -45,6 +45,17 @@ const TERRAIN_EXAGGERATION = 1.4;
 /** Resting tilt of the browse map — a dramatic three-quarter view of the city,
  * clearly a 3D scene rather than a top-down plan. */
 const BROWSE_PITCH = 47;
+/** Flattened resting tilt for narrow/mobile viewports. At BROWSE_PITCH, the
+ * empty sky above the horizon eats a roughly fixed vertical pixel band — on a
+ * tall, narrow phone screen that band is a much bigger share of the already
+ * short height (further squeezed by the header and the results sheet) than on
+ * a wide desktop one, so mobile got a mostly-black map with barely any city
+ * visible between them. */
+const BROWSE_PITCH_MOBILE = 20;
+const MOBILE_BREAKPOINT_PX = 640;
+function browsePitch(containerWidth: number): number {
+  return containerWidth < MOBILE_BREAKPOINT_PX ? BROWSE_PITCH_MOBILE : BROWSE_PITCH;
+}
 /** Idle zoom that frames the whole tilted city with sky above it. */
 const BROWSE_ZOOM = 11.7;
 
@@ -89,16 +100,17 @@ const CITY_BOUNDS: [[number, number], [number, number]] = (() => {
 
 /** Camera that frames the whole city in the current viewport at the browse tilt. */
 function cityCamera(map: maplibregl.Map) {
+  const pitch = browsePitch(map.getContainer().clientWidth);
   const cam = map.cameraForBounds(CITY_BOUNDS, {
     padding: { top: 16, bottom: 14, left: 16, right: 16 },
     bearing: 0,
   });
   if (!cam || cam.zoom == null || !cam.center) {
-    return { center: SF_CENTER, zoom: BROWSE_ZOOM, pitch: BROWSE_PITCH, bearing: 0 };
+    return { center: SF_CENTER, zoom: BROWSE_ZOOM, pitch, bearing: 0 };
   }
   // Pitching shows more than the flat fit, so ease the zoom back a hair to keep
   // the whole city comfortably in frame with sky above it.
-  return { center: cam.center, zoom: cam.zoom - 0.1, pitch: BROWSE_PITCH, bearing: 0 };
+  return { center: cam.center, zoom: cam.zoom - 0.1, pitch, bearing: 0 };
 }
 
 const WORLD_RING: [number, number][] = [
@@ -729,7 +741,7 @@ export function MapView({
         style,
         center: SF_CENTER,
         zoom: reduced ? 12.4 : 11.4,
-        pitch: BROWSE_PITCH,
+        pitch: browsePitch(container.clientWidth),
         bearing: 0,
         minZoom: 10.4,
         maxPitch: 68,
@@ -1399,7 +1411,12 @@ export function MapView({
       }
     } else if (!searchActive && wasActive && !selectedHoodRef.current && !highlightHoodRef.current) {
       // Clearing a search glides back to the resting city view.
-      const home = { center: SF_CENTER as [number, number], zoom: BROWSE_ZOOM, pitch: BROWSE_PITCH, bearing: 0 };
+      const home = {
+        center: SF_CENTER as [number, number],
+        zoom: BROWSE_ZOOM,
+        pitch: browsePitch(map.getContainer().clientWidth),
+        bearing: 0,
+      };
       if (prefersReducedMotion() || document.visibilityState === "hidden") map.jumpTo(home);
       else map.flyTo({ ...home, duration: 1200, curve: 1.3 });
     }
