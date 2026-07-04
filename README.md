@@ -3,8 +3,7 @@
 A personal, non-commercial San Francisco apartment scout. It ingests real listings from
 several SF rental sources onto one live map, then layers Claude on top of the raw data —
 natural-language search, structured enrichment, photo understanding, a nightly agent that
-drafts applications, and a memory of what you don't want — while keeping the deterministic
-pipeline (ingestion, dedupe, scam heuristics, matching) fully functional with no API key at all.
+drafts applications, and a memory of what you don't want.
 
 The original listing is always the source of truth. Nothing here republishes data, contacts
 anyone automatically, or makes a definitive fraud/scam claim — suspicious signals are always
@@ -23,23 +22,26 @@ combining its own SF geography knowledge with each listing's structured fields, 
 and vision-extracted photo features. Reasoning streams live via adaptive thinking so you see
 *why* a match scored the way it did, not just a spinner.
 
-**Structured enrichment (Claude Haiku).** Turns each listing's scraped text into clean facts —
-amenities, laundry/parking type, pet policy, lease terms — plus a few renter-useful notes:
-what to verify before contacting, questions worth asking the landlord, and a neutral risk
-read. Grounded strictly in what the listing itself says; nothing is invented.
+**Structured enrichment & risk scoring (Claude Haiku).** Turns each listing's scraped text
+into clean facts — amenities, laundry/parking type, pet policy, lease terms — and a neutral
+risk read: concrete, observable signals (rent far below what the listing itself implies,
+a request to wire a deposit before viewing, no address given) surfaced as "verify carefully,"
+never as a fraud accusation. Also produces a few renter-useful notes: what to verify before
+contacting and questions worth asking the landlord. Grounded strictly in what the listing
+itself says; nothing is invented.
 
 **Photo vision (Claude Haiku).** Reads each listing's photos into searchable visual features
 ("hardwood floors," "bay windows," "renovated kitchen") and a condition read, so search can
 match on what a listing *looks like*, not just what it claims.
 
-**Porter — a managed agent (Claude Managed Agents, beta).** An overnight agent, not a cron
-job with a prompt bolted on: it runs nightly in its own sandboxed environment, pulls new
-listings across every saved search, ranks them, and drafts a complete, ready-to-send rental
-application for every new match. It never sends anything — the human always sends, in one
-tap, from their own inbox. An auto-send toggle (default off) exists for the fully hands-off
-version, but the agent itself never gets that power on its own.
+**Porter — a managed agent (Claude Managed Agents).** An overnight agent, not a cron job with
+a prompt bolted on: it runs nightly in its own sandboxed environment, pulls new listings
+across every saved search, ranks them, and drafts a complete rental application for every new
+match. An auto-send feature can be toggled on so the agent automatically submits the
+application, or toggled off so the user can manually review each match and email a copy
+themselves.
 
-**Preference memory (Claude Memory Store, beta).** Thumbs-down a listing and Apt writes its
+**Preference memory (Claude Memory Store).** Thumbs-down a listing and Apt writes its
 basic characteristics — price band, bedrooms, neighborhood, parking, laundry, flooring, pets —
 to a durable memory store. Once a characteristic (say, wall-to-wall carpet) shows up across
 several dislikes, Porter's shortlist quietly steers toward listings sharing *fewer* of your
@@ -71,8 +73,8 @@ Claude shows up in five different shapes across the app, each picked for what th
 | Natural-language search | Sonnet 5 | Streaming `messages.create`, adaptive thinking (`display: "summarized"`) for live reasoning, `output_config.effort: "low"` for interactive speed, prompt caching (`cache_control: ephemeral`) on the system prompt |
 | Listing enrichment | Haiku 4.5 | `messages.create` with a schema-described prompt, validated against a Zod schema, prompt caching on the system prompt, one automatic retry on a malformed reply |
 | Photo vision | Haiku 4.5 | Multi-image `messages.create`, same structured-extraction + caching pattern as enrichment |
-| Porter (overnight agent) | Sonnet 5 | **Managed Agents (beta)** — a persisted `Agent` (model + system prompt + tools) run inside a **self-hosted Environment**, driven nightly by a **scheduled Deployment** (cron). A local worker process (`porter:worker`) polls Anthropic's queue and executes the agent's bash/file tool calls against this repo's own `npm run daily` pipeline and local SQLite DB — nothing about your data leaves your machine except the model's reasoning tokens. |
-| Preference memory | — | **Memory Store (beta)** — a workspace-scoped store of small text documents (one per disliked listing), read back deterministically by the app's own light curation logic and available for Porter's session to consult |
+| Porter (overnight agent) | Sonnet 5 | **Managed Agents** — a persisted `Agent` (model + system prompt + tools) run inside a **self-hosted Environment**, driven nightly by a **scheduled Deployment** (cron). A local worker process (`porter:worker`) polls Anthropic's queue and executes the agent's bash/file tool calls against this repo's own `npm run daily` pipeline and local SQLite DB — nothing about your data leaves your machine except the model's reasoning tokens. |
+| Preference memory | — | **Memory Store** — a workspace-scoped store of small text documents (one per disliked listing), read back deterministically by the app's own light curation logic and available for Porter's session to consult |
 
 Every model call handles `stop_reason: "refusal"` explicitly and never silently drops a
 malformed response: enrichment and vision each retry once with a firmer instruction before
