@@ -1,3 +1,4 @@
+import "@/lib/load-env";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -70,7 +71,7 @@ const plist = `<?xml version="1.0" encoding="UTF-8"?>
   <array>
     <string>/bin/sh</string>
     <string>-lc</string>
-    <string>cd ${xmlEscape(cwd)} &amp;&amp; npm run porter:worker &gt;&gt; ${xmlEscape(cwd)}/data/porter-worker.log 2&gt;&amp;1</string>
+    <string>cd ${xmlEscape(cwd)} &amp;&amp; exec npm run porter:worker</string>
   </array>
   <key>RunAtLoad</key>
   <true/>
