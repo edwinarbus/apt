@@ -53,16 +53,53 @@ function Spinner() {
 
 export function SearchProgress({ progress }: { progress: SearchProgressState }) {
   const { thinking, chars, startedAt, candidates, kept, model } = progress;
+
+  // Anthropic streams thinking_delta events in bursty, multi-word chunks —
+  // per their own streaming docs, this "chunky" delivery (larger chunks
+  // alternating with smaller token-by-token ones) is expected server-side
+  // batching behavior, not something fixable upstream. Decouple network
+  // arrival from on-screen reveal with a local typewriter buffer: advance
+  // toward the latest text a few characters per animation-frame-rate tick
+  // instead of snapping straight to whatever just arrived, so it always
+  // reads as smooth individual characters. One persistent interval (not
+  // recreated on every delta) reads the latest target via a ref; the catch-up
+  // step scales with the backlog so a big burst still clears in ~200ms rather
+  // than visibly lagging behind the next chunk.
+  const thinkingRef = useRef(thinking);
+  useEffect(() => {
+    thinkingRef.current = thinking;
+  }, [thinking]);
+  const [revealed, setRevealed] = useState("");
+  const revealedRef = useRef("");
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      const target = thinkingRef.current;
+      const cur = revealedRef.current;
+      if (target.length < cur.length) {
+        // A new search reset the text — snap back instead of "unrevealing".
+        revealedRef.current = target;
+        setRevealed(target);
+        return;
+      }
+      if (cur.length >= target.length) return;
+      const step = Math.max(1, Math.ceil((target.length - cur.length) / 12));
+      const next = target.slice(0, cur.length + step);
+      revealedRef.current = next;
+      setRevealed(next);
+    }, 16);
+    return () => window.clearInterval(id);
+  }, []);
+
   // Summarized thinking arrives in paragraph-sized chunks — present each as
   // its own thought instead of one accumulated wall.
-  const paras = thinking.trim() ? thinking.trim().split(/\n{2,}/) : [];
+  const paras = revealed.trim() ? revealed.trim().split(/\n{2,}/) : [];
   const stillThinking = chars === 0;
 
   const bodyRef = useRef<HTMLDivElement | null>(null);
   // Keep the newest thought in view as it streams.
   useEffect(() => {
     if (bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
-  }, [thinking]);
+  }, [revealed]);
 
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
