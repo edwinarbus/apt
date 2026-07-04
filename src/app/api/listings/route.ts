@@ -182,5 +182,17 @@ export async function GET() {
     listings: payload,
     generatedAt: new Date().toISOString(),
   };
-  return NextResponse.json(body);
+  // Cache at Vercel's edge so return visits are served instantly from the CDN
+  // instead of paying a serverless cold start + DB round-trip every time.
+  // stale-while-revalidate keeps loads instant well past the fresh window: an
+  // idle-day visit gets the cached copy immediately while a fresh one is fetched
+  // in the background. The browser itself doesn't cache (max-age=0), so an
+  // in-session reload still reflects optimistic status changes right away.
+  return NextResponse.json(body, {
+    headers: {
+      "Cache-Control": "public, max-age=0, must-revalidate",
+      "CDN-Cache-Control": "public, s-maxage=60, stale-while-revalidate=86400",
+      "Vercel-CDN-Cache-Control": "public, s-maxage=60, stale-while-revalidate=86400",
+    },
+  });
 }
