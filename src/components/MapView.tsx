@@ -1480,9 +1480,16 @@ export function MapView({
         // no rotation, a modest zoom — plus a downward offset that seats the pin
         // in the lower third so the card always has room above it.
         const mobile = map.getContainer().clientWidth < 768;
+        // Floor, not "current + a bit": selecting listing A zooms in, which
+        // raises map.getZoom() — then selecting listing B read THAT as the new
+        // "current zoom" and added another +0.8 on top of it, compounding
+        // further with every click (never zooming back out). Math.max against
+        // a fixed target never zooms below it and never zooms out past
+        // wherever the user manually is, but repeated selections land at the
+        // same zoom instead of ratcheting up forever.
         const target = {
           center: [listing.longitude, listing.latitude] as [number, number],
-          zoom: mobile ? Math.max(map.getZoom(), 14.6) : Math.max(map.getZoom() + 0.8, 15.4),
+          zoom: Math.max(map.getZoom(), mobile ? 14.6 : 15.4),
           pitch: mobile ? 28 : 58,
           bearing: mobile ? 0 : -13,
         };
