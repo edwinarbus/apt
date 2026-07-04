@@ -200,7 +200,7 @@ export async function verifySource(
 ): Promise<VerificationReport> {
   const started = Date.now();
   const log = opts.log ?? (() => {});
-  const source = db.select().from(sources).where(eq(sources.id, sourceId)).get();
+  const source = await db.select().from(sources).where(eq(sources.id, sourceId)).get();
   if (!source) throw new Error(`unknown source: ${sourceId}`);
 
   const adapter = getAdapter(source.adapterType);
@@ -212,12 +212,12 @@ export async function verifySource(
           ? `disabled (${source.registryStatus.replaceAll("_", " ")})`
           : `disabled, no adapter for type "${source.adapterType}" (${source.registryStatus.replaceAll("_", " ")})`;
     const report = skipped(source, reason);
-    if (opts.save !== false) persistVerification(db, source.id, report);
+    if (opts.save !== false) await persistVerification(db, source.id, report);
     return report;
   }
   if (!adapter) {
     const report = skipped(source, `no adapter implemented for type "${source.adapterType}"`);
-    if (opts.save !== false) persistVerification(db, source.id, report);
+    if (opts.save !== false) await persistVerification(db, source.id, report);
     return report;
   }
 
@@ -231,7 +231,7 @@ export async function verifySource(
         source,
         `no fixtures recorded for adapter type "${source.adapterType}" — run with --live`,
       );
-      if (opts.save !== false) persistVerification(db, source.id, report);
+      if (opts.save !== false) await persistVerification(db, source.id, report);
       return report;
     }
     fetcher = new FixtureFetcher(routes);
@@ -264,7 +264,8 @@ export async function verifySource(
       errors.push("robots.txt disallows the listing path — the runner will skip this source");
     }
     if (opts.save !== false) {
-      db.update(sources)
+      await db
+        .update(sources)
         .set({
           robotsStatus: robots.status,
           robotsCheckedAt: nowIso(),
@@ -280,7 +281,7 @@ export async function verifySource(
   // detail fetches, exactly as a real run would).
   const knownRows =
     mode === "live"
-      ? db
+      ? await db
           .select({
             sourceListingId: listings.sourceListingId,
             title: listings.title,
@@ -432,16 +433,17 @@ export async function verifySource(
     staleSafety,
     durationMs: Date.now() - started,
   };
-  if (opts.save !== false) persistVerification(db, source.id, report);
+  if (opts.save !== false) await persistVerification(db, source.id, report);
   return report;
 }
 
-function persistVerification(
+async function persistVerification(
   db: Db,
   sourceId: string,
   report: VerificationReport,
-): void {
-  db.update(sources)
+): Promise<void> {
+  await db
+    .update(sources)
     .set({
       lastVerificationStatus: report.status,
       lastVerificationAt: nowIso(),

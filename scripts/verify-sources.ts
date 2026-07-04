@@ -32,10 +32,10 @@ async function main() {
   const sourceId = sourceIdx >= 0 ? args[sourceIdx + 1] : null;
 
   const mode: "live" | "fixture" = live && !dryRun ? "live" : "fixture";
-  const db = createDb();
+  const db = await createDb();
   const log = json ? () => {} : (m: string) => console.log(`  ${m}`);
 
-  const all = db.select().from(sources).all();
+  const all = await db.select().from(sources).all();
   const targets = sourceId
     ? all.filter((s) => s.id === sourceId)
     : enabledOnly

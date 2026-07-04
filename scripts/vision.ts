@@ -57,7 +57,7 @@ async function main() {
     process.exit(1);
   }
 
-  const db = createDb();
+  const db = await createDb();
   const client = new AnthropicVisionClient({ model });
   const log = (m: string) => console.log(m);
 

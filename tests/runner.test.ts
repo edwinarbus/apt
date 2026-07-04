@@ -10,9 +10,9 @@ const OPTS = { skipRobotsCheck: true, geocode: false };
 
 describe("ingestion runner", () => {
   let db: Db;
-  beforeEach(() => {
-    db = testDb();
-    seedStubSource(db);
+  beforeEach(async () => {
+    db = await testDb();
+    await seedStubSource(db);
   });
 
   it("inserts new listings with first_seen events and records a run", async () => {
@@ -23,16 +23,16 @@ describe("ingestion runner", () => {
     expect(summary.newListings).toBe(2);
     expect(summary.listingsFound).toBe(2);
 
-    const rows = db.select().from(listings).all();
+    const rows = await db.select().from(listings).all();
     expect(rows).toHaveLength(2);
     expect(rows[0].firstSeenAt).toBe(rows[0].lastSeenAt);
     expect(rows[0].staleStatus).toBe("active");
     expect(rows[0].contentHash).toBeTruthy();
 
-    const events = db.select().from(listingEvents).all();
+    const events = await db.select().from(listingEvents).all();
     expect(events.filter((e) => e.eventType === "first_seen")).toHaveLength(2);
 
-    const runs = db.select().from(sourceRuns).all();
+    const runs = await db.select().from(sourceRuns).all();
     expect(runs).toHaveLength(1);
     expect(runs[0].status).toBe("success");
     expect(runs[0].staleProcessed).toBe(true);
@@ -47,8 +47,8 @@ describe("ingestion runner", () => {
 
     expect(second.newListings).toBe(0);
     expect(second.changedListings).toBe(0);
-    expect(db.select().from(listings).all()).toHaveLength(1);
-    const events = db.select().from(listingEvents).all();
+    expect(await db.select().from(listings).all()).toHaveLength(1);
+    const events = await db.select().from(listingEvents).all();
     expect(events).toHaveLength(1); // just the original first_seen
   });
 
@@ -60,14 +60,14 @@ describe("ingestion runner", () => {
 
     expect(summary.priceChangedListings).toBe(1);
     expect(summary.changedListings).toBe(1);
-    const event = db
+    const event = await db
       .select()
       .from(listingEvents)
       .where(eq(listingEvents.eventType, "price_change"))
       .get();
     expect(event?.oldValue).toBe("3000");
     expect(event?.newValue).toBe("2800");
-    const row = db.select().from(listings).all()[0];
+    const row = (await db.select().from(listings).all())[0];
     expect(row.priceMonthly).toBe(2800);
   });
 
@@ -80,7 +80,7 @@ describe("ingestion runner", () => {
       stubSuccess([makeListing({ sourceListingId: "a1" })]);
       const s = await runSource(db, "stub_src", OPTS);
       expect(s.staleProcessed).toBe(true);
-      const a2 = db.select().from(listings).where(eq(listings.sourceListingId, "a2")).get();
+      const a2 = await db.select().from(listings).where(eq(listings.sourceListingId, "a2")).get();
       expect(a2?.staleStatus).toBe(expected);
       expect(a2?.missingSince).toBeTruthy();
     }
@@ -95,10 +95,10 @@ describe("ingestion runner", () => {
     expect(failed.status).toBe("failed");
     expect(failed.staleProcessed).toBe(false);
 
-    const a1 = db.select().from(listings).where(eq(listings.sourceListingId, "a1")).get();
+    const a1 = await db.select().from(listings).where(eq(listings.sourceListingId, "a1")).get();
     expect(a1?.staleStatus).toBe("active");
     expect(a1?.missingSince).toBeNull();
-    const run = db.select().from(sourceRuns).all().at(-1);
+    const run = (await db.select().from(sourceRuns).all()).at(-1);
     expect(run?.status).toBe("failed");
     expect(run?.staleProcessed).toBe(false);
   });
@@ -116,7 +116,7 @@ describe("ingestion runner", () => {
     expect(partial.status).toBe("partial");
     expect(partial.staleProcessed).toBe(false);
 
-    const a2 = db.select().from(listings).where(eq(listings.sourceListingId, "a2")).get();
+    const a2 = await db.select().from(listings).where(eq(listings.sourceListingId, "a2")).get();
     expect(a2?.staleStatus).toBe("active");
   });
 
@@ -127,7 +127,7 @@ describe("ingestion runner", () => {
     const s = await runSource(db, "stub_src", OPTS);
     expect(s.status).toBe("partial");
     expect(s.warnings.join(" ")).toContain("zero listings");
-    const a1 = db.select().from(listings).all()[0];
+    const a1 = (await db.select().from(listings).all())[0];
     expect(a1.staleStatus).toBe("active");
   });
 
@@ -139,10 +139,10 @@ describe("ingestion runner", () => {
     stubSuccess([makeListing({ sourceListingId: "a1" }), makeListing({ sourceListingId: "a2" })]);
     await runSource(db, "stub_src", OPTS); // a2 back
 
-    const a2 = db.select().from(listings).where(eq(listings.sourceListingId, "a2")).get();
+    const a2 = await db.select().from(listings).where(eq(listings.sourceListingId, "a2")).get();
     expect(a2?.staleStatus).toBe("active");
     expect(a2?.missingSince).toBeNull();
-    const reappear = db
+    const reappear = await db
       .select()
       .from(listingEvents)
       .where(eq(listingEvents.eventType, "reappeared"))
@@ -174,7 +174,7 @@ describe("ingestion runner", () => {
     ]);
     await runSource(db, "stub_src", OPTS);
 
-    const row = db.select().from(listings).all()[0];
+    const row = (await db.select().from(listings).all())[0];
     expect(row.squareFeet).toBe(720);
     expect(row.laundryNormalized).toBe("in_unit");
     expect(row.photos).toHaveLength(2);
@@ -182,7 +182,7 @@ describe("ingestion runner", () => {
   });
 
   it("detects duplicates across sources by address+unit", async () => {
-    seedStubSource(db, "stub_src_b");
+    await seedStubSource(db, "stub_src_b");
     stubSuccess([
       makeListing({
         sourceListingId: "a1",
@@ -205,7 +205,7 @@ describe("ingestion runner", () => {
     const s = await runSource(db, "stub_src_b", OPTS);
 
     expect(s.suspectedDuplicates).toBe(1);
-    const rows = db.select().from(listings).all();
+    const rows = await db.select().from(listings).all();
     const groups = new Set(rows.map((r) => r.duplicateGroupId).filter(Boolean));
     expect(groups.size).toBe(1);
     expect(rows.every((r) => r.duplicateGroupId != null)).toBe(true);
@@ -226,19 +226,19 @@ describe("ingestion runner", () => {
     ]);
     const s = await runSource(db, "stub_src", OPTS);
     expect(s.suspectedScams).toBe(1);
-    const scam = db.select().from(listings).where(eq(listings.sourceListingId, "scam1")).get();
+    const scam = await db.select().from(listings).where(eq(listings.sourceListingId, "scam1")).get();
     expect(scam?.scamRiskLevel).toBe("verify_carefully");
     expect(scam?.scamWarnings?.length).toBeGreaterThan(0);
-    const ok = db.select().from(listings).where(eq(listings.sourceListingId, "ok1")).get();
+    const ok = await db.select().from(listings).where(eq(listings.sourceListingId, "ok1")).get();
     expect(ok?.scamRiskLevel).toBe("none");
   });
 
   it("skips disabled sources unless forced", async () => {
     const { sources } = await import("@/db/schema");
-    db.update(sources).set({ enabled: false }).where(eq(sources.id, "stub_src")).run();
+    await db.update(sources).set({ enabled: false }).where(eq(sources.id, "stub_src")).run();
     const skipped = await runSource(db, "stub_src", OPTS);
     expect(skipped.status).toBe("skipped");
-    expect(db.select().from(sourceRuns).all()).toHaveLength(0);
+    expect(await db.select().from(sourceRuns).all()).toHaveLength(0);
 
     stubSuccess([makeListing({ sourceListingId: "a1" })]);
     const forced = await runSource(db, "stub_src", { ...OPTS, force: true });
@@ -248,16 +248,18 @@ describe("ingestion runner", () => {
   it("supports user listing status updates", async () => {
     stubSuccess([makeListing({ sourceListingId: "a1" })]);
     await runSource(db, "stub_src", OPTS);
-    const row = db.select().from(listings).all()[0];
+    const row = (await db.select().from(listings).all())[0];
 
-    db.insert(userListingStates)
+    await db
+      .insert(userListingStates)
       .values({ listingId: row.id, status: "saved", note: "tour sat", updatedAt: nowIso() })
       .onConflictDoUpdate({
         target: userListingStates.listingId,
         set: { status: "saved", note: "tour sat", updatedAt: nowIso() },
       })
       .run();
-    db.insert(userListingStates)
+    await db
+      .insert(userListingStates)
       .values({ listingId: row.id, status: "contacted", note: null, updatedAt: nowIso() })
       .onConflictDoUpdate({
         target: userListingStates.listingId,
@@ -265,7 +267,7 @@ describe("ingestion runner", () => {
       })
       .run();
 
-    const state = db.select().from(userListingStates).all();
+    const state = await db.select().from(userListingStates).all();
     expect(state).toHaveLength(1);
     expect(state[0].status).toBe("contacted");
   });
@@ -273,27 +275,27 @@ describe("ingestion runner", () => {
 
 describe("price history", () => {
   let db: Db;
-  beforeEach(() => {
-    db = testDb();
-    seedStubSource(db);
+  beforeEach(async () => {
+    db = await testDb();
+    await seedStubSource(db);
   });
 
   it("records a baseline row on first sight and one row per change — never redundant rows", async () => {
     const { priceHistory } = await import("@/db/schema");
     stubSuccess([makeListing({ sourceListingId: "a1", priceMonthly: 3000, priceRaw: "$3,000" })]);
     await runSource(db, "stub_src", OPTS);
-    expect(db.select().from(priceHistory).all()).toHaveLength(1);
+    expect(await db.select().from(priceHistory).all()).toHaveLength(1);
 
     // Unchanged re-run: no new rows.
     stubSuccess([makeListing({ sourceListingId: "a1", priceMonthly: 3000, priceRaw: "$3,000" })]);
     await runSource(db, "stub_src", OPTS);
-    expect(db.select().from(priceHistory).all()).toHaveLength(1);
+    expect(await db.select().from(priceHistory).all()).toHaveLength(1);
 
     // Price change: exactly one new row with raw text preserved.
     stubSuccess([makeListing({ sourceListingId: "a1", priceMonthly: 2800, priceRaw: "$2,800/mo" })]);
     const s = await runSource(db, "stub_src", OPTS);
     expect(s.priceHistoryEntries).toBe(1);
-    const rows = db.select().from(priceHistory).all();
+    const rows = await db.select().from(priceHistory).all();
     expect(rows).toHaveLength(2);
     expect(rows.map((r) => r.priceMonthly).sort()).toEqual([2800, 3000]);
     expect(rows.find((r) => r.priceMonthly === 2800)?.priceRaw).toBe("$2,800/mo");
@@ -306,7 +308,7 @@ describe("price history", () => {
     callForPrice.priceRaw = "Call for price";
     stubSuccess([callForPrice]);
     await runSource(db, "stub_src", OPTS);
-    const rows = db.select().from(priceHistory).all();
+    const rows = await db.select().from(priceHistory).all();
     expect(rows).toHaveLength(1);
     expect(rows[0].priceMonthly).toBeNull();
     expect(rows[0].priceRaw).toBe("Call for price");
@@ -325,7 +327,7 @@ describe("price history", () => {
       }),
     ]);
     await runSource(db, "stub_src", OPTS);
-    const rows = db.select().from(priceHistory).all();
+    const rows = await db.select().from(priceHistory).all();
     expect(rows).toHaveLength(2);
     const latest = rows.find((r) => r.priceEffectiveMonthly === 3300);
     expect(latest?.concessionsRaw).toContain("1 month free");
@@ -334,8 +336,8 @@ describe("price history", () => {
 
 describe("backfill idempotency", () => {
   it("re-running identical data changes nothing: no dupes, firstSeenAt and history preserved", async () => {
-    const db = testDb();
-    seedStubSource(db);
+    const db = await testDb();
+    await seedStubSource(db);
     const { priceHistory, listingEvents: events } = await import("@/db/schema");
 
     const data = () => [
@@ -344,7 +346,7 @@ describe("backfill idempotency", () => {
     ];
     stubSuccess(data());
     await runSource(db, "stub_src", OPTS);
-    const firstPass = db.select().from(listings).all();
+    const firstPass = await db.select().from(listings).all();
     const firstSeenById = new Map(firstPass.map((l) => [l.sourceListingId, l.firstSeenAt]));
 
     for (let i = 0; i < 3; i++) {
@@ -356,21 +358,21 @@ describe("backfill idempotency", () => {
       expect(s.missingListings).toBe(0);
     }
 
-    const rows = db.select().from(listings).all();
+    const rows = await db.select().from(listings).all();
     expect(rows).toHaveLength(2); // no duplicates created
     for (const row of rows) {
       expect(row.firstSeenAt).toBe(firstSeenById.get(row.sourceListingId));
       expect(row.staleStatus).toBe("active");
     }
-    expect(db.select().from(priceHistory).all()).toHaveLength(2); // baselines only
+    expect(await db.select().from(priceHistory).all()).toHaveLength(2); // baselines only
     expect(
-      db.select().from(events).all().filter((e) => e.eventType === "price_change"),
+      (await db.select().from(events).all()).filter((e) => e.eventType === "price_change"),
     ).toHaveLength(0);
   });
 
   it("staleUpdates:false blocks missing-marking even on a complete successful run", async () => {
-    const db = testDb();
-    seedStubSource(db);
+    const db = await testDb();
+    await seedStubSource(db);
     stubSuccess([makeListing({ sourceListingId: "a1" }), makeListing({ sourceListingId: "a2" })]);
     await runSource(db, "stub_src", OPTS);
 
@@ -378,16 +380,16 @@ describe("backfill idempotency", () => {
     const s = await runSource(db, "stub_src", { ...OPTS, staleUpdates: false });
     expect(s.staleProcessed).toBe(false);
     expect(s.warnings.join(" ")).toContain("disabled by flag");
-    const a2 = db.select().from(listings).where(eq(listings.sourceListingId, "a2")).get();
+    const a2 = await db.select().from(listings).where(eq(listings.sourceListingId, "a2")).get();
     expect(a2?.staleStatus).toBe("active");
   });
 });
 
 describe("duplicate group persistence", () => {
   it("stores confidence, members, and primary; prunes groups that dissolve", async () => {
-    const db = testDb();
-    seedStubSource(db);
-    seedStubSource(db, "stub_src_b");
+    const db = await testDb();
+    await seedStubSource(db);
+    await seedStubSource(db, "stub_src_b");
     const { duplicateGroups } = await import("@/db/schema");
 
     stubSuccess([
@@ -408,7 +410,7 @@ describe("duplicate group persistence", () => {
     const s = await runSource(db, "stub_src_b", OPTS);
     expect(s.duplicateGroupsTouched).toBe(1);
 
-    const groups = db.select().from(duplicateGroups).all();
+    const groups = await db.select().from(duplicateGroups).all();
     expect(groups).toHaveLength(1);
     expect(groups[0].confidence).toBe("high");
     expect(groups[0].reasons).toContain("same_address_unit");
@@ -418,7 +420,8 @@ describe("duplicate group persistence", () => {
     // The duplicate disappears from source B -> after B's next complete run,
     // dedupe re-evaluates db-wide. Marking b1 unavailable dissolves the group.
     const { listings: listingsTable } = await import("@/db/schema");
-    db.update(listingsTable)
+    await db
+      .update(listingsTable)
       .set({ staleStatus: "likely_unavailable" })
       .where(eq(listingsTable.sourceListingId, "b1"))
       .run();
@@ -426,8 +429,8 @@ describe("duplicate group persistence", () => {
       makeListing({ sourceListingId: "a1", addressRaw: "1301 18th St", unitNumberPublic: "2" }),
     ]);
     await runSource(db, "stub_src", OPTS);
-    expect(db.select().from(duplicateGroups).all()).toHaveLength(0);
-    const a1 = db.select().from(listingsTable).where(eq(listingsTable.sourceListingId, "a1")).get();
+    expect(await db.select().from(duplicateGroups).all()).toHaveLength(0);
+    const a1 = await db.select().from(listingsTable).where(eq(listingsTable.sourceListingId, "a1")).get();
     expect(a1?.duplicateGroupId).toBeNull();
   });
 });

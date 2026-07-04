@@ -1,11 +1,12 @@
-import Database from "better-sqlite3";
-import { drizzle, type BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import { migrate } from "drizzle-orm/better-sqlite3/migrator";
+import { createClient } from "@libsql/client";
+import { drizzle, type LibSQLDatabase } from "drizzle-orm/libsql";
+import { migrate } from "drizzle-orm/libsql/migrator";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import * as schema from "./schema";
 
-export type Db = BetterSQLite3Database<typeof schema>;
+export type Db = LibSQLDatabase<typeof schema>;
 
 export const DEFAULT_DB_PATH = path.join(process.cwd(), "data", "apt.db");
 
@@ -13,26 +14,50 @@ export const DEFAULT_DB_PATH = path.join(process.cwd(), "data", "apt.db");
  * Open (and migrate) a database. Both the Next.js app and CLI scripts use
  * this; tests pass ":memory:" for isolation. Migrations live in ./drizzle and
  * are generated with `npm run db:generate`.
+ *
+ * One driver (libSQL) for every environment: local dev/tests/CLI scripts talk
+ * to a plain SQLite file via a `file:` URL (no Turso account needed), while
+ * production talks to a Turso-hosted database over the network. Vercel
+ * Functions have a read-only filesystem outside /tmp, so a local file can't
+ * work there — TURSO_DATABASE_URL/TURSO_AUTH_TOKEN switch to the remote path.
  */
-export function createDb(dbPath?: string): Db {
-  const resolved = dbPath ?? process.env.APT_DB_PATH ?? DEFAULT_DB_PATH;
-  if (resolved !== ":memory:") {
+export async function createDb(dbPath?: string): Promise<Db> {
+  const explicit = dbPath ?? process.env.APT_DB_PATH;
+  const tursoUrl = !explicit ? process.env.TURSO_DATABASE_URL : undefined;
+
+  let url: string;
+  let authToken: string | undefined;
+  if (tursoUrl) {
+    url = tursoUrl;
+    authToken = process.env.TURSO_AUTH_TOKEN;
+  } else {
+    let resolved = explicit ?? DEFAULT_DB_PATH;
+    if (resolved === ":memory:") {
+      // libsql's local client reconnects internally after every db.transaction()
+      // call (it nulls its cached connection so the next statement lazily reopens
+      // one) — for a real file that's a no-op, but SQLite's anonymous ":memory:"
+      // has no data to reopen, so it would silently start over on a fresh, empty
+      // database mid-test. A real (if throwaway) temp file sidesteps the whole
+      // class of reconnect/shared-cache quirks and still gives each test its own
+      // isolated, disposable database.
+      resolved = path.join(os.tmpdir(), `apt-test-${crypto.randomUUID()}.db`);
+    }
     fs.mkdirSync(path.dirname(resolved), { recursive: true });
+    url = `file:${resolved}`;
   }
-  const sqlite = new Database(resolved);
-  sqlite.pragma("journal_mode = WAL");
-  sqlite.pragma("foreign_keys = ON");
-  const db = drizzle(sqlite, { schema });
-  migrate(db, {
+
+  const client = createClient({ url, authToken });
+  const db = drizzle(client, { schema });
+  await migrate(db, {
     migrationsFolder: path.join(process.cwd(), "drizzle"),
   });
   return db;
 }
 
-let singleton: Db | null = null;
+let singleton: Promise<Db> | null = null;
 
 /** Shared connection for the Next.js server process. */
-export function getDb(): Db {
+export function getDb(): Promise<Db> {
   singleton ??= createDb();
   return singleton;
 }

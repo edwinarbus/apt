@@ -42,7 +42,7 @@ async function main() {
   const doVision = !args.includes("--no-vision") && hasKey;
   const enrichCap = numFlag(args, "--enrich-cap", 1.0);
   const visionCap = numFlag(args, "--vision-cap", 2.0);
-  const db = createDb();
+  const db = await createDb();
   const log = (m: string) => console.log(`  ${m}`);
   const stamp = () => new Date().toISOString();
 
@@ -71,7 +71,7 @@ async function main() {
   }
 
   console.log(`\n[${stamp()}] computing saved-search digest…`);
-  const digest = computeDigest(db, { dryRun: false });
+  const digest = await computeDigest(db, { dryRun: false });
   console.log(formatDigestConsole(digest));
 
   const failed = summaries.filter((s) => s.status === "failed").length;

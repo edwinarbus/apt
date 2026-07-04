@@ -16,17 +16,17 @@ import type { RunStatus } from "@/core/types";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const db = getDb();
+  const db = await getDb();
 
-  const rows = db.select().from(listings).all();
-  const states = db.select().from(userListingStates).all();
+  const rows = await db.select().from(listings).all();
+  const states = await db.select().from(userListingStates).all();
   const stateByListing = new Map(states.map((s) => [s.listingId, s]));
 
-  const sourceRows = db.select().from(sources).all();
+  const sourceRows = await db.select().from(sources).all();
   const sourceById = new Map(sourceRows.map((s) => [s.id, s]));
 
   // Optional AI vision tags/search text (present only for analyzed listings).
-  const visionRows = db
+  const visionRows = await db
     .select({
       listingId: listingVision.listingId,
       features: listingVision.features,
@@ -37,7 +37,7 @@ export async function GET() {
   const visionByListing = new Map(visionRows.map((v) => [v.listingId, v]));
 
   // Latest run per source.
-  const runs = db
+  const runs = await db
     .select({
       sourceId: sourceRuns.sourceId,
       status: sourceRuns.status,
@@ -59,7 +59,7 @@ export async function GET() {
   // Latest price change per listing.
   const priceEvents =
     rows.length > 0
-      ? db
+      ? await db
           .select()
           .from(listingEvents)
           .where(eq(listingEvents.eventType, "price_change"))

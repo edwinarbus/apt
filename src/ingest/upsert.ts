@@ -48,7 +48,7 @@ function precisionRank(p: string | null | undefined): number {
   return PRECISION_RANK[p ?? "unknown"] ?? 0;
 }
 
-function addEvent(
+async function addEvent(
   db: Db,
   listingId: string,
   runId: string | null,
@@ -57,8 +57,9 @@ function addEvent(
   newValue: string | null,
   now: string,
   note?: string,
-): void {
-  db.insert(listingEvents)
+): Promise<void> {
+  await db
+    .insert(listingEvents)
     .values({
       id: newId("evt"),
       listingId,
@@ -91,15 +92,16 @@ function finalize(source: SourceRow, item: NormalizedListing) {
   };
 }
 
-function recordPriceHistory(
+async function recordPriceHistory(
   db: Db,
   listingId: string,
   runId: string,
   now: string,
   item: NormalizedListing,
   fallbackDeposit: string | null,
-): void {
-  db.insert(priceHistory)
+): Promise<void> {
+  await db
+    .insert(priceHistory)
     .values({
       id: newId("prc"),
       listingId,
@@ -114,15 +116,15 @@ function recordPriceHistory(
     .run();
 }
 
-export function upsertListing(
+export async function upsertListing(
   db: Db,
   source: SourceRow,
   item: NormalizedListing,
   runId: string,
   now: string,
-): UpsertOutcome {
+): Promise<UpsertOutcome> {
   const computed = finalize(source, item);
-  const existing = db
+  const existing = await db
     .select()
     .from(listings)
     .where(
@@ -138,7 +140,8 @@ export function upsertListing(
     const goneAlready =
       item.listingStatus === "removed_by_source" ||
       item.listingStatus === "expired";
-    db.insert(listings)
+    await db
+      .insert(listings)
       .values({
         id,
         sourceId: source.id,
@@ -226,10 +229,10 @@ export function upsertListing(
         updatedAt: now,
       })
       .run();
-    addEvent(db, id, runId, "first_seen", null, item.priceMonthly?.toString() ?? null, now);
+    await addEvent(db, id, runId, "first_seen", null, item.priceMonthly?.toString() ?? null, now);
     // Baseline price-history entry (even when price is null/"call for price" —
     // the raw text is the observation).
-    recordPriceHistory(db, id, runId, now, item, null);
+    await recordPriceHistory(db, id, runId, now, item, null);
     return {
       listingId: id,
       kind: "new",
@@ -242,14 +245,14 @@ export function upsertListing(
   return updateExisting(db, existing, item, computed, runId, now);
 }
 
-function updateExisting(
+async function updateExisting(
   db: Db,
   existing: ListingRow,
   item: NormalizedListing,
   computed: ReturnType<typeof finalize>,
   runId: string,
   now: string,
-): UpsertOutcome {
+): Promise<UpsertOutcome> {
   const patch: Partial<ListingRow> = {
     lastSeenAt: now,
     updatedAt: now,
@@ -259,14 +262,14 @@ function updateExisting(
   let reappeared = false;
   if (isMissingStatus(existing.staleStatus as never)) {
     reappeared = true;
-    addEvent(db, existing.id, runId, "reappeared", existing.staleStatus, "active", now);
+    await addEvent(db, existing.id, runId, "reappeared", existing.staleStatus, "active", now);
   }
   patch.staleStatus = "active";
   patch.missingSince = null;
 
   const newListingStatus = item.listingStatus ?? "active";
   if (newListingStatus !== existing.listingStatus) {
-    addEvent(
+    await addEvent(
       db, existing.id, runId, "listing_status_change",
       existing.listingStatus, newListingStatus, now,
     );
@@ -285,7 +288,7 @@ function updateExisting(
     item.priceMonthly !== existing.priceMonthly
   ) {
     priceChanged = true;
-    addEvent(
+    await addEvent(
       db, existing.id, runId, "price_change",
       String(existing.priceMonthly), String(item.priceMonthly), now,
     );
@@ -307,7 +310,7 @@ function updateExisting(
     item.priceEffectiveMonthly !== existing.priceEffectiveMonthly;
   const priceHistoryRecorded = priceChanged || effectiveChanged;
   if (priceHistoryRecorded) {
-    recordPriceHistory(db, existing.id, runId, now, item, existing.depositRaw);
+    await recordPriceHistory(db, existing.id, runId, now, item, existing.depositRaw);
   }
 
   if (!existing.canonicalUrl && computed.canonicalUrl) {
@@ -322,7 +325,7 @@ function updateExisting(
   if (item.fetchDepth === "detail") {
     contentChanged = computed.contentHash !== existing.contentHash;
     if (contentChanged && !priceChanged) {
-      addEvent(
+      await addEvent(
         db, existing.id, runId, "content_change",
         existing.contentHash, computed.contentHash, now,
       );
@@ -407,7 +410,7 @@ function updateExisting(
     patch.geocodePrecision = item.geocodePrecision ?? "unknown";
   }
 
-  db.update(listings).set(patch).where(eq(listings.id, existing.id)).run();
+  await db.update(listings).set(patch).where(eq(listings.id, existing.id)).run();
 
   const changed = contentChanged || priceChanged;
   return {

@@ -60,18 +60,19 @@ function toMatchable(row: typeof listings.$inferSelect): MatchableListing {
  * listings currently match, how many are new in the last day, and (for
  * auto-apply searches) a drafted application for the freshest match. */
 export async function GET() {
-  const db = getDb();
-  const searches = db.select().from(savedSearches).orderBy(desc(savedSearches.createdAt)).all();
-  const rows = db.select().from(listings).all();
+  const db = await getDb();
+  const searches = await db.select().from(savedSearches).orderBy(desc(savedSearches.createdAt)).all();
+  const rows = await db.select().from(listings).all();
   const statusById = new Map(
-    db.select().from(userListingStates).all().map((s) => [s.listingId, s.status as UserListingStatus]),
+    (await db.select().from(userListingStates).all()).map((s) => [s.listingId, s.status as UserListingStatus]),
   );
   const visualTagsById = new Map(
-    db
-      .select({ listingId: listingVision.listingId, features: listingVision.features })
-      .from(listingVision)
-      .all()
-      .map((v) => [v.listingId, v.features ?? []]),
+    (
+      await db
+        .select({ listingId: listingVision.listingId, features: listingVision.features })
+        .from(listingVision)
+        .all()
+    ).map((v) => [v.listingId, v.features ?? []]),
   );
   const rowsById = new Map(rows.map((r) => [r.id, r]));
   const now = Date.now();
@@ -197,10 +198,11 @@ export async function POST(req: Request) {
     autoApply: body.autoApply ?? false,
   };
 
-  const db = getDb();
+  const db = await getDb();
   const now = nowIso();
   const id = newId("srch");
-  db.insert(savedSearches)
+  await db
+    .insert(savedSearches)
     .values({ id, name, criteria, enabled: true, createdAt: now, updatedAt: now })
     .run();
 

@@ -33,24 +33,26 @@ const EXAMPLES: Array<{ name: string; criteria: SavedSearchCriteria }> = [
   },
 ];
 
-const db = createDb();
+const db = await createDb();
 const now = nowIso();
 let created = 0;
 let updated = 0;
 for (const ex of EXAMPLES) {
-  const existing = db
+  const existing = await db
     .select()
     .from(savedSearches)
     .where(eq(savedSearches.name, ex.name))
     .get();
   if (existing) {
-    db.update(savedSearches)
+    await db
+      .update(savedSearches)
       .set({ criteria: ex.criteria, updatedAt: now })
       .where(eq(savedSearches.id, existing.id))
       .run();
     updated++;
   } else {
-    db.insert(savedSearches)
+    await db
+      .insert(savedSearches)
       .values({
         id: newId("srch"),
         name: ex.name,

@@ -5,13 +5,14 @@ import type { AdapterRunResult, SourceAdapter } from "@/adapters/types";
 import { emptyRunResult } from "@/adapters/types";
 import type { NormalizedListing } from "@/core/types";
 
-export function testDb(): Db {
+export async function testDb(): Promise<Db> {
   return createDb(":memory:");
 }
 
-export function seedStubSource(db: Db, id = "stub_src"): string {
+export async function seedStubSource(db: Db, id = "stub_src"): Promise<string> {
   const now = nowIso();
-  db.insert(sources)
+  await db
+    .insert(sources)
     .values({
       id,
       name: "Stub Source",

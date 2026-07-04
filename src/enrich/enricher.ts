@@ -51,21 +51,21 @@ interface Candidate {
   contentHash: string;
 }
 
-export function selectCandidates(
+export async function selectCandidates(
   db: Db,
   opts: EnrichOptions,
-): { candidates: Candidate[]; skippedUnchanged: number } {
+): Promise<{ candidates: Candidate[]; skippedUnchanged: number }> {
   const sourceNameById = new Map(
-    db.select({ id: sources.id, name: sources.name }).from(sources).all()
+    (await db.select({ id: sources.id, name: sources.name }).from(sources).all())
       .map((s) => [s.id, s.name]),
   );
 
   const rows = opts.listingId
-    ? db.select().from(listings).where(eq(listings.id, opts.listingId)).all()
-    : db.select().from(listings).all();
+    ? await db.select().from(listings).where(eq(listings.id, opts.listingId)).all()
+    : await db.select().from(listings).all();
 
   const existing = new Map(
-    db.select().from(listingEnrichment).all().map((e) => [e.listingId, e]),
+    (await db.select().from(listingEnrichment).all()).map((e) => [e.listingId, e]),
   );
 
   const candidates: Candidate[] = [];
@@ -126,7 +126,7 @@ export async function enrichListings(
   opts: EnrichOptions = {},
 ): Promise<EnrichSummary> {
   const log = opts.log ?? (() => {});
-  const { candidates, skippedUnchanged } = selectCandidates(db, opts);
+  const { candidates, skippedUnchanged } = await selectCandidates(db, opts);
 
   const summary: EnrichSummary = {
     candidates: candidates.length,
@@ -178,7 +178,8 @@ export async function enrichListings(
 
     if (result.data) {
       summary.succeeded++;
-      db.insert(listingEnrichment)
+      await db
+        .insert(listingEnrichment)
         .values({
           ...rowBase,
           summary: result.data.summary,
@@ -201,7 +202,8 @@ export async function enrichListings(
       summary.failed++;
       summary.errors.push({ listingId: cand.input.listingId, error: result.error ?? "unknown error" });
       // Record the failure (so a good next run retries it) but keep any prior data.
-      db.insert(listingEnrichment)
+      await db
+        .insert(listingEnrichment)
         .values({ ...rowBase, summary: null, aiRiskLevel: null, data: null, error: result.error })
         .onConflictDoUpdate({
           target: listingEnrichment.listingId,

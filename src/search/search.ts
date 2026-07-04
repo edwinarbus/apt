@@ -128,21 +128,22 @@ function snippet(text: string | null, max = 220): string | null {
  * (optionally within a radius of the user), each blended into a compact profile
  * of data + amenities + vision + a description snippet.
  */
-export function assembleCandidates(db: Db, opts: SearchOptions): CandidateProfile[] {
-  const rows = db.select().from(listings).all();
+export async function assembleCandidates(db: Db, opts: SearchOptions): Promise<CandidateProfile[]> {
+  const rows = await db.select().from(listings).all();
   const visionById = new Map(
-    db
-      .select({
-        listingId: listingVision.listingId,
-        features: listingVision.features,
-        visualSummary: listingVision.visualSummary,
-      })
-      .from(listingVision)
-      .all()
-      .map((v) => [v.listingId, v]),
+    (
+      await db
+        .select({
+          listingId: listingVision.listingId,
+          features: listingVision.features,
+          visualSummary: listingVision.visualSummary,
+        })
+        .from(listingVision)
+        .all()
+    ).map((v) => [v.listingId, v]),
   );
   const stateById = new Map(
-    db.select().from(userListingStates).all().map((s) => [s.listingId, s.status]),
+    (await db.select().from(userListingStates).all()).map((s) => [s.listingId, s.status]),
   );
 
   const out: CandidateProfile[] = [];
@@ -199,7 +200,7 @@ export async function runSearch(
   opts: SearchOptions,
   onProgress?: SearchProgressHandler,
 ): Promise<SearchResult> {
-  const allCandidates = assembleCandidates(db, opts);
+  const allCandidates = await assembleCandidates(db, opts);
   onProgress?.({ type: "stage", stage: "assemble", candidates: allCandidates.length });
   const ranked = prerankAndCap(opts.query, allCandidates, opts.maxRank ?? DEFAULT_MAX_RANK);
   onProgress?.({

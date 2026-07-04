@@ -48,22 +48,22 @@ describe("haversineMi", () => {
 describe("assembleCandidates", () => {
   let db: Db;
   beforeEach(async () => {
-    db = testDb();
-    seedStubSource(db);
+    db = await testDb();
+    await seedStubSource(db);
     stubSuccess([makeListing({ sourceListingId: "a1" }), makeListing({ sourceListingId: "a2" })]);
     await runSource(db, "stub_src", OPTS);
-    db.update(listings).set({ latitude: 37.78, longitude: -122.42 }).where(eq(listings.sourceListingId, "a1")).run();
-    db.update(listings).set({ latitude: 37.335, longitude: -121.89 }).where(eq(listings.sourceListingId, "a2")).run();
+    await db.update(listings).set({ latitude: 37.78, longitude: -122.42 }).where(eq(listings.sourceListingId, "a1")).run();
+    await db.update(listings).set({ latitude: 37.335, longitude: -121.89 }).where(eq(listings.sourceListingId, "a2")).run();
   });
 
-  it("builds a profile for each active listing", () => {
-    const c = assembleCandidates(db, { query: "x" });
+  it("builds a profile for each active listing", async () => {
+    const c = await assembleCandidates(db, { query: "x" });
     expect(c).toHaveLength(2);
     expect(c[0].title).toContain("Listing");
   });
 
-  it("filters by radius from the user's location", () => {
-    const c = assembleCandidates(db, {
+  it("filters by radius from the user's location", async () => {
+    const c = await assembleCandidates(db, {
       query: "x",
       location: { lat: 37.78, lng: -122.42 },
       radiusMi: 10,
@@ -74,11 +74,11 @@ describe("assembleCandidates", () => {
     expect(c[0].distanceMi!).toBeLessThan(1);
   });
 
-  it("excludes hidden / not-a-fit unless includeHiddenGone is set", () => {
-    const a1 = db.select().from(listings).where(eq(listings.sourceListingId, "a1")).get()!;
-    db.insert(userListingStates).values({ listingId: a1.id, status: "hidden", updatedAt: nowIso() }).run();
-    expect(assembleCandidates(db, { query: "x" })).toHaveLength(1);
-    expect(assembleCandidates(db, { query: "x", includeHiddenGone: true })).toHaveLength(2);
+  it("excludes hidden / not-a-fit unless includeHiddenGone is set", async () => {
+    const a1 = (await db.select().from(listings).where(eq(listings.sourceListingId, "a1")).get())!;
+    await db.insert(userListingStates).values({ listingId: a1.id, status: "hidden", updatedAt: nowIso() }).run();
+    expect(await assembleCandidates(db, { query: "x" })).toHaveLength(1);
+    expect(await assembleCandidates(db, { query: "x", includeHiddenGone: true })).toHaveLength(2);
   });
 
   it("does not truncate a small-neighborhood match away before pre-rank (regression)", async () => {
@@ -94,7 +94,7 @@ describe("assembleCandidates", () => {
       ),
     );
     await runSource(db, "stub_src", OPTS);
-    const all = assembleCandidates(db, { query: "outer richmond" });
+    const all = await assembleCandidates(db, { query: "outer richmond" });
     const outer = all.filter((c) => c.neighborhood === "Outer Richmond");
     expect(outer.length).toBeGreaterThan(0);
     const ranked = prerankAndCap("outer richmond", all, 60);
@@ -144,8 +144,8 @@ describe("prerankAndCap", () => {
 describe("runSearch", () => {
   let db: Db;
   beforeEach(async () => {
-    db = testDb();
-    seedStubSource(db);
+    db = await testDb();
+    await seedStubSource(db);
     stubSuccess([makeListing({ sourceListingId: "a1" }), makeListing({ sourceListingId: "a2" })]);
     await runSource(db, "stub_src", OPTS);
   });
@@ -185,8 +185,8 @@ describe("runSearch", () => {
   });
 
   it("short-circuits with no candidates and never calls the model", async () => {
-    for (const l of db.select().from(listings).all()) {
-      db.insert(userListingStates).values({ listingId: l.id, status: "hidden", updatedAt: nowIso() }).run();
+    for (const l of await db.select().from(listings).all()) {
+      await db.insert(userListingStates).values({ listingId: l.id, status: "hidden", updatedAt: nowIso() }).run();
     }
     const client = new FakeSearchClient();
     const r = await runSearch(db, client, { query: "x" });

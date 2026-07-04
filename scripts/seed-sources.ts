@@ -11,19 +11,20 @@ import { SOURCE_SEEDS } from "@/config/sources";
  */
 
 const resetEnabled = process.argv.includes("--reset-enabled");
-const db = createDb();
+const db = await createDb();
 const now = nowIso();
 
 let inserted = 0;
 let updated = 0;
 for (const seed of SOURCE_SEEDS) {
-  const existing = db.select().from(sources).where(eq(sources.id, seed.id)).get();
+  const existing = await db.select().from(sources).where(eq(sources.id, seed.id)).get();
   if (!existing) {
-    db.insert(sources).values({ ...seed, createdAt: now, updatedAt: now }).run();
+    await db.insert(sources).values({ ...seed, createdAt: now, updatedAt: now }).run();
     inserted++;
   } else {
     const { enabled, ...rest } = seed;
-    db.update(sources)
+    await db
+      .update(sources)
       .set({
         ...rest,
         ...(resetEnabled ? { enabled } : {}),
@@ -35,7 +36,7 @@ for (const seed of SOURCE_SEEDS) {
   }
 }
 
-const all = db.select().from(sources).all();
+const all = await db.select().from(sources).all();
 console.log(`Seeded source registry: ${inserted} inserted, ${updated} updated.\n`);
 const pad = (s: string, n: number) => s.padEnd(n);
 console.log(

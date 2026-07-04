@@ -28,8 +28,8 @@ function save(name: string, content: string): void {
 }
 
 async function refreshCraigslist(): Promise<void> {
-  const db = createDb();
-  const source = db.select().from(sources).where(eq(sources.id, "craigslist_sf")).get();
+  const db = await createDb();
+  const source = await db.select().from(sources).where(eq(sources.id, "craigslist_sf")).get();
   if (!source?.listingUrl) throw new Error("craigslist_sf not seeded");
   const fetcher = new PoliteFetcher({
     requestDelayMs: source.requestDelayMs,
@@ -47,8 +47,8 @@ async function refreshCraigslist(): Promise<void> {
 }
 
 async function refreshRentSfNow(): Promise<void> {
-  const db = createDb();
-  const source = db.select().from(sources).where(eq(sources.id, "rentsfnow")).get();
+  const db = await createDb();
+  const source = await db.select().from(sources).where(eq(sources.id, "rentsfnow")).get();
   const baseUrl = source?.baseUrl ?? "https://www.rentsfnow.com";
   const fetcher = new PoliteFetcher({
     requestDelayMs: source?.requestDelayMs ?? 2000,
@@ -86,8 +86,8 @@ async function refreshRentSfNow(): Promise<void> {
 }
 
 async function refreshRentBt(): Promise<void> {
-  const db = createDb();
-  const source = db.select().from(sources).where(eq(sources.id, "brick_and_timber")).get();
+  const db = await createDb();
+  const source = await db.select().from(sources).where(eq(sources.id, "brick_and_timber")).get();
   const baseUrl = source?.baseUrl ?? "https://rentbt.com";
   const fetcher = new PoliteFetcher({
     requestDelayMs: source?.requestDelayMs ?? 3000,
@@ -104,8 +104,8 @@ async function refreshRentBt(): Promise<void> {
 }
 
 async function refreshMosser(): Promise<void> {
-  const db = createDb();
-  const source = db.select().from(sources).where(eq(sources.id, "mosser_living")).get();
+  const db = await createDb();
+  const source = await db.select().from(sources).where(eq(sources.id, "mosser_living")).get();
   const baseUrl = source?.baseUrl ?? "https://www.mosserliving.com";
   const fetcher = new PoliteFetcher({
     requestDelayMs: source?.requestDelayMs ?? 1500,

@@ -20,9 +20,9 @@ import { neighborhoodForPoint } from "@/core/neighborhood-geo";
 
 const OVERRIDE_SOURCES = new Set(["rentalsinsf"]);
 
-function main() {
-  const db = getDb();
-  const rows = db.select().from(listings).all();
+async function main() {
+  const db = await getDb();
+  const rows = await db.select().from(listings).all();
   let filled = 0;
   let overridden = 0;
   let outsideSf = 0;
@@ -39,7 +39,8 @@ function main() {
     }
     if (hood === row.neighborhood) continue;
 
-    db.update(listings)
+    await db
+      .update(listings)
       .set({ neighborhood: hood, updatedAt: nowIso() })
       .where(eq(listings.id, row.id))
       .run();
@@ -53,4 +54,4 @@ function main() {
   );
 }
 
-main();
+await main();

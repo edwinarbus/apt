@@ -134,8 +134,8 @@ describe("buildUserPrompt", () => {
 describe("selectCandidates & enrichListings", () => {
   let db: Db;
   beforeEach(async () => {
-    db = testDb();
-    seedStubSource(db);
+    db = await testDb();
+    await seedStubSource(db);
     stubSuccess([
       makeListing({ sourceListingId: "a1", priceMonthly: 3000 }),
       makeListing({ sourceListingId: "a2", priceMonthly: 2500 }),
@@ -143,8 +143,8 @@ describe("selectCandidates & enrichListings", () => {
     await runSource(db, "stub_src", OPTS);
   });
 
-  it("selects all unenriched active listings", () => {
-    const { candidates, skippedUnchanged } = selectCandidates(db, {});
+  it("selects all unenriched active listings", async () => {
+    const { candidates, skippedUnchanged } = await selectCandidates(db, {});
     expect(candidates).toHaveLength(2);
     expect(skippedUnchanged).toBe(0);
   });
@@ -156,7 +156,7 @@ describe("selectCandidates & enrichListings", () => {
     expect(first.costUsd).toBeGreaterThan(0);
     expect(client.calls).toHaveLength(2);
 
-    const rows = db.select().from(listingEnrichment).all();
+    const rows = await db.select().from(listingEnrichment).all();
     expect(rows).toHaveLength(2);
     expect(rows[0].summary).toBe(validEnrichment.summary);
     expect(rows[0].aiRiskLevel).toBe("none");
@@ -191,7 +191,7 @@ describe("selectCandidates & enrichListings", () => {
     expect(summary.dryRun).toBe(true);
     expect(summary.candidates).toBe(2);
     expect(client.calls).toHaveLength(0);
-    expect(db.select().from(listingEnrichment).all()).toHaveLength(0);
+    expect(await db.select().from(listingEnrichment).all()).toHaveLength(0);
   });
 
   it("respects the per-run limit", async () => {
@@ -199,7 +199,7 @@ describe("selectCandidates & enrichListings", () => {
     const summary = await enrichListings(db, client, { limit: 1 });
     expect(summary.attempted).toBe(1);
     expect(summary.candidates).toBe(2);
-    expect(db.select().from(listingEnrichment).all()).toHaveLength(1);
+    expect(await db.select().from(listingEnrichment).all()).toHaveLength(1);
   });
 
   it("stops at the cost cap", async () => {
@@ -233,12 +233,12 @@ describe("selectCandidates & enrichListings", () => {
     const s1 = await enrichListings(db, failing, {});
     expect(s1.failed).toBe(2);
     // Errored rows are eligible again on the next run.
-    const { candidates } = selectCandidates(db, {});
+    const { candidates } = await selectCandidates(db, {});
     expect(candidates.length).toBe(2);
   });
 
   it("can target a single listing by id", async () => {
-    const a1 = db.select().from(listings).where(eq(listings.sourceListingId, "a1")).get()!;
+    const a1 = (await db.select().from(listings).where(eq(listings.sourceListingId, "a1")).get())!;
     const client = new FakeClient();
     const summary = await enrichListings(db, client, { listingId: a1.id });
     expect(summary.attempted).toBe(1);
@@ -246,8 +246,8 @@ describe("selectCandidates & enrichListings", () => {
   });
 
   it("skips likely-unavailable listings unless includeInactive is set", async () => {
-    db.update(listings).set({ staleStatus: "likely_unavailable" }).where(eq(listings.sourceListingId, "a1")).run();
-    expect(selectCandidates(db, {}).candidates).toHaveLength(1);
-    expect(selectCandidates(db, { includeInactive: true }).candidates).toHaveLength(2);
+    await db.update(listings).set({ staleStatus: "likely_unavailable" }).where(eq(listings.sourceListingId, "a1")).run();
+    expect((await selectCandidates(db, {})).candidates).toHaveLength(1);
+    expect((await selectCandidates(db, { includeInactive: true })).candidates).toHaveLength(2);
   });
 });

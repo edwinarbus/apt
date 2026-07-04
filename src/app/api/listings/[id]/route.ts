@@ -33,25 +33,25 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const db = getDb();
+  const db = await getDb();
 
-  const row = db.select().from(listings).where(eq(listings.id, id)).get();
+  const row = await db.select().from(listings).where(eq(listings.id, id)).get();
   if (!row) {
     return NextResponse.json({ error: "listing not found" }, { status: 404 });
   }
-  const source = db.select().from(sources).where(eq(sources.id, row.sourceId)).get();
-  const state = db
+  const source = await db.select().from(sources).where(eq(sources.id, row.sourceId)).get();
+  const state = await db
     .select()
     .from(userListingStates)
     .where(eq(userListingStates.listingId, id))
     .get();
-  const events = db
+  const events = await db
     .select()
     .from(listingEvents)
     .where(eq(listingEvents.listingId, id))
     .orderBy(desc(listingEvents.createdAt))
     .all();
-  const lastRun = db
+  const lastRun = await db
     .select()
     .from(sourceRuns)
     .where(eq(sourceRuns.sourceId, row.sourceId))
@@ -60,13 +60,13 @@ export async function GET(
     .get();
 
   const sourceNameById = new Map(
-    db.select({ id: sources.id, name: sources.name }).from(sources).all()
+    (await db.select({ id: sources.id, name: sources.name }).from(sources).all())
       .map((s) => [s.id, s.name]),
   );
   let duplicates: DuplicatePeer[] = [];
   let duplicateGroup: DuplicateGroupInfo | null = null;
   if (row.duplicateGroupId) {
-    const peers = db
+    const peers = await db
       .select()
       .from(listings)
       .where(
@@ -84,7 +84,7 @@ export async function GET(
       priceMonthly: p.priceMonthly,
       originalUrl: p.originalUrl,
     }));
-    const group = db
+    const group = await db
       .select()
       .from(duplicateGroups)
       .where(eq(duplicateGroups.id, row.duplicateGroupId))
@@ -101,14 +101,14 @@ export async function GET(
     }
   }
 
-  const history = db
+  const history = await db
     .select()
     .from(priceHistory)
     .where(eq(priceHistory.listingId, id))
     .orderBy(desc(priceHistory.observedAt))
     .all();
 
-  const enrichRow = db
+  const enrichRow = await db
     .select()
     .from(listingEnrichment)
     .where(eq(listingEnrichment.listingId, id))
@@ -131,7 +131,7 @@ export async function GET(
     };
   }
 
-  const visionRow = db
+  const visionRow = await db
     .select()
     .from(listingVision)
     .where(eq(listingVision.listingId, id))

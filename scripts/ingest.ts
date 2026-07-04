@@ -27,7 +27,7 @@ async function main() {
     process.exit(1);
   }
 
-  const db = createDb();
+  const db = await createDb();
   const log = (m: string) => console.log(`  ${m}`);
   const opts = { geocode: !noGeocode, log };
 

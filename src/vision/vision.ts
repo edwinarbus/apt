@@ -81,18 +81,18 @@ export function selectImageUrls(
   return unique;
 }
 
-export function selectVisionCandidates(
+export async function selectVisionCandidates(
   db: Db,
   opts: VisionOptions,
-): { candidates: Candidate[]; skippedUnchanged: number; skippedNoPhotos: number } {
+): Promise<{ candidates: Candidate[]; skippedUnchanged: number; skippedNoPhotos: number }> {
   const maxImages = opts.maxImages ?? DEFAULT_MAX_IMAGES;
 
   const rows = opts.listingId
-    ? db.select().from(listings).where(eq(listings.id, opts.listingId)).all()
-    : db.select().from(listings).all();
+    ? await db.select().from(listings).where(eq(listings.id, opts.listingId)).all()
+    : await db.select().from(listings).all();
 
   const existing = new Map(
-    db.select().from(listingVision).all().map((v) => [v.listingId, v]),
+    (await db.select().from(listingVision).all()).map((v) => [v.listingId, v]),
   );
 
   const candidates: Candidate[] = [];
@@ -148,7 +148,7 @@ export async function runVision(
   opts: VisionOptions = {},
 ): Promise<VisionSummary> {
   const log = opts.log ?? (() => {});
-  const { candidates, skippedUnchanged, skippedNoPhotos } = selectVisionCandidates(db, opts);
+  const { candidates, skippedUnchanged, skippedNoPhotos } = await selectVisionCandidates(db, opts);
 
   const summary: VisionSummary = {
     candidates: candidates.length,
@@ -204,7 +204,8 @@ export async function runVision(
     if (result.data) {
       summary.succeeded++;
       const searchText = buildVisionSearchText(result.data);
-      db.insert(listingVision)
+      await db
+        .insert(listingVision)
         .values({
           ...rowBase,
           visualSummary: result.data.visualSummary,
@@ -229,7 +230,8 @@ export async function runVision(
       summary.failed++;
       summary.errors.push({ listingId: cand.input.listingId, error: result.error ?? "unknown error" });
       // Record the failure (so a good next run retries it) but keep any prior data.
-      db.insert(listingVision)
+      await db
+        .insert(listingVision)
         .values({
           ...rowBase,
           visualSummary: null,

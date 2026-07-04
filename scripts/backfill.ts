@@ -34,11 +34,11 @@ const DEFAULT_BACKFILL_DETAIL_BUDGET = 400;
  * one row per historical price_change event. Idempotent: listings that
  * already have any history rows are left alone.
  */
-function reconstructPriceHistory(db: Db): number {
-  const rows = db.select().from(listings).all();
+async function reconstructPriceHistory(db: Db): Promise<number> {
+  const rows = await db.select().from(listings).all();
   let created = 0;
   for (const row of rows) {
-    const existing = db
+    const existing = await db
       .select({ id: priceHistory.id })
       .from(priceHistory)
       .where(eq(priceHistory.listingId, row.id))
@@ -46,16 +46,18 @@ function reconstructPriceHistory(db: Db): number {
       .all();
     if (existing.length > 0) continue;
 
-    const changes = db
-      .select()
-      .from(listingEvents)
-      .where(eq(listingEvents.listingId, row.id))
-      .orderBy(asc(listingEvents.createdAt))
-      .all()
-      .filter((e) => e.eventType === "price_change" && e.oldValue && e.newValue);
+    const changes = (
+      await db
+        .select()
+        .from(listingEvents)
+        .where(eq(listingEvents.listingId, row.id))
+        .orderBy(asc(listingEvents.createdAt))
+        .all()
+    ).filter((e) => e.eventType === "price_change" && e.oldValue && e.newValue);
 
     const baselinePrice = changes.length > 0 ? Number(changes[0].oldValue) : row.priceMonthly;
-    db.insert(priceHistory)
+    await db
+      .insert(priceHistory)
       .values({
         id: newId("prc"),
         listingId: row.id,
@@ -71,7 +73,8 @@ function reconstructPriceHistory(db: Db): number {
       .run();
     created++;
     for (const change of changes) {
-      db.insert(priceHistory)
+      await db
+        .insert(priceHistory)
         .values({
           id: newId("prc"),
           listingId: row.id,
@@ -91,8 +94,8 @@ function reconstructPriceHistory(db: Db): number {
 }
 
 /** One-time maintenance: fill canonicalUrl for rows created before phase two. */
-function backfillCanonicalUrls(db: Db): number {
-  const rows = db
+async function backfillCanonicalUrls(db: Db): Promise<number> {
+  const rows = await db
     .select({ id: listings.id, originalUrl: listings.originalUrl })
     .from(listings)
     .where(isNull(listings.canonicalUrl))
@@ -101,7 +104,8 @@ function backfillCanonicalUrls(db: Db): number {
   for (const row of rows) {
     const canonical = canonicalizeListingUrl(row.originalUrl);
     if (canonical) {
-      db.update(listings)
+      await db
+        .update(listings)
         .set({ canonicalUrl: canonical })
         .where(eq(listings.id, row.id))
         .run();
@@ -127,8 +131,8 @@ async function main() {
 
   if (dryRun) {
     // Flush WAL into the main file, then copy it; the run happens on the copy.
-    const liveDb = createDb(dbPath);
-    liveDb.run(sql`PRAGMA wal_checkpoint(TRUNCATE);`);
+    const liveDb = await createDb(dbPath);
+    await liveDb.run(sql`PRAGMA wal_checkpoint(TRUNCATE);`);
     const copyPath = path.join(
       os.tmpdir(),
       `apt-backfill-dryrun-${Date.now()}.db`,
@@ -143,14 +147,14 @@ async function main() {
     console.log("DRY RUN — operating on a throwaway copy; no changes will be saved.\n");
   }
 
-  const db = createDb(dbPath);
+  const db = await createDb(dbPath);
   const log = (m: string) => console.log(`  ${m}`);
 
-  const canonicalized = backfillCanonicalUrls(db);
+  const canonicalized = await backfillCanonicalUrls(db);
   if (canonicalized > 0) {
     console.log(`Maintenance: populated canonicalUrl on ${canonicalized} existing listings.`);
   }
-  const reconstructed = reconstructPriceHistory(db);
+  const reconstructed = await reconstructPriceHistory(db);
   if (reconstructed > 0) {
     console.log(
       `Maintenance: reconstructed ${reconstructed} price-history rows from recorded events.`,
@@ -162,7 +166,7 @@ async function main() {
     return;
   }
 
-  const all = db.select().from(sources).all();
+  const all = await db.select().from(sources).all();
   const targets = sourceId
     ? all.filter((s) => s.id === sourceId)
     : all.filter((s) => s.enabled);

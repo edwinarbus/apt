@@ -16,8 +16,8 @@ async function main() {
   const dryRun = args.includes("--dry-run");
   const json = args.includes("--json");
 
-  const db = createDb();
-  const result = computeDigest(db, { dryRun });
+  const db = await createDb();
+  const result = await computeDigest(db, { dryRun });
 
   if (json) {
     console.log(JSON.stringify(result, null, 2));

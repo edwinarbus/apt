@@ -36,8 +36,8 @@ function emailFor(row: typeof listings.$inferSelect): string {
   return `leasing@${slugFrom(row.sourceId ?? "rentals")}.listings.example`;
 }
 
-const db = getDb();
-const rows = db
+const db = await getDb();
+const rows = await db
   .select()
   .from(listings)
   .where(or(isNull(listings.contactEmail), eq(listings.contactEmail, "")))
@@ -46,7 +46,7 @@ const rows = db
 let updated = 0;
 for (const row of rows) {
   const email = emailFor(row);
-  db.update(listings).set({ contactEmail: email }).where(eq(listings.id, row.id)).run();
+  await db.update(listings).set({ contactEmail: email }).where(eq(listings.id, row.id)).run();
   updated++;
 }
 

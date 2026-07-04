@@ -62,9 +62,9 @@ function deriveOverallStatus(
 }
 
 export async function GET() {
-  const db = getDb();
-  const sourceRows = db.select().from(sources).all();
-  const listingRows = db
+  const db = await getDb();
+  const sourceRows = await db.select().from(sources).all();
+  const listingRows = await db
     .select({ sourceId: listings.sourceId, staleStatus: listings.staleStatus })
     .from(listings)
     .all();
@@ -77,8 +77,8 @@ export async function GET() {
     totals.set(l.sourceId, t);
   }
 
-  const entries: SourceDashboardEntry[] = sourceRows.map((s) => {
-    const runs = db
+  const entries: SourceDashboardEntry[] = await Promise.all(sourceRows.map(async (s) => {
+    const runs = await db
       .select()
       .from(sourceRuns)
       .where(eq(sourceRuns.sourceId, s.id))
@@ -121,7 +121,7 @@ export async function GET() {
       lastRun: runs[0] ? toRunPayload(runs[0]) : null,
       recentRuns: runs.map(toRunPayload),
     };
-  });
+  }));
 
   const body: SourcesResponse = {
     sources: entries,

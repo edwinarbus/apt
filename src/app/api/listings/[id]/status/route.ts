@@ -22,8 +22,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const db = getDb();
-  const row = db
+  const db = await getDb();
+  const row = await db
     .select({ id: listings.id })
     .from(listings)
     .where(eq(listings.id, id))
@@ -40,7 +40,8 @@ export async function POST(
   }
 
   if (body.status == null) {
-    db.delete(userListingStates)
+    await db
+      .delete(userListingStates)
       .where(eq(userListingStates.listingId, id))
       .run();
     return NextResponse.json({ ok: true, status: null });
@@ -54,7 +55,8 @@ export async function POST(
   }
 
   const now = nowIso();
-  db.insert(userListingStates)
+  await db
+    .insert(userListingStates)
     .values({
       listingId: id,
       status: body.status,

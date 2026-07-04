@@ -44,7 +44,7 @@ export async function POST(req: Request) {
       }
 
       try {
-        const db = getDb();
+        const db = await getDb();
         const client = new AnthropicSearchClient();
         let lastDelta = 0;
         const result = await runSearch(

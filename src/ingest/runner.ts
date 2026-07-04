@@ -121,7 +121,7 @@ export async function runSource(
   opts: RunOptions = {},
 ): Promise<RunSummary> {
   const log = opts.log ?? (() => {});
-  const source = db.select().from(sources).where(eq(sources.id, sourceId)).get();
+  const source = await db.select().from(sources).where(eq(sources.id, sourceId)).get();
   if (!source) {
     throw new Error(`unknown source: ${sourceId} (run \`npm run seed:sources\` first)`);
   }
@@ -166,7 +166,8 @@ export async function runSource(
         source.baseUrl ?? source.listingUrl,
         [listingPath],
       );
-      db.update(sources)
+      await db
+        .update(sources)
         .set({
           robotsStatus: robots.status,
           robotsCheckedAt: nowIso(),
@@ -181,7 +182,8 @@ export async function runSource(
   }
   if (source.robotsStatus === "disallowed") {
     const reason = "robots.txt disallows the listing path — source skipped";
-    db.insert(sourceRuns)
+    await db
+      .insert(sourceRuns)
       .values({
         id: runId,
         sourceId: source.id,
@@ -198,7 +200,7 @@ export async function runSource(
   }
 
   // --- known listings give adapters their skip-detail-fetch signal ---
-  const knownRows = db
+  const knownRows = await db
     .select({
       sourceListingId: listings.sourceListingId,
       title: listings.title,
@@ -299,9 +301,9 @@ export async function runSource(
   const runListingIds: string[] = [];
   if (status !== "failed") {
     const now = nowIso();
-    db.transaction((tx) => {
+    await db.transaction(async (tx) => {
       for (const item of result.listings) {
-        const outcome = upsertListing(tx as unknown as Db, source, item, runId, now);
+        const outcome = await upsertListing(tx as unknown as Db, source, item, runId, now);
         runListingIds.push(outcome.listingId);
         if (outcome.kind === "new") newCount++;
         else if (outcome.kind === "changed") changedCount++;
@@ -313,12 +315,13 @@ export async function runSource(
   }
 
   // --- health checks against the previous successful run ---
-  const prevRun = db
-    .select()
-    .from(sourceRuns)
-    .where(and(eq(sourceRuns.sourceId, source.id), eq(sourceRuns.status, "success")))
-    .all()
-    .sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1))[0];
+  const prevRun = (
+    await db
+      .select()
+      .from(sourceRuns)
+      .where(and(eq(sourceRuns.sourceId, source.id), eq(sourceRuns.status, "success")))
+      .all()
+  ).sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1))[0];
   if (
     prevRun &&
     prevRun.listingsFound >= 10 &&
@@ -350,7 +353,7 @@ export async function runSource(
   }
   if (staleOk) {
     const now = nowIso();
-    const missingRows = db
+    const missingRows = await db
       .select({ id: listings.id, staleStatus: listings.staleStatus })
       .from(listings)
       .where(
@@ -362,11 +365,12 @@ export async function runSource(
         ),
       )
       .all();
-    db.transaction((tx) => {
+    await db.transaction(async (tx) => {
       for (const row of missingRows) {
         const next = advanceStaleStatus(row.staleStatus as never);
         if (next === row.staleStatus) continue;
-        tx.update(listings)
+        await tx
+          .update(listings)
           .set({
             staleStatus: next,
             missingSince: now, // set on first miss, refreshed as chain advances
@@ -374,7 +378,8 @@ export async function runSource(
           })
           .where(eq(listings.id, row.id))
           .run();
-        tx.insert(listingEvents)
+        await tx
+          .insert(listingEvents)
           .values({
             id: newId("evt"),
             listingId: row.id,
@@ -404,7 +409,7 @@ export async function runSource(
   let duplicateGroupsTouched = 0;
   let crossNeighborhoodIds = new Set<string>();
   if (status !== "failed") {
-    const candidates: DupeCandidate[] = db
+    const candidates: DupeCandidate[] = await db
       .select({
         id: listings.id,
         sourceId: listings.sourceId,
@@ -440,10 +445,11 @@ export async function runSource(
     const now = nowIso();
     const groupedIds = new Set<string>();
     const currentGroupIds = new Set<string>();
-    db.transaction((tx) => {
+    await db.transaction(async (tx) => {
       for (const group of dedupe.groups) {
         currentGroupIds.add(group.id);
-        tx.insert(duplicateGroups)
+        await tx
+          .insert(duplicateGroups)
           .values({
             id: group.id,
             primaryListingId: group.primaryListingId,
@@ -465,28 +471,30 @@ export async function runSource(
           })
           .run();
         for (const memberId of group.memberIds) groupedIds.add(memberId);
-        tx.update(listings)
+        await tx
+          .update(listings)
           .set({ duplicateGroupId: group.id, updatedAt: now })
           .where(inArray(listings.id, group.memberIds))
           .run();
       }
       // Clear group ids that no longer apply and prune orphaned groups.
-      const stillMarked = tx
+      const stillMarked = await tx
         .select({ id: listings.id })
         .from(listings)
         .where(isNotNull(listings.duplicateGroupId))
         .all();
       const toClear = stillMarked.map((r) => r.id).filter((id) => !groupedIds.has(id));
       if (toClear.length > 0) {
-        tx.update(listings)
+        await tx
+          .update(listings)
           .set({ duplicateGroupId: null, updatedAt: now })
           .where(inArray(listings.id, toClear))
           .run();
       }
-      const existingGroups = tx.select({ id: duplicateGroups.id }).from(duplicateGroups).all();
+      const existingGroups = await tx.select({ id: duplicateGroups.id }).from(duplicateGroups).all();
       const orphaned = existingGroups.map((g) => g.id).filter((id) => !currentGroupIds.has(id));
       if (orphaned.length > 0) {
-        tx.delete(duplicateGroups).where(inArray(duplicateGroups.id, orphaned)).run();
+        await tx.delete(duplicateGroups).where(inArray(duplicateGroups.id, orphaned)).run();
       }
     });
     suspectedDuplicates = runListingIds.filter((id) => groupedIds.has(id)).length;
@@ -499,7 +507,7 @@ export async function runSource(
   // --- scam / verify-carefully assessment for listings touched this run ---
   let suspectedScams = 0;
   if (status !== "failed" && runListingIds.length > 0) {
-    const activeForBaseline = db
+    const activeForBaseline = await db
       .select({
         neighborhood: listings.neighborhood,
         bedrooms: listings.bedrooms,
@@ -509,13 +517,13 @@ export async function runSource(
       .where(eq(listings.listingStatus, "active"))
       .all();
     const baselines = computeBaselines(activeForBaseline);
-    const rows = db
+    const rows = await db
       .select()
       .from(listings)
       .where(inArray(listings.id, runListingIds))
       .all();
     const now = nowIso();
-    db.transaction((tx) => {
+    await db.transaction(async (tx) => {
       for (const row of rows) {
         // Card-vs-detail price disagreement: the raw card payload retains the
         // search-result price; a large gap from the detail price is a
@@ -553,7 +561,8 @@ export async function runSource(
           assessment.level !== row.scamRiskLevel ||
           JSON.stringify(assessment.warnings) !== JSON.stringify(row.scamWarnings ?? [])
         ) {
-          tx.update(listings)
+          await tx
+            .update(listings)
             .set({
               scamRiskLevel: assessment.level,
               scamWarnings: assessment.warnings,
@@ -569,12 +578,13 @@ export async function runSource(
   // --- geocoding: cache-first network lookups, then neighborhood fallback ---
   const geocoded = { network: 0, cache: 0, fallback: 0 };
   if (status !== "failed" && runListingIds.length > 0) {
-    const needing = db
-      .select()
-      .from(listings)
-      .where(inArray(listings.id, runListingIds))
-      .all()
-      .filter((r) => r.latitude == null || r.longitude == null);
+    const needing = (
+      await db
+        .select()
+        .from(listings)
+        .where(inArray(listings.id, runListingIds))
+        .all()
+    ).filter((r) => r.latitude == null || r.longitude == null);
     const limit = opts.geocodeLimit ?? 20;
     let networkBudget = limit;
     for (const row of needing) {
@@ -607,7 +617,8 @@ export async function runSource(
           !row.neighborhood && hit.precision !== "neighborhood"
             ? neighborhoodForPoint(hit.longitude, hit.latitude)
             : null;
-        db.update(listings)
+        await db
+          .update(listings)
           .set({
             latitude: hit.latitude,
             longitude: hit.longitude,
@@ -639,7 +650,8 @@ export async function runSource(
 
   // --- record the run ---
   const finishedAt = nowIso();
-  db.insert(sourceRuns)
+  await db
+    .insert(sourceRuns)
     .values({
       id: runId,
       sourceId: source.id,
@@ -706,7 +718,7 @@ export async function runAllEnabled(
   db: Db,
   opts: RunOptions = {},
 ): Promise<RunSummary[]> {
-  const all = db.select().from(sources).all();
+  const all = await db.select().from(sources).all();
   const summaries: RunSummary[] = [];
   for (const source of all) {
     if (!source.enabled) {

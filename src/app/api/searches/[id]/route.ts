@@ -13,10 +13,10 @@ export async function DELETE(
   const { id } = await params;
   if (!id) return NextResponse.json({ error: "missing id" }, { status: 400 });
 
-  const db = getDb();
+  const db = await getDb();
   // Remove any recorded matches first (FK), then the search itself.
-  db.delete(savedSearchMatches).where(eq(savedSearchMatches.savedSearchId, id)).run();
-  db.delete(savedSearches).where(eq(savedSearches.id, id)).run();
+  await db.delete(savedSearchMatches).where(eq(savedSearchMatches.savedSearchId, id)).run();
+  await db.delete(savedSearches).where(eq(savedSearches.id, id)).run();
 
   return NextResponse.json({ ok: true });
 }

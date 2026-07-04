@@ -144,7 +144,7 @@ export async function geocodeAddress(
 ): Promise<GeocodeOutcome | null> {
   const key = geocodeCacheKey(address);
   if (!key) return null;
-  const cached = db
+  const cached = await db
     .select()
     .from(geocodeCache)
     .where(eq(geocodeCache.addressKey, key))
@@ -160,7 +160,8 @@ export async function geocodeAddress(
     };
   }
   const hit = await provider(address);
-  db.insert(geocodeCache)
+  await db
+    .insert(geocodeCache)
     .values({
       addressKey: key,
       latitude: hit?.latitude ?? null,

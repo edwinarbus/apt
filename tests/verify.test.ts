@@ -19,9 +19,9 @@ import {
 
 describe("verifySource", () => {
   let db: Db;
-  beforeEach(() => {
-    db = testDb();
-    seedStubSource(db);
+  beforeEach(async () => {
+    db = await testDb();
+    await seedStubSource(db);
   });
 
   it("reports PASS for a clean run and persists the outcome", async () => {
@@ -32,7 +32,7 @@ describe("verifySource", () => {
     expect(report.checks.join("\n")).toContain("2/2 listings have original URLs");
     expect(report.staleSafety).toContain("WOULD run");
 
-    const source = db.select().from(sources).where(eq(sources.id, "stub_src")).get();
+    const source = await db.select().from(sources).where(eq(sources.id, "stub_src")).get();
     expect(source?.lastVerificationStatus).toBe("PASS");
     expect(source?.lastVerificationAt).toBeTruthy();
   });
@@ -40,7 +40,7 @@ describe("verifySource", () => {
   it("never writes listings", async () => {
     stubSuccess([makeListing({ sourceListingId: "a1" })]);
     await verifySource(db, "stub_src", { mode: "live" });
-    expect(db.select().from(listings).all()).toHaveLength(0);
+    expect(await db.select().from(listings).all()).toHaveLength(0);
   });
 
   it("reports FAIL on fatal errors and zero listings", async () => {
@@ -77,19 +77,20 @@ describe("verifySource", () => {
   });
 
   it("skips disabled sources with the registry reason", async () => {
-    db.update(sources)
+    await db
+      .update(sources)
       .set({ enabled: false, registryStatus: "disabled_needs_adapter" })
       .where(eq(sources.id, "stub_src"))
       .run();
     const report = await verifySource(db, "stub_src", { mode: "live" });
     expect(report.status).toBe("SKIPPED");
     expect(report.skippedReason).toContain("needs adapter");
-    const source = db.select().from(sources).where(eq(sources.id, "stub_src")).get();
+    const source = await db.select().from(sources).where(eq(sources.id, "stub_src")).get();
     expect(source?.lastVerificationStatus).toBe("SKIPPED");
   });
 
   it("runs disabled sources when forced", async () => {
-    db.update(sources).set({ enabled: false }).where(eq(sources.id, "stub_src")).run();
+    await db.update(sources).set({ enabled: false }).where(eq(sources.id, "stub_src")).run();
     stubSuccess([makeListing({ sourceListingId: "a1" })]);
     const report = await verifySource(db, "stub_src", { mode: "live", force: true });
     expect(report.status).toBe("PASS");

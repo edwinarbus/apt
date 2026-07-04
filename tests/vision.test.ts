@@ -118,8 +118,8 @@ describe("selectImageUrls", () => {
 describe("selectVisionCandidates & runVision", () => {
   let db: Db;
   beforeEach(async () => {
-    db = testDb();
-    seedStubSource(db);
+    db = await testDb();
+    await seedStubSource(db);
     stubSuccess([
       makeListing({ sourceListingId: "a1", photos: ["https://img/a1-1.jpg", "https://img/a1-2.jpg"] }),
       makeListing({ sourceListingId: "a2", photos: ["https://img/a2-1.jpg"] }),
@@ -127,28 +127,30 @@ describe("selectVisionCandidates & runVision", () => {
     await runSource(db, "stub_src", OPTS);
   });
 
-  it("selects active listings that have photos", () => {
-    const { candidates, skippedNoPhotos } = selectVisionCandidates(db, {});
+  it("selects active listings that have photos", async () => {
+    const { candidates, skippedNoPhotos } = await selectVisionCandidates(db, {});
     expect(candidates).toHaveLength(2);
     expect(skippedNoPhotos).toBe(0);
   });
 
-  it("skips listings with no usable images", () => {
-    db.update(listings)
+  it("skips listings with no usable images", async () => {
+    await db
+      .update(listings)
       .set({ photos: [], primaryPhotoUrl: null, photoHash: null })
       .where(eq(listings.sourceListingId, "a1"))
       .run();
-    const { candidates, skippedNoPhotos } = selectVisionCandidates(db, {});
+    const { candidates, skippedNoPhotos } = await selectVisionCandidates(db, {});
     expect(candidates).toHaveLength(1);
     expect(skippedNoPhotos).toBe(1);
   });
 
-  it("caps images per listing via maxImages", () => {
-    db.update(listings)
+  it("caps images per listing via maxImages", async () => {
+    await db
+      .update(listings)
       .set({ photos: ["https://img/1", "https://img/2", "https://img/3", "https://img/4"] })
       .where(eq(listings.sourceListingId, "a1"))
       .run();
-    const { candidates } = selectVisionCandidates(db, { listingId: undefined, maxImages: 2 });
+    const { candidates } = await selectVisionCandidates(db, { listingId: undefined, maxImages: 2 });
     const a1 = candidates.find((c) => c.input.imageUrls[0]?.startsWith("https://img/"));
     expect(a1?.input.imageUrls.length).toBe(2);
   });
@@ -160,7 +162,7 @@ describe("selectVisionCandidates & runVision", () => {
     expect(first.costUsd).toBeGreaterThan(0);
     expect(client.calls).toHaveLength(2);
 
-    const rows = db.select().from(listingVision).all();
+    const rows = await db.select().from(listingVision).all();
     expect(rows).toHaveLength(2);
     expect(rows[0].visualSummary).toBe(validVision.visualSummary);
     expect(rows[0].features).toContain("bay windows");
@@ -196,7 +198,7 @@ describe("selectVisionCandidates & runVision", () => {
     expect(summary.dryRun).toBe(true);
     expect(summary.candidates).toBe(2);
     expect(client.calls).toHaveLength(0);
-    expect(db.select().from(listingVision).all()).toHaveLength(0);
+    expect(await db.select().from(listingVision).all()).toHaveLength(0);
   });
 
   it("respects the per-run limit", async () => {
@@ -204,7 +206,7 @@ describe("selectVisionCandidates & runVision", () => {
     const summary = await runVision(db, client, { limit: 1 });
     expect(summary.attempted).toBe(1);
     expect(summary.candidates).toBe(2);
-    expect(db.select().from(listingVision).all()).toHaveLength(1);
+    expect(await db.select().from(listingVision).all()).toHaveLength(1);
   });
 
   it("stops at the cost cap", async () => {
@@ -240,16 +242,16 @@ describe("selectVisionCandidates & runVision", () => {
     expect(s1.failed).toBe(2);
 
     // Prior good data (searchText) is retained even though the last attempt errored.
-    const row = db.select().from(listingVision).all()[0];
+    const row = (await db.select().from(listingVision).all())[0];
     expect(row.error).toBeTruthy();
     expect(row.searchText).toContain("bay windows");
 
     // Errored rows are eligible again on the next run.
-    expect(selectVisionCandidates(db, {}).candidates.length).toBe(2);
+    expect((await selectVisionCandidates(db, {})).candidates.length).toBe(2);
   });
 
   it("can target a single listing by id", async () => {
-    const a1 = db.select().from(listings).where(eq(listings.sourceListingId, "a1")).get()!;
+    const a1 = (await db.select().from(listings).where(eq(listings.sourceListingId, "a1")).get())!;
     const client = new FakeVisionClient();
     const summary = await runVision(db, client, { listingId: a1.id });
     expect(summary.attempted).toBe(1);
@@ -257,11 +259,12 @@ describe("selectVisionCandidates & runVision", () => {
   });
 
   it("skips likely-unavailable listings unless includeInactive is set", async () => {
-    db.update(listings)
+    await db
+      .update(listings)
       .set({ staleStatus: "likely_unavailable" })
       .where(eq(listings.sourceListingId, "a1"))
       .run();
-    expect(selectVisionCandidates(db, {}).candidates).toHaveLength(1);
-    expect(selectVisionCandidates(db, { includeInactive: true }).candidates).toHaveLength(2);
+    expect((await selectVisionCandidates(db, {})).candidates).toHaveLength(1);
+    expect((await selectVisionCandidates(db, { includeInactive: true })).candidates).toHaveLength(2);
   });
 });

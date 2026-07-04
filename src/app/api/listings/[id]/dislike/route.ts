@@ -19,8 +19,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const db = getDb();
-  const row = db.select().from(listings).where(eq(listings.id, id)).get();
+  const db = await getDb();
+  const row = await db.select().from(listings).where(eq(listings.id, id)).get();
   if (!row) {
     return NextResponse.json({ error: "listing not found" }, { status: 404 });
   }
@@ -37,12 +37,13 @@ export async function POST(
   const store = new DislikeMemoryStore();
 
   if (!disliked) {
-    db.delete(userListingStates).where(eq(userListingStates.listingId, id)).run();
+    await db.delete(userListingStates).where(eq(userListingStates.listingId, id)).run();
     const outcome = await store.forget(id);
     return NextResponse.json({ ok: true, status: null, remembered: false, memory: outcome });
   }
 
-  db.insert(userListingStates)
+  await db
+    .insert(userListingStates)
     .values({ listingId: id, status: "not_a_fit", note: null, updatedAt: now })
     .onConflictDoUpdate({
       target: userListingStates.listingId,
@@ -50,7 +51,7 @@ export async function POST(
     })
     .run();
 
-  const vision = db
+  const vision = await db
     .select({ features: listingVision.features })
     .from(listingVision)
     .where(eq(listingVision.listingId, id))

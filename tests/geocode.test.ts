@@ -13,8 +13,8 @@ import { makeListing, seedStubSource, stubSuccess, testDb } from "./helpers";
 
 describe("geocodeAddress caching", () => {
   let db: Db;
-  beforeEach(() => {
-    db = testDb();
+  beforeEach(async () => {
+    db = await testDb();
   });
 
   it("never calls the provider twice for the same address", async () => {
@@ -75,8 +75,8 @@ describe("neighborhoodFallback", () => {
 
 describe("runner geocoding behavior", () => {
   it("falls back to neighborhood centroids and records precision", async () => {
-    const db = testDb();
-    seedStubSource(db);
+    const db = await testDb();
+    await seedStubSource(db);
     stubSuccess([
       makeListing({
         sourceListingId: "no-coords",
@@ -97,7 +97,7 @@ describe("runner geocoding behavior", () => {
     });
     expect(summary.geocoded.fallback).toBe(1);
 
-    const noCoords = db
+    const noCoords = await db
       .select()
       .from(listings)
       .where(eq(listings.sourceListingId, "no-coords"))
@@ -105,7 +105,7 @@ describe("runner geocoding behavior", () => {
     expect(noCoords?.latitude).toBeCloseTo(37.7599, 2);
     expect(noCoords?.geocodePrecision).toBe("neighborhood");
 
-    const hasCoords = db
+    const hasCoords = await db
       .select()
       .from(listings)
       .where(eq(listings.sourceListingId, "has-coords"))

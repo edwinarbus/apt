@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { nowIso } from "@/db/client";
+import { nowIso, type Db } from "@/db/client";
 import { sources } from "@/db/schema";
 import { SOURCE_SEEDS } from "@/config/sources";
 import { verifySource } from "@/ingest/verify";
@@ -12,16 +12,16 @@ import { testDb } from "./helpers";
  * does in its default offline mode.
  */
 
-function seedReal(db: ReturnType<typeof testDb>, id: string) {
+async function seedReal(db: Db, id: string): Promise<void> {
   const seed = SOURCE_SEEDS.find((s) => s.id === id)!;
   const now = nowIso();
-  db.insert(sources).values({ ...seed, createdAt: now, updatedAt: now }).run();
+  await db.insert(sources).values({ ...seed, createdAt: now, updatedAt: now }).run();
 }
 
 describe("fixture-mode verification of real adapters", () => {
   it("craigslist_sf verifies PASS against recorded fixtures", async () => {
-    const db = testDb();
-    seedReal(db, "craigslist_sf");
+    const db = await testDb();
+    await seedReal(db, "craigslist_sf");
     const report = await verifySource(db, "craigslist_sf", { mode: "fixture" });
     expect(report.status).toBe("PASS");
     expect(report.listingsExtracted).toBeGreaterThan(300);
@@ -33,8 +33,8 @@ describe("fixture-mode verification of real adapters", () => {
   });
 
   it("rentsfnow verifies PASS with complete pagination against fixtures", async () => {
-    const db = testDb();
-    seedReal(db, "rentsfnow");
+    const db = await testDb();
+    await seedReal(db, "rentsfnow");
     const report = await verifySource(db, "rentsfnow", { mode: "fixture" });
     expect(report.status).toBe("PASS");
     expect(report.listingsExtracted).toBeGreaterThanOrEqual(10);
@@ -43,8 +43,8 @@ describe("fixture-mode verification of real adapters", () => {
   });
 
   it("reference-only sources report SKIPPED", async () => {
-    const db = testDb();
-    seedReal(db, "zillow_sf");
+    const db = await testDb();
+    await seedReal(db, "zillow_sf");
     const report = await verifySource(db, "zillow_sf", { mode: "fixture" });
     expect(report.status).toBe("SKIPPED");
     expect(report.skippedReason).toContain("reference-only");

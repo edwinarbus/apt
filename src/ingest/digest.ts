@@ -88,9 +88,9 @@ interface ListingForMatch extends MatchableListing {
   userStatus: UserListingStatus | null;
 }
 
-function loadMatchableListings(db: Db): ListingForMatch[] {
-  const rows = db.select().from(listings).all();
-  const states = db.select().from(userListingStates).all();
+async function loadMatchableListings(db: Db): Promise<ListingForMatch[]> {
+  const rows = await db.select().from(listings).all();
+  const states = await db.select().from(userListingStates).all();
   const stateByListing = new Map(states.map((s) => [s.listingId, s.status]));
   return rows.map((r) => ({
     id: r.id,
@@ -120,17 +120,17 @@ function loadMatchableListings(db: Db): ListingForMatch[] {
   }));
 }
 
-export function computeDigest(db: Db, opts: { dryRun?: boolean } = {}): DigestResult {
+export async function computeDigest(db: Db, opts: { dryRun?: boolean } = {}): Promise<DigestResult> {
   const dryRun = opts.dryRun ?? false;
   const now = nowIso();
-  const searches = db
+  const searches = await db
     .select()
     .from(savedSearches)
     .where(eq(savedSearches.enabled, true))
     .all();
-  const allListings = loadMatchableListings(db);
+  const allListings = await loadMatchableListings(db);
   const sourceNameById = new Map(
-    db.select({ id: sources.id, name: sources.name }).from(sources).all()
+    (await db.select({ id: sources.id, name: sources.name }).from(sources).all())
       .map((s) => [s.id, s.name]),
   );
 
@@ -149,7 +149,7 @@ export function computeDigest(db: Db, opts: { dryRun?: boolean } = {}): DigestRe
 
   for (const search of searches) {
     const criteria = search.criteria as SavedSearchCriteria;
-    const existingMatches = db
+    const existingMatches = await db
       .select()
       .from(savedSearchMatches)
       .where(eq(savedSearchMatches.savedSearchId, search.id))
@@ -199,7 +199,8 @@ export function computeDigest(db: Db, opts: { dryRun?: boolean } = {}): DigestRe
       // firstMatchedAt is accurate; notifiedAt is only advanced on real runs).
       if (!dryRun) {
         if (existing) {
-          db.update(savedSearchMatches)
+          await db
+            .update(savedSearchMatches)
             .set({
               lastMatchedAt: now,
               stillMatching: true,
@@ -209,7 +210,8 @@ export function computeDigest(db: Db, opts: { dryRun?: boolean } = {}): DigestRe
             .where(eq(savedSearchMatches.id, existing.id))
             .run();
         } else {
-          db.insert(savedSearchMatches)
+          await db
+            .insert(savedSearchMatches)
             .values({
               id: newId("ssm"),
               savedSearchId: search.id,
@@ -252,7 +254,8 @@ export function computeDigest(db: Db, opts: { dryRun?: boolean } = {}): DigestRe
         duplicateGroupId: listing?.duplicateGroupId ?? null,
       });
       if (!dryRun) {
-        db.update(savedSearchMatches)
+        await db
+          .update(savedSearchMatches)
           .set({ stillMatching: false, lastMatchedAt: existing.lastMatchedAt })
           .where(eq(savedSearchMatches.id, existing.id))
           .run();
@@ -274,7 +277,8 @@ export function computeDigest(db: Db, opts: { dryRun?: boolean } = {}): DigestRe
     for (const s of perSearch) {
       const toNotify = [...s.newMatches, ...s.priceDrops];
       for (const item of toNotify) {
-        db.update(savedSearchMatches)
+        await db
+          .update(savedSearchMatches)
           .set({ notifiedAt: now, notifiedPriceMonthly: item.priceMonthly })
           .where(
             and(
@@ -301,7 +305,8 @@ export function computeDigest(db: Db, opts: { dryRun?: boolean } = {}): DigestRe
 
   if (!dryRun) {
     result.reportPath = writeReport(result);
-    db.insert(digestRuns)
+    await db
+      .insert(digestRuns)
       .values({
         id: newId("dig"),
         createdAt: now,
