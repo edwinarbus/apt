@@ -790,6 +790,22 @@ export function MapView({
       rotateEl.addEventListener("auxclick", onAuxClick);
 
       map.on("load", () => {
+        // Roads/labels/boundaries from the BASE style, captured before any
+        // custom layers are added. These get lifted above the hood-reveal
+        // mask further down so isolating a neighborhood dims the rest of the
+        // city without blacking it out entirely — the mask only needs to be
+        // fully opaque to keep the satellite raster from bleeding across the
+        // whole map (see the comment on hood-reveal-mask below); it was never
+        // meant to hide the base map's own roads and labels too.
+        const baseStyleLayers = map.getStyle().layers ?? [];
+        const buildingIdx = baseStyleLayers.findIndex(
+          (l) => "source-layer" in l && l["source-layer"] === "building",
+        );
+        const contextLayerIds =
+          buildingIdx >= 0
+            ? baseStyleLayers.slice(buildingIdx + 1).map((l) => l.id)
+            : [];
+
         try {
           map.setSky({
             "sky-color": "#03060c",
@@ -1126,6 +1142,21 @@ export function MapView({
           map.moveLayer("hood-reveal-mask", "hood-selected-glow");
         } catch (err) {
           console.warn("[apt map] hood-reveal-mask reorder failed", err);
+        }
+        // Lift the base style's roads/labels back above that mask (in their
+        // original relative order) so the rest of the city — streets, transit,
+        // place names — stays legible while a neighborhood is isolated,
+        // instead of going fully black outside the highlighted hood. Anchored
+        // on "hood-selected-glow" (the same target hood-reveal-mask was just
+        // reasserted against, directly above) — anchoring on "hoods-fill"
+        // instead would land these BELOW hood-reveal-mask, which sits above
+        // hoods-fill, so they'd stay hidden under it.
+        for (const id of contextLayerIds) {
+          try {
+            map.moveLayer(id, "hood-selected-glow");
+          } catch {
+            /* layer absent in this style revision — skip */
+          }
         }
 
         loadedRef.current = true;
