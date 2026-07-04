@@ -577,7 +577,17 @@ export function AppShell() {
         <ListingDetail
           key={selected.id}
           listingId={selected.id}
-          onClose={() => setDetailOpen(false)}
+          // Clearing selectedId (not just closing the modal) removes the
+          // listing's persistent photo-card marker from the map. Left
+          // selected, that marker stays alive indefinitely at its real-world
+          // position; after the camera pans/zooms to a new neighborhood, it
+          // can end up sitting wherever the user next clicks, silently
+          // reopening this same listing instead of letting the click reach
+          // the map underneath.
+          onClose={() => {
+            setDetailOpen(false);
+            setSelectedId(null);
+          }}
           onStatusChange={handleStatusChange}
         />
       )}
