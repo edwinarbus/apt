@@ -197,8 +197,7 @@ export function ListingPanel({
   );
 }
 
-/** Icon toggle to hide verify-carefully / suspicious listings, with a custom
- * (always-visible, unclipped) tooltip explaining what it does. */
+/** Icon toggle to hide verify-carefully / suspicious listings. */
 export function SuspiciousToggle({
   hideSuspicious,
   onToggle,
@@ -207,32 +206,21 @@ export function SuspiciousToggle({
   onToggle: () => void;
 }) {
   return (
-    <div className="group relative">
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-pressed={hideSuspicious}
-        aria-label={hideSuspicious ? "Show suspicious listings" : "Hide suspicious listings"}
-        className={`flex h-[26px] w-[26px] items-center justify-center rounded-md border transition-colors ${
-          hideSuspicious
-            ? "border-warn/45 bg-warn/12 text-warn"
-            : "border-line text-muted hover:border-line-strong hover:text-ink"
-        }`}
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-          <path d="M10.3 5.2a11 11 0 0 1 1.7-.2c6 0 9 6 9 7a12.6 12.6 0 0 1-2 2.7M6.6 6.6C3.7 8.3 2 11.4 2 12c0 1 3 7 10 7 2 0 3.7-.5 5.1-1.3M3 3l18 18" />
-        </svg>
-      </button>
-      <span
-        role="tooltip"
-        style={{ zIndex: 60 }}
-        className="pointer-events-none absolute top-full right-0 mt-2 hidden w-max max-w-[210px] rounded-md border border-line-strong bg-elevated px-2.5 py-1.5 text-center text-[11.5px] leading-snug text-muted shadow-[0_10px_28px_rgba(0,0,0,0.6)] group-hover:block"
-      >
-        {hideSuspicious
-          ? "Showing everything, including potential scams."
-          : "Potential scams identified by Claude will be hidden."}
-      </span>
-    </div>
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-pressed={hideSuspicious}
+      aria-label={hideSuspicious ? "Show suspicious listings" : "Hide suspicious listings"}
+      className={`flex h-[26px] w-[26px] items-center justify-center rounded-md border transition-colors ${
+        hideSuspicious
+          ? "border-warn/45 bg-warn/12 text-warn"
+          : "border-line text-muted hover:border-line-strong hover:text-ink"
+      }`}
+    >
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <path d="M10.3 5.2a11 11 0 0 1 1.7-.2c6 0 9 6 9 7a12.6 12.6 0 0 1-2 2.7M6.6 6.6C3.7 8.3 2 11.4 2 12c0 1 3 7 10 7 2 0 3.7-.5 5.1-1.3M3 3l18 18" />
+      </svg>
+    </button>
   );
 }
 
