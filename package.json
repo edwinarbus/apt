@@ -31,6 +31,7 @@
     "porter:deploy": "tsx scripts/porter-agent.ts",
     "porter:worker": "tsx scripts/porter-worker.ts",
     "db:copy-to-turso": "tsx scripts/copy-to-turso.ts",
+    "db:migrate:prod": "tsx scripts/migrate-turso.ts",
     "build:sf-boundary": "tsx scripts/build-sf-boundary.ts"
   },
   "dependencies": {

@@ -49,7 +49,9 @@ async function main() {
   console.log(`Turso:  ${process.env.TURSO_DATABASE_URL}\n`);
 
   const localDb = await createDb(DEFAULT_DB_PATH);
-  const tursoDb = await createDb(); // no explicit path -> picks up TURSO_DATABASE_URL
+  // Force migrations on the destination so a fresh Turso DB gets the schema
+  // (the app path skips migrate on Turso for cold-start speed).
+  const tursoDb = await createDb(undefined, { migrate: true });
 
   for (const { name, table } of TABLES) {
     const rows = await localDb.select().from(table).all();

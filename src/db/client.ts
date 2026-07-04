@@ -21,7 +21,10 @@ export const DEFAULT_DB_PATH = path.join(process.cwd(), "data", "apt.db");
  * Functions have a read-only filesystem outside /tmp, so a local file can't
  * work there — TURSO_DATABASE_URL/TURSO_AUTH_TOKEN switch to the remote path.
  */
-export async function createDb(dbPath?: string): Promise<Db> {
+export async function createDb(
+  dbPath?: string,
+  opts?: { migrate?: boolean },
+): Promise<Db> {
   const explicit = dbPath ?? process.env.APT_DB_PATH;
   const tursoUrl = !explicit ? process.env.TURSO_DATABASE_URL : undefined;
 
@@ -48,9 +51,18 @@ export async function createDb(dbPath?: string): Promise<Db> {
 
   const client = createClient({ url, authToken });
   const db = drizzle(client, { schema });
-  await migrate(db, {
-    migrationsFolder: path.join(process.cwd(), "drizzle"),
-  });
+  // Local/test/CLI databases auto-migrate so the schema is always ready. The
+  // remote Turso (production) DB is NOT migrated here: doing so on every cold
+  // serverless start adds several cross-network round-trips before the first
+  // query. Production schema is applied deliberately at deploy time via
+  // `npm run db:migrate:prod`. Pass { migrate: true } to force it (e.g. when
+  // seeding a fresh Turso database).
+  const shouldMigrate = opts?.migrate ?? !tursoUrl;
+  if (shouldMigrate) {
+    await migrate(db, {
+      migrationsFolder: path.join(process.cwd(), "drizzle"),
+    });
+  }
   return db;
 }
 
