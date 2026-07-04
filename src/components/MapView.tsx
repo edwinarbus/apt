@@ -98,11 +98,18 @@ const CITY_BOUNDS: [[number, number], [number, number]] = (() => {
 
 /** Camera that frames the whole city in the current viewport at the browse tilt. */
 function cityCamera(map: maplibregl.Map) {
-  const pitch = browsePitch(map.getContainer().clientWidth);
-  const cam = map.cameraForBounds(CITY_BOUNDS, {
-    padding: { top: 16, bottom: 14, left: 16, right: 16 },
-    bearing: 0,
-  });
+  const c = map.getContainer();
+  const pitch = browsePitch(c.clientWidth);
+  const mobile = c.clientWidth < 768;
+  // SF is wider than it is tall, so on a phone the fit is width-limited and the
+  // pitched city otherwise settles low, leaving a big empty band under the
+  // header. Reserve a chunk of the BOTTOM on mobile so the fit rides higher up
+  // (the width still drives the zoom, so this only shifts it vertically, it
+  // doesn't shrink the city). Desktop keeps a tight, near-symmetric frame.
+  const padding = mobile
+    ? { top: 12, bottom: Math.round(c.clientHeight * 0.3), left: 16, right: 16 }
+    : { top: 16, bottom: 14, left: 16, right: 16 };
+  const cam = map.cameraForBounds(CITY_BOUNDS, { padding, bearing: 0 });
   if (!cam || cam.zoom == null || !cam.center) {
     return { center: SF_CENTER, zoom: BROWSE_ZOOM, pitch, bearing: 0 };
   }
@@ -141,9 +148,14 @@ function mapPadding(map: maplibregl.Map, drawerOpen: boolean): Padding {
  */
 function hoodFramePadding(map: maplibregl.Map): Padding {
   const c = map.getContainer();
+  // Small, symmetric margins that fill ~90% of the VISIBLE map. Crucially, do
+  // NOT reserve the results rail here: the map CONTAINER is already inset from
+  // it on desktop (md:right-[396px] in AppShell), and the global viewport
+  // padding already reserves the mobile header/sheet. Reserving the rail again
+  // double-counted and shoved the hood far to the left. A touch more top than
+  // bottom keeps the hood clear of the floating search header.
   if (c.clientWidth < 768) return { top: 24, bottom: 24, left: 20, right: 20 };
-  // Rail: 384px wide + its own 12px right offset ≈ 396px; add a small gap.
-  return { top: 48, bottom: 48, left: 56, right: 420 };
+  return { top: 76, bottom: 48, left: 64, right: 64 };
 }
 
 /** Zoom cap when framing a neighborhood — high enough that a small hood fills
