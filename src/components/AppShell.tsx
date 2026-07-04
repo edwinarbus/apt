@@ -141,8 +141,10 @@ export function AppShell() {
     }
   }, [listings, savedDtos]);
 
-  // Mobile results drawer (below lg the panel becomes a bottom sheet).
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  // Mobile results drawer (below lg the panel becomes a bottom sheet) —
+  // defaults open so listings are immediately visible on first load, not
+  // hidden behind a collapsed bar the user has to notice and tap.
+  const [drawerOpen, setDrawerOpen] = useState(true);
 
   // Escape walks back one layer at a time: modals close themselves first;
   // then a selected listing deselects; then an isolated hood releases.

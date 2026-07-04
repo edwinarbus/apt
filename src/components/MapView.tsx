@@ -77,13 +77,20 @@ const HOODS = (hoodsData as unknown as { features: HoodFeature[] }).features;
 
 /** Bounding box of every neighborhood = the city extent, used to frame the
  * resting "home" view so the whole city fits whatever width the map viewport
- * has (it lives left of the results rail, so that width varies). */
+ * has (it lives left of the results rail, so that width varies). Treasure
+ * Island is excluded deliberately: it sits ~2.4km further north than
+ * anything on the peninsula (only 3 active listings there), so including it
+ * stretched this box far into the bay — the fit then had to zoom out to cover
+ * that empty corner, leaving the whole peninsula smaller and sitting low in
+ * the frame. Its own pins still render wherever they are; only the "frame the
+ * whole city" bounds skip it. */
 const CITY_BOUNDS: [[number, number], [number, number]] = (() => {
   let w = 180,
     s = 90,
     e = -180,
     n = -90;
   for (const f of HOODS) {
+    if (f.properties.name === "Treasure Island") continue;
     const [[fw, fs], [fe, fn]] = multiPolygonBounds(f.geometry.coordinates);
     w = Math.min(w, fw);
     s = Math.min(s, fs);
