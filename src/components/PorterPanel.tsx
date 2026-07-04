@@ -362,10 +362,13 @@ function ApplicationCard({
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M3 6.5 12 13l9-6.5" /><rect x="3" y="5" width="18" height="14" rx="2" />
             </svg>
-            {/* "property" drops on narrow screens — the row is already tight
+            {/* One flex item so the container's gap sits only between the icon
+                and the label — otherwise "Email" and "property" would be two
+                separate flex children and the gap would double the &nbsp;.
+                "property" drops on narrow screens — the row is already tight
                 enough there that the longer label was squeezing the subtitle
                 text (drafted-to address) down to an unreadable truncation. */}
-            Email<span className="hidden sm:inline">&nbsp;property</span>
+            <span>Email<span className="hidden sm:inline">&nbsp;property</span></span>
           </a>
         ) : (
           <span className="shrink-0 rounded-md border border-line px-2 py-1.5 text-[11.5px] text-faint">
