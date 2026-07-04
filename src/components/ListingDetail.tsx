@@ -371,14 +371,8 @@ export function ListingDetail({
                       {remembered.on && (
                         <span
                           key={remembered.tick}
-                          className="animate-remember pointer-events-none absolute bottom-full left-1/2 mb-1 flex items-center gap-1 whitespace-nowrap rounded-md bg-ink px-2 py-1 text-[11px] font-semibold text-paper shadow-[0_6px_18px_rgba(0,0,0,0.5)]"
+                          className="animate-remember pointer-events-none absolute bottom-full left-1/2 mb-1 whitespace-nowrap rounded-md bg-ink px-2 py-1 text-[11px] font-semibold text-paper shadow-[0_6px_18px_rgba(0,0,0,0.5)]"
                         >
-                          {/* head profile (facing right) with a clock = "committed to memory" */}
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                            <path d="M8.5 20.5v-3.2C6.4 16 5 13.6 5 11 5 6.9 8.4 3.5 12.6 3.5c4 0 7.3 3 7.3 6.9 0 1.6-.6 2.6-1.9 2.9-.7.2-1 .6-1 1.3v.6c0 1-.8 1.8-1.8 1.8h-1.4" />
-                            <circle cx="11" cy="10.2" r="3.1" />
-                            <path d="M11 8.6v1.6l1.3.9" />
-                          </svg>
                           Remembered
                         </span>
                       )}
