@@ -14,6 +14,18 @@ export interface KnownListing {
   priceMonthly: number | null;
   contentHash: string;
   detailFetchedAt: string | null;
+  /**
+   * Enough of the stored row to re-fetch a listing's detail page directly by
+   * URL, even when it has scrolled off the source's current results page.
+   * Adapters (e.g. Craigslist) use this to drain a backlog of active listings
+   * that were only ever saved at card depth — otherwise a listing that ages
+   * off page one before its detail budget came up would stay info-less
+   * forever. Optional so adapters that don't need it can ignore it.
+   */
+  originalUrl?: string;
+  priceRaw?: string | null;
+  sourceNeighborhoodRaw?: string | null;
+  staleStatus?: string;
 }
 
 export interface AdapterContext {

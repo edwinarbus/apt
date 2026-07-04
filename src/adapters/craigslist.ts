@@ -485,28 +485,66 @@ export const craigslistAdapter: SourceAdapter = {
       id: string;
       needsDetail: boolean;
       detailPriority: number;
+      /** synthesized from a stored row, not present on the current search page */
+      offPage: boolean;
     }
     const planned: Planned[] = [];
+    const onPageIds = new Set<string>();
     for (const card of sfCards) {
       const id = clListingIdFromUrl(card.url);
       if (!id) {
         result.warnings.push(`could not extract listing id from ${card.url}`);
         continue;
       }
+      onPageIds.add(id);
       const known = ctx.knownListings.get(id);
       const cardPrice = parsePrice(card.priceRaw);
       const priceMoved = cardPrice != null && known?.priceMonthly !== cardPrice;
       const neverFetched = !known || !known.detailFetchedAt;
       const needsDetail = neverFetched || priceMoved;
       const detailPriority = !known ? 0 : neverFetched ? 1 : 2;
-      planned.push({ card, id, needsDetail, detailPriority });
+      planned.push({ card, id, needsDetail, detailPriority, offPage: false });
+    }
+
+    // Off-page backlog: active listings we only ever saved at card depth that
+    // have since scrolled off the ~360-result search page. The search plan
+    // above can never reach them (they're not on the page), so without this
+    // they'd stay info-less forever. Re-fetch their detail page directly by
+    // the stored URL, synthesizing a card from the stored row. Priority 1
+    // (same as an on-page never-fetched listing) so they drain ahead of
+    // cosmetic price refreshes but behind brand-new postings.
+    const backlog: Planned[] = [];
+    for (const known of ctx.knownListings.values()) {
+      if (
+        known.detailFetchedAt ||
+        !known.originalUrl ||
+        onPageIds.has(known.sourceListingId) ||
+        // Skip ones already known to be gone; only chase still-active listings.
+        (known.staleStatus != null &&
+          known.staleStatus !== "active" &&
+          known.staleStatus !== "missing_once")
+      ) {
+        continue;
+      }
+      backlog.push({
+        card: {
+          title: known.title,
+          url: known.originalUrl,
+          priceRaw: known.priceRaw ?? null,
+          locationRaw: known.sourceNeighborhoodRaw ?? null,
+        },
+        id: known.sourceListingId,
+        needsDetail: true,
+        detailPriority: 1,
+        offPage: true,
+      });
     }
 
     const detailBudget = ctx.source.maxDetailPagesPerRun;
     // Stable sort by priority (card order — newest first — is preserved within
-    // each tier), then take the budget off the top.
-    const needingDetail = planned
-      .filter((p) => p.needsDetail)
+    // each tier), then take the budget off the top. Backlog is appended after
+    // the on-page cards so, at equal priority, on-page listings go first.
+    const needingDetail = [...planned.filter((p) => p.needsDetail), ...backlog]
       .map((p, i) => ({ p, i }))
       .sort((a, b) => a.p.detailPriority - b.p.detailPriority || a.i - b.i)
       .map(({ p }) => p);
@@ -520,7 +558,7 @@ export const craigslistAdapter: SourceAdapter = {
       );
     }
     ctx.log(
-      `craigslist: ${sfCards.length} SF cards (${allCards.length} raw), ${needingDetail.length} need detail, fetching ${toFetch.length}`,
+      `craigslist: ${sfCards.length} SF cards (${allCards.length} raw), ${needingDetail.length} need detail (${backlog.length} off-page backlog), fetching ${toFetch.length}`,
     );
 
     const detailById = new Map<string, ClDetail>();
@@ -550,10 +588,15 @@ export const craigslistAdapter: SourceAdapter = {
       result.detailFetchFailures === 0 &&
       needingDetail.length === toFetch.length;
 
-    for (const p of planned) {
+    // On-page cards are always emitted (they were seen on the search page this
+    // run). Off-page backlog is emitted ONLY when we actually fetched a detail
+    // for it — an un-fetched backlog listing is left untouched rather than
+    // re-written at card depth, and its stored row stays as-is.
+    for (const p of [...planned, ...backlog]) {
       const detail = detailById.get(p.id) ?? null;
+      if (p.offPage && !detail) continue;
       if (detail && detail.listingStatus !== "active") {
-        // Card listed it but the posting is already gone — record the status.
+        // The posting is already gone — record the status.
         result.listings.push({
           ...buildListing(p.card, p.id, null, now),
           listingStatus: detail.listingStatus,

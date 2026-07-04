@@ -207,6 +207,11 @@ export async function runSource(
       priceMonthly: listings.priceMonthly,
       contentHash: listings.contentHash,
       detailFetchedAt: listings.detailFetchedAt,
+      // For adapters that drain an off-page detail backlog by direct URL fetch.
+      originalUrl: listings.originalUrl,
+      priceRaw: listings.priceRaw,
+      sourceNeighborhoodRaw: listings.sourceNeighborhoodRaw,
+      staleStatus: listings.staleStatus,
     })
     .from(listings)
     .where(eq(listings.sourceId, source.id))

@@ -3,11 +3,17 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   clListingIdFromUrl,
+  craigslistAdapter,
   parseClAvailability,
   parseClDetailPage,
   parseClSearchPage,
 } from "@/adapters/craigslist";
 import { isSfLocation } from "@/core/neighborhoods";
+import { FixtureFetcher, fixtureRoutesFor } from "@/ingest/verify";
+import { nowIso } from "@/db/client";
+import { SOURCE_SEEDS } from "@/config/sources";
+import { parsePrice } from "@/core/normalize";
+import type { KnownListing } from "@/adapters/types";
 
 // Recorded from the live site on 2026-07-01. Normal test runs never hit the
 // network — refresh fixtures manually if Craigslist changes structure.
@@ -123,5 +129,95 @@ describe("parseClAvailability", () => {
   it("returns null for unparseable text", () => {
     expect(parseClAvailability("soon!", now)).toBeNull();
     expect(parseClAvailability(null, now)).toBeNull();
+  });
+});
+
+describe("craigslistAdapter — off-page detail backlog", () => {
+  function run(known: Map<string, KnownListing>) {
+    return craigslistAdapter.run({
+      // Cast: only the fields the adapter reads (listingUrl, budgets) matter.
+      source: {
+        ...SOURCE_SEEDS.find((s) => s.id === "craigslist_sf")!,
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+      } as never,
+      fetcher: new FixtureFetcher(fixtureRoutesFor("craigslist")!),
+      knownListings: known,
+      log: () => {},
+      saveDebug: () => null,
+    });
+  }
+
+  // Every card on the recorded search page, marked already-fetched with a
+  // matching price, so the search plan needs no detail this run and the budget
+  // is free for the off-page backlog (mirrors a steady-state nightly run).
+  function knownSearchCards(): Map<string, KnownListing> {
+    const known = new Map<string, KnownListing>();
+    for (const card of parseClSearchPage(searchHtml)) {
+      const id = clListingIdFromUrl(card.url);
+      if (!id) continue;
+      known.set(id, {
+        sourceListingId: id,
+        title: card.title,
+        priceMonthly: parsePrice(card.priceRaw),
+        contentHash: "same",
+        detailFetchedAt: nowIso(),
+        originalUrl: card.url,
+        priceRaw: card.priceRaw,
+        sourceNeighborhoodRaw: card.locationRaw,
+        staleStatus: "active",
+      });
+    }
+    return known;
+  }
+
+  it("re-fetches an active, never-detailed listing that has scrolled off the search page", async () => {
+    // A known listing whose id is NOT on the recorded search fixture, saved at
+    // card depth (detailFetchedAt null), still active, with a stored URL that
+    // routes to the detail fixture.
+    const backlogId = "OFFPAGEBACKLOG0001";
+    const known = knownSearchCards();
+    known.set(backlogId, {
+      sourceListingId: backlogId,
+      title: "Aged-off corporate repost",
+      priceMonthly: 3199,
+      contentHash: "stale",
+      detailFetchedAt: null,
+      originalUrl: `https://sfbay.craigslist.org/sfc/apa/d/old/${backlogId}.html`,
+      priceRaw: "$3,199",
+      sourceNeighborhoodRaw: "Castro",
+      staleStatus: "active",
+    });
+
+    const result = await run(known);
+    const drained = result.listings.find((l) => l.sourceListingId === backlogId);
+    expect(drained).toBeDefined();
+    // It was upgraded from card depth to a full detail record via direct fetch.
+    expect(drained!.fetchDepth).toBe("detail");
+    expect((drained!.photos ?? []).length).toBeGreaterThan(0);
+  });
+
+  it("leaves an already-detailed off-page listing alone (no wasted fetch)", async () => {
+    const doneId = "ALREADYDONE0001";
+    const known = new Map<string, KnownListing>([
+      [
+        doneId,
+        {
+          sourceListingId: doneId,
+          title: "Fully fetched, off page",
+          priceMonthly: 2500,
+          contentHash: "done",
+          detailFetchedAt: nowIso(),
+          originalUrl: `https://sfbay.craigslist.org/sfc/apa/d/done/${doneId}.html`,
+          priceRaw: "$2,500",
+          sourceNeighborhoodRaw: "Mission",
+          staleStatus: "active",
+        },
+      ],
+    ]);
+
+    const result = await run(known);
+    // Not on the search page and already detailed → never emitted or fetched.
+    expect(result.listings.find((l) => l.sourceListingId === doneId)).toBeUndefined();
   });
 });
