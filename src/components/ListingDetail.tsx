@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ListingDetailResponse } from "@/lib/api-types";
 import { computeBadges } from "@/lib/badges";
+import { draftApplication } from "@/core/application-draft";
 import type { UserListingStatus } from "@/core/types";
 import {
   fmtBaths,
@@ -198,6 +199,30 @@ export function ListingDetail({
     ? [l.addressRaw, l.neighborhood ?? l.sourceNeighborhoodRaw].filter(Boolean).join(" · ")
     : "";
 
+  // "Send application" — a one-tap mailto with the pre-written application
+  // already filled in, so the human still sends it themselves in their own
+  // inbox. Only wired when the listing actually has an email on file; a phone-
+  // or unknown-only contact falls back to the original listing (below).
+  const applicationMailto = l
+    ? (() => {
+        const draft = draftApplication({
+          title: l.title,
+          addressRaw: l.addressRaw,
+          neighborhood: l.neighborhood,
+          bedrooms: l.bedrooms,
+          bathrooms: l.bathrooms,
+          priceMonthly: l.priceMonthly,
+          availableDate: l.availableDate,
+          originalUrl: l.originalUrl,
+          contactEmail: l.contactEmail,
+          contactPhone: l.contactPhone,
+        });
+        return draft.to && draft.channel === "email"
+          ? `mailto:${draft.to}?subject=${encodeURIComponent(draft.subject)}&body=${encodeURIComponent(draft.body)}`
+          : null;
+      })()
+    : null;
+
   return (
     <div
       className={`fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-[2px] ${
@@ -323,12 +348,23 @@ export function ListingDetail({
                 {/* Primary CTA */}
                 <div className="flex flex-col gap-2">
                   <a
-                    href={l.originalUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="rounded-md bg-accent px-4 py-2.5 text-center text-[13.5px] font-semibold text-paper transition-colors hover:bg-accent-deep"
+                    href={applicationMailto ?? undefined}
+                    aria-disabled={!applicationMailto}
+                    title={
+                      applicationMailto
+                        ? undefined
+                        : "No contact email on file — see the original listing under More details"
+                    }
+                    onClick={(e) => {
+                      if (!applicationMailto) e.preventDefault();
+                    }}
+                    className={`rounded-md px-4 py-2.5 text-center text-[13.5px] font-semibold transition-colors ${
+                      applicationMailto
+                        ? "bg-accent text-paper hover:bg-accent-deep"
+                        : "cursor-not-allowed bg-elevated text-faint"
+                    }`}
                   >
-                    View original listing ↗
+                    Send application
                   </a>
 
                   {/* Save + thumbs-down — the two prominent verdicts */}
@@ -501,7 +537,15 @@ export function ListingDetail({
                     )}
 
                     <Section title="Source & contact">
-                      <p className="text-[12.5px] text-muted">
+                      <a
+                        href={l.originalUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[12.5px] font-medium text-accent hover:underline"
+                      >
+                        View original listing ↗
+                      </a>
+                      <p className="mt-1.5 text-[12.5px] text-muted">
                         {l.sourceName}
                         {(l.contactPhone || l.contactEmail) && (
                           <> · {[l.contactPhone, l.contactEmail].filter(Boolean).join(" · ")}</>

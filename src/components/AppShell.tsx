@@ -374,6 +374,65 @@ export function AppShell() {
     if (id && openDetail) setDetailOpen(true);
   }, []);
 
+  // Deep-linkable listing URL: `?listing=<id>`. Managed via the raw History
+  // API (not next/navigation's router) so opening/closing a listing never
+  // triggers an actual Next.js route transition — the map/search state
+  // (camera position, live results) stays completely undisturbed while the
+  // open listing still gets a shareable, bookmarkable URL.
+
+  // On mount, open whatever listing (if any) the URL names. A genuine mount
+  // side effect (reading the browser URL), not derived state.
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("listing");
+    if (id) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSelectedId(id);
+      setDetailOpen(true);
+    }
+  }, []);
+
+  // Keep the URL in sync with detailOpen/selectedId: push a history entry when
+  // a listing opens, and unwind it (or strip the param) when it closes. Reads
+  // the CURRENT browser URL fresh each time rather than tracking a separate
+  // "did I cause this" flag, so this is naturally a no-op when the state
+  // change was itself driven by a popstate event (the URL already matches).
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const currentParam = url.searchParams.get("listing");
+    if (detailOpen && selectedId) {
+      if (currentParam !== selectedId) {
+        url.searchParams.set("listing", selectedId);
+        window.history.pushState({ aptListing: selectedId }, "", url);
+      }
+    } else if (currentParam) {
+      // If the top history entry is the one pushed for opening this exact
+      // listing, going back is the natural, symmetric close. Otherwise (the
+      // page loaded directly on a shared link, so there's no "before" state
+      // in this app to return to) just strip the param in place.
+      if ((window.history.state as { aptListing?: string } | null)?.aptListing === currentParam) {
+        window.history.back();
+      } else {
+        url.searchParams.delete("listing");
+        window.history.replaceState(null, "", url);
+      }
+    }
+  }, [detailOpen, selectedId]);
+
+  // Real back/forward navigation: reflect whatever the resulting URL names.
+  useEffect(() => {
+    const onPopState = () => {
+      const id = new URLSearchParams(window.location.search).get("listing");
+      if (id) {
+        setSelectedId(id);
+        setDetailOpen(true);
+      } else {
+        setDetailOpen(false);
+      }
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
   const handleStatusChange = useCallback(
     (listingId: string, status: UserListingStatus | null) => {
       setListings((prev) =>

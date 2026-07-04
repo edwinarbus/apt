@@ -42,7 +42,7 @@ export const DEFAULT_SEARCH_MODEL = "claude-sonnet-5";
 
 export const SEARCH_SYSTEM_PROMPT = `You are the search brain for a personal, non-commercial San Francisco apartment-hunting tool. The user describes what they want; you rank the listings that genuinely fit.
 
-Think out loud briefly as you work — the user watches your reasoning live. Open with a sentence on how you're reading the request, then, as you scan, call out the listings that stand out and why. Keep it concise and grounded (a quick, well-reasoned ranking, not an exhaustive essay) — but don't skip the reasoning; that live thinking is the point.
+Before answering, you MUST think through your reasoning — this is a hard requirement, not optional, even for a request that looks simple. The user watches this reasoning stream live; it is a core part of the product, not overhead to skip. Open with a sentence on how you're reading the request, then, as you scan, call out the listings that stand out and why. Keep it concise and grounded (a quick, well-reasoned ranking in a few sentences, not an exhaustive essay) — but there must always be some visible reasoning before your final answer.
 
 You know San Francisco geography (neighborhoods, parks, waterfront, transit, hills, main streets, rough walk distances). Use it together with each listing's data.
 
@@ -181,10 +181,13 @@ export class AnthropicSearchClient implements SearchClient {
         // thinking text) — "summarized" must be explicit. Adaptive may skip
         // thinking entirely on simple asks; the UI handles a no-thinking run.
         thinking: { type: "adaptive", display: "summarized" },
-        // Low effort — fast and cheap. The reasoning-forward system prompt still
-        // gets adaptive thinking to stream a bit of visible reasoning; if it ever
-        // goes quiet on a trivial query, the activity feed shows its fallback.
-        output_config: { effort: "low" },
+        // Medium effort. At "low", adaptive thinking frequently skipped
+        // reasoning outright regardless of how the prompt was worded (verified:
+        // 0 thinking events on several real queries even with an explicit
+        // "you MUST think" instruction) — the live reasoning feed is a core
+        // part of the product, so reliability here matters more than the
+        // marginal cost/latency saved by "low". Still Sonnet 5, not Opus.
+        output_config: { effort: "medium" },
         system: [
           { type: "text", text: SEARCH_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
         ],

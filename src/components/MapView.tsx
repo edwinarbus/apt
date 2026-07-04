@@ -330,9 +330,13 @@ function applyHoodRevealLayers(map: maplibregl.Map, activeHood: string | null) {
   map.setFilter("hood-selected-glow", hoodFilter);
   map.setPaintProperty("hood-selected-line", "line-opacity", activeHood ? 0.95 : 0);
   map.setPaintProperty("hood-selected-glow", "line-opacity", activeHood ? 0.6 : 0);
+  // Mask data + visibility MUST land before the satellite layer becomes
+  // visible, never after — otherwise there's a frame where the satellite
+  // raster (which covers the WHOLE map; only this mask constrains it to one
+  // neighborhood) is visible with no hole cut yet, reading as a city-wide flash.
   (map.getSource("hood-reveal") as GeoJSONSource | undefined)?.setData(hoodRevealMask(activeHood));
-  map.setLayoutProperty("hood-satellite", "visibility", activeHood ? "visible" : "none");
   map.setLayoutProperty("hood-reveal-mask", "visibility", activeHood ? "visible" : "none");
+  map.setLayoutProperty("hood-satellite", "visibility", activeHood ? "visible" : "none");
   map.setPaintProperty("hoods-line", "line-opacity", activeHood ? 0.22 : 0.45);
   map.setPaintProperty("hoods-label", "text-opacity", activeHood ? 0.5 : 0.8);
   // Browse-mode GL dots off while a hood is revealed — irrelevant during an
@@ -740,6 +744,39 @@ export function MapView({
       map.on("error", (e) => console.error("[apt map]", e.error?.message ?? e));
       (window as unknown as { __aptMap?: maplibregl.Map }).__aptMap = map;
 
+      // Middle-mouse-button drag-to-rotate. MapLibre's built-in DragRotateHandler
+      // only binds to the right button (or Ctrl+left) with no option to add
+      // another button, so this is a small hand-rolled handler alongside it.
+      const rotateEl = map.getCanvasContainer();
+      let rotating = false;
+      let lastX = 0;
+      const ROTATE_DEG_PER_PX = 0.5;
+      const onMiddleDown = (e: MouseEvent) => {
+        if (e.button !== 1) return;
+        e.preventDefault();
+        rotating = true;
+        lastX = e.clientX;
+      };
+      const onMiddleMove = (e: MouseEvent) => {
+        if (!rotating) return;
+        e.preventDefault();
+        const dx = e.clientX - lastX;
+        lastX = e.clientX;
+        map.jumpTo({ bearing: map.getBearing() - dx * ROTATE_DEG_PER_PX });
+      };
+      const onMiddleUp = (e: MouseEvent) => {
+        if (e.button === 1) rotating = false;
+      };
+      // Swallow the middle-click "auxclick" some browsers fire (autoscroll /
+      // Linux paste) — the button is repurposed for rotate here.
+      const onAuxClick = (e: MouseEvent) => {
+        if (e.button === 1) e.preventDefault();
+      };
+      rotateEl.addEventListener("mousedown", onMiddleDown);
+      window.addEventListener("mousemove", onMiddleMove);
+      window.addEventListener("mouseup", onMiddleUp);
+      rotateEl.addEventListener("auxclick", onAuxClick);
+
       map.on("load", () => {
         try {
           map.setSky({
@@ -1068,6 +1105,16 @@ export function MapView({
         } catch (err) {
           console.warn("[apt map] mask reorder failed", err);
         }
+        // Reassert the hood-reveal mask above the satellite raster it's meant
+        // to constrain (below the outline/label layers, so those stay crisp).
+        // 3D terrain draping can otherwise reorder raster vs. fill layers
+        // relative to their style-array order, which read as satellite imagery
+        // briefly covering the whole map before narrowing to one neighborhood.
+        try {
+          map.moveLayer("hood-reveal-mask", "hood-selected-glow");
+        } catch (err) {
+          console.warn("[apt map] hood-reveal-mask reorder failed", err);
+        }
 
         loadedRef.current = true;
         setMapLoaded(true);
@@ -1101,6 +1148,10 @@ export function MapView({
       ro.observe(container);
       cleanupRef.current = () => {
         ro.disconnect();
+        rotateEl.removeEventListener("mousedown", onMiddleDown);
+        window.removeEventListener("mousemove", onMiddleMove);
+        window.removeEventListener("mouseup", onMiddleUp);
+        rotateEl.removeEventListener("auxclick", onAuxClick);
         hoverCardRef.current?.remove();
         if (hoverTimerRef.current) window.clearTimeout(hoverTimerRef.current);
         lockMarkerRef.current?.remove();
