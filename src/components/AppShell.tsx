@@ -474,6 +474,7 @@ export function AppShell() {
           searchToken={searchSeq}
           scanIds={progress.keptIds}
           radarPoints={radarPoints}
+          drawerOpen={drawerOpen}
         />
       </div>
 
@@ -645,7 +646,7 @@ function MobileDrawer({
         className="textured pointer-events-auto relative flex flex-col overflow-hidden rounded-t-xl border-x-2 border-t-2 border-white/30 bg-panel/98 shadow-[inset_0_1px_0_rgba(255,255,255,0.09),0_-14px_50px_-8px_rgba(0,0,0,0.9)] transition-[height] duration-300 ease-[cubic-bezier(0.2,0,0,1)]"
         style={{
           height: open
-            ? "min(70dvh, 560px)"
+            ? "min(52dvh, 440px)"
             : "calc(52px + env(safe-area-inset-bottom))",
           paddingBottom: "env(safe-area-inset-bottom)",
         }}

@@ -1,3 +1,4 @@
+import "@/lib/load-env";
 import { createDb } from "@/db/client";
 import { formatSummaryLine, runAllEnabled } from "@/ingest/runner";
 import { computeDigest, formatDigestConsole } from "@/ingest/digest";

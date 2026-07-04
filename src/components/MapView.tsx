@@ -111,6 +111,22 @@ function cityCamera(map: maplibregl.Map) {
   return { center: cam.center, zoom: cam.zoom - 0.1, pitch, bearing: 0 };
 }
 
+type FramePad = { top: number; bottom: number; left: number; right: number };
+
+/** cameraForBounds padding that accounts for the mobile results sheet
+ * overlaying the bottom of the map. Desktop (rail sits beside the map, never
+ * over it) uses the given padding as-is; on a narrow viewport with the sheet
+ * expanded, content is framed into the visible strip ABOVE the sheet instead of
+ * being centered in the phone and hidden behind it. */
+function framePadding(map: maplibregl.Map, drawerOpen: boolean, desktop: FramePad): FramePad {
+  const c = map.getContainer();
+  if (c.clientWidth >= 768) return desktop; // the mobile sheet only exists below md
+  // Reserve the sheet's height (min(52dvh, 440px) when open) plus a little
+  // breathing room; collapsed, only its ~52px handle sits over the map.
+  const sheet = drawerOpen ? Math.min(Math.round(c.clientHeight * 0.52), 440) : 60;
+  return { top: 72, bottom: sheet + 16, left: 32, right: 32 };
+}
+
 const WORLD_RING: [number, number][] = [
   [-180, -85],
   [180, -85],
@@ -394,7 +410,13 @@ function makePhotoCardElement(
     e.stopPropagation();
     opts.onClick();
   });
-  return withRoot(el);
+  // MapLibre doesn't assign marker z-index — markers stack by DOM insertion
+  // order, so a price pill added by a later refreshThumbs (pan/zoom) would sit
+  // ON TOP of the selected listing's photo card. Lift the card above the pills
+  // (which have no z-index) so it always reads as the front-most marker.
+  const root = withRoot(el);
+  root.style.zIndex = "5";
+  return root;
 }
 
 function makeRippleElement(): HTMLDivElement {
@@ -439,6 +461,7 @@ export function MapView({
   searchToken,
   scanIds,
   radarPoints,
+  drawerOpen,
 }: {
   listings: ListingSummary[];
   selectedId: string | null;
@@ -449,6 +472,9 @@ export function MapView({
   searchActive?: boolean;
   selectedHood: string | null;
   onHoodSelect: (name: string | null) => void;
+  /** mobile results sheet is expanded → it overlays the bottom of the map, so
+   * the camera frames content into the visible strip above it, not center-screen */
+  drawerOpen?: boolean;
   /** a neighborhood named by the search — highlighted (outline only, no isolate) */
   highlightHood?: string | null;
   /** bumped once per search ATTEMPT — lets the camera effects tell "a new
@@ -478,6 +504,7 @@ export function MapView({
   const lockMarkerRef = useRef<maplibregl.Marker | null>(null);
   const thumbsRef = useRef<Map<string, maplibregl.Marker>>(new Map());
   const searchActiveRef = useRef(false);
+  const drawerOpenRef = useRef(false);
   // The searchToken the camera was last framed for. A status toggle (hide /
   // thumbs-down) only shrinks the current results without bumping the token,
   // so it never re-frames (that's the "map zooms when I thumbs-down a result"
@@ -602,6 +629,7 @@ export function MapView({
     selectedIdRef.current = selectedId;
     reasonsRef.current = reasons;
     refreshThumbsRef.current = refreshThumbs;
+    drawerOpenRef.current = drawerOpen ?? false;
   });
 
   /* ---------- Map boot ---------- */
@@ -1154,7 +1182,7 @@ export function MapView({
       for (const c of coords) bounds.extend(c);
       if (!bounds.isEmpty()) {
         const cam = map.cameraForBounds(bounds, {
-          padding: { top: 110, left: 90, right: 90, bottom: 120 },
+          padding: framePadding(map, drawerOpenRef.current, { top: 110, left: 90, right: 90, bottom: 120 }),
           maxZoom: 13.4,
         });
         if (cam) map.easeTo({ ...cam, duration: 1300 });
@@ -1190,7 +1218,11 @@ export function MapView({
           [w, s],
           [e, n],
         ],
-        { padding: { top: 240, left: 120, right: 120, bottom: 160 }, bearing: -20, maxZoom: 14.2 },
+        {
+          padding: framePadding(map, drawerOpenRef.current, { top: 240, left: 120, right: 120, bottom: 160 }),
+          bearing: -20,
+          maxZoom: 14.2,
+        },
       );
       if (cam) {
         if (!motionOk) map.jumpTo({ ...cam, pitch });
@@ -1242,7 +1274,11 @@ export function MapView({
               [w, s],
               [e, n],
             ],
-            { padding: { top: 150, left: 120, right: 120, bottom: 130 }, bearing: 0, maxZoom: 14 },
+            {
+              padding: framePadding(map, drawerOpenRef.current, { top: 150, left: 120, right: 120, bottom: 130 }),
+              bearing: 0,
+              maxZoom: 14,
+            },
           );
           if (cam) applyCam({ ...cam, pitch });
         } else {
@@ -1303,7 +1339,7 @@ export function MapView({
         }
         if (!bounds.isEmpty()) {
           const cam = map.cameraForBounds(bounds, {
-            padding: { top: 150, left: 90, right: 90, bottom: 90 },
+            padding: framePadding(map, drawerOpenRef.current, { top: 150, left: 90, right: 90, bottom: 90 }),
             maxZoom: pts.length === 1 ? 15.6 : 14.4,
           });
           if (cam) {
