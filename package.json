@@ -29,6 +29,7 @@
     "backfill:contacts": "tsx scripts/backfill-contacts.ts",
     "porter:deploy": "tsx scripts/porter-agent.ts",
     "porter:worker": "tsx scripts/porter-worker.ts",
+    "db:copy-to-turso": "tsx scripts/copy-to-turso.ts",
     "build:sf-boundary": "tsx scripts/build-sf-boundary.ts"
   },
   "dependencies": {
