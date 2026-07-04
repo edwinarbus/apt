@@ -342,6 +342,17 @@ function applyHoodRevealLayers(map: maplibregl.Map, activeHood: string | null) {
   for (const id of ["points", "clusters", "cluster-count"]) {
     map.setLayoutProperty(id, "visibility", dotVis);
   }
+  // Constrain 3D buildings to the revealed neighborhood's own footprint.
+  // Without this, buildings extrude for the WHOLE viewport at this zoom —
+  // so a revealed hood's tilted camera also lit up buildings in neighboring,
+  // non-highlighted neighborhoods (e.g. SoMa behind a highlighted Downtown).
+  if (map.getLayer("apt-3d-buildings")) {
+    const hood = activeHood ? hoodByName(activeHood) : undefined;
+    map.setFilter(
+      "apt-3d-buildings",
+      hood ? (["within", hood.geometry] as unknown as maplibregl.FilterSpecification) : null,
+    );
+  }
 }
 
 /** Recolor the light Positron style into the navy ops palette before boot.
