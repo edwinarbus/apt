@@ -259,11 +259,14 @@ export function PorterButton({ badge, onClick }: { badge?: number; onClick: () =
   );
 }
 
-/** Porter's own entry point — a floating action button pulled OUT of the
- * results panel/drawer entirely (see AppShell), so it stays visible and
- * reachable regardless of panel/drawer state on any screen size. Bigger and
- * more visually weighted than a chrome icon: this is Porter's front door, not
- * a utility toggle. */
+/** Porter's own entry point — pulled OUT of the results panel/drawer entirely
+ * (see AppShell) and placed inline next to the search bar, so it stays
+ * visible and reachable regardless of panel/drawer state on any screen size.
+ * `aspect-square` + a stretched flex parent makes it match the search bar's
+ * actual rendered height exactly, however tall that is (a wrapped multi-line
+ * query, an error banner) — never a hardcoded guess. Bigger and more visually
+ * weighted than a chrome icon: this is Porter's front door, not a utility
+ * toggle. */
 export function PorterFab({
   badge,
   onClick,
@@ -279,7 +282,7 @@ export function PorterFab({
       onClick={onClick}
       aria-label="Porter — watched searches & applications"
       title="Porter"
-      className={`group flex h-11 w-11 items-center justify-center rounded-full border-2 border-white/30 bg-panel/98 text-ink shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_10px_28px_-6px_rgba(0,0,0,0.85)] backdrop-blur-xl transition-transform hover:scale-105 active:scale-95 ${className}`}
+      className={`textured group relative flex aspect-square min-h-12 shrink-0 items-center justify-center rounded-xl border-2 border-white/30 bg-panel/98 text-ink shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_18px_45px_-8px_rgba(0,0,0,0.9),0_5px_16px_-3px_rgba(0,0,0,0.8)] backdrop-blur-xl transition-colors hover:bg-elevated ${className}`}
     >
       <BellIcon size={20} />
       {!!badge && badge > 0 && (

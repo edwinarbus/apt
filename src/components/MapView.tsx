@@ -839,15 +839,21 @@ export function MapView({
               // Held off until well past where clusters break into individual
               // pins (zoom 13) — at that zoom buildings were popping in as a
               // messy field right as the map was still busy revealing pins.
-              // Now they only extrude once you're properly zoomed into a
-              // neighborhood (isolate/highlight land around 14-14.2).
-              minzoom: 14,
+              // minzoom (and the height ramp below) must both clear by 14 —
+              // the LOWEST zoom any of the app's own scripted camera moves
+              // land at (hood isolate caps at 14.2, search-highlight at 14,
+              // multi-pin results at 14.4) — otherwise those landings arrive
+              // with buildings still mid-ramp at near-zero height, reading as
+              // "doesn't show" until the user manually zooms in further. The
+              // ramp used to finish at 14.6, past every one of those landing
+              // zooms, which was exactly that bug.
+              minzoom: 13.6,
               paint: {
                 "fill-extrusion-color": "#243349",
                 "fill-extrusion-height": [
                   "interpolate", ["linear"], ["zoom"],
-                  14, 0,
-                  14.6, ["coalesce", ["get", "render_height"], 10],
+                  13.6, 0,
+                  14, ["coalesce", ["get", "render_height"], 10],
                 ],
                 "fill-extrusion-base": ["coalesce", ["get", "render_min_height"], 0],
                 "fill-extrusion-opacity": 0.85,

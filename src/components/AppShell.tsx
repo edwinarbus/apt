@@ -479,25 +479,34 @@ export function AppShell() {
         />
       </div>
 
-      {/* App header — brand + search, one bar (top-left, never touching the rail) */}
+      {/* App header — brand + search + Porter, one row (top-left, never
+          touching the rail). Porter sits inline to the search bar's right —
+          pulled out of the results panel/drawer entirely so it's always
+          reachable regardless of panel/drawer state, on any screen size.
+          items-stretch makes it match the search bar's actual height exactly
+          (including a wrapped multi-line query or an error banner); if the
+          window is too narrow for both side by side, flex-wrap drops it to
+          its own row underneath instead of squeezing the search bar unusably
+          thin. */}
       <div className="pointer-events-none absolute top-3 right-3 left-3 z-20 md:right-auto md:w-[620px] md:max-w-[calc(100%-408px)]">
-        <div className="pointer-events-auto">
-          <SearchBar
-            query={query}
-            onQueryChange={setQuery}
-            onSearch={doSearch}
-            onClear={clearSearch}
-            searching={searching}
-            searchError={searchError}
-            search={search}
-          />
+        <div className="pointer-events-auto flex flex-wrap items-stretch gap-2">
+          <div className="min-w-[220px] flex-1">
+            <SearchBar
+              query={query}
+              onQueryChange={setQuery}
+              onSearch={doSearch}
+              onClear={clearSearch}
+              searching={searching}
+              searchError={searchError}
+              search={search}
+            />
+          </div>
+          <PorterFab badge={scoutNewCount} onClick={() => setScoutOpen(true)} />
         </div>
       </div>
 
-      {/* Results rail — tablet + desktop. Starts a bit lower than top-3 to
-          leave the Porter FAB (rendered separately, floating above) its own
-          clear strip instead of overlapping the panel's rounded corner. */}
-      <div className="absolute top-16 right-3 bottom-3 z-20 w-[384px] max-md:hidden">
+      {/* Results rail — tablet + desktop */}
+      <div className="absolute top-3 right-3 bottom-3 z-20 w-[384px] max-md:hidden">
         <ListingPanel
           listings={displayed}
           reasons={reasonById}
@@ -517,17 +526,6 @@ export function AppShell() {
           searchSaved={savedQueries.has(query.trim())}
         />
       </div>
-
-      {/* Porter — pulled out of the panel/drawer entirely so it's always
-          reachable regardless of panel/drawer state, on any screen size.
-          Desktop: floats in the gap above the results rail. Mobile: floats
-          over the map just below the search header, clear of the drawer
-          (anchored from the top, so it's unaffected by the drawer opening). */}
-      <PorterFab
-        badge={scoutNewCount}
-        onClick={() => setScoutOpen(true)}
-        className="absolute top-20 right-3 z-30 md:top-3"
-      />
 
       {/* Results drawer — mobile / narrow (bottom sheet) */}
       <MobileDrawer
