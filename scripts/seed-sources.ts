@@ -1,3 +1,4 @@
+import "@/lib/load-env";
 import { eq } from "drizzle-orm";
 import { createDb, nowIso } from "@/db/client";
 import { sources } from "@/db/schema";
@@ -10,44 +11,51 @@ import { SOURCE_SEEDS } from "@/config/sources";
  * `--reset-enabled` restores the seed's enabled flags too.
  */
 
-const resetEnabled = process.argv.includes("--reset-enabled");
-const db = await createDb();
-const now = nowIso();
+async function main() {
+  const resetEnabled = process.argv.includes("--reset-enabled");
+  const db = await createDb();
+  const now = nowIso();
 
-let inserted = 0;
-let updated = 0;
-for (const seed of SOURCE_SEEDS) {
-  const existing = await db.select().from(sources).where(eq(sources.id, seed.id)).get();
-  if (!existing) {
-    await db.insert(sources).values({ ...seed, createdAt: now, updatedAt: now }).run();
-    inserted++;
-  } else {
-    const { enabled, ...rest } = seed;
-    await db
-      .update(sources)
-      .set({
-        ...rest,
-        ...(resetEnabled ? { enabled } : {}),
-        updatedAt: now,
-      })
-      .where(eq(sources.id, seed.id))
-      .run();
-    updated++;
+  let inserted = 0;
+  let updated = 0;
+  for (const seed of SOURCE_SEEDS) {
+    const existing = await db.select().from(sources).where(eq(sources.id, seed.id)).get();
+    if (!existing) {
+      await db.insert(sources).values({ ...seed, createdAt: now, updatedAt: now }).run();
+      inserted++;
+    } else {
+      const { enabled, ...rest } = seed;
+      await db
+        .update(sources)
+        .set({
+          ...rest,
+          ...(resetEnabled ? { enabled } : {}),
+          updatedAt: now,
+        })
+        .where(eq(sources.id, seed.id))
+        .run();
+      updated++;
+    }
+  }
+
+  const all = await db.select().from(sources).all();
+  console.log(`Seeded source registry: ${inserted} inserted, ${updated} updated.\n`);
+  const pad = (s: string, n: number) => s.padEnd(n);
+  console.log(
+    pad("id", 24) + pad("enabled", 9) + pad("adapter", 14) + pad("priority", 16) + "status notes",
+  );
+  for (const s of all) {
+    console.log(
+      pad(s.id, 24) +
+        pad(s.enabled ? "yes" : "no", 9) +
+        pad(s.adapterType, 14) +
+        pad(s.priority, 16) +
+        (s.sourceStatusNotes ?? "").slice(0, 80),
+    );
   }
 }
 
-const all = await db.select().from(sources).all();
-console.log(`Seeded source registry: ${inserted} inserted, ${updated} updated.\n`);
-const pad = (s: string, n: number) => s.padEnd(n);
-console.log(
-  pad("id", 24) + pad("enabled", 9) + pad("adapter", 14) + pad("priority", 16) + "status notes",
-);
-for (const s of all) {
-  console.log(
-    pad(s.id, 24) +
-      pad(s.enabled ? "yes" : "no", 9) +
-      pad(s.adapterType, 14) +
-      pad(s.priority, 16) +
-      (s.sourceStatusNotes ?? "").slice(0, 80),
-  );
-}
+main().catch((err) => {
+  console.error(err instanceof Error ? err.message : err);
+  process.exit(1);
+});

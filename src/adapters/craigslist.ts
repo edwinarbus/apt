@@ -472,10 +472,19 @@ export const craigslistAdapter: SourceAdapter = {
 
     // Decide which listings need a detail fetch: unknown ones, and known ones
     // whose card price changed. Everything else is refreshed at card depth.
+    // `detailPriority` orders which ones win the budget when it's exceeded:
+    //   0 — brand new (never seen): want the full record + photos immediately
+    //   1 — seen before but still at card depth (info-less backlog): drain it
+    //   2 — already fully fetched, only the card price moved: cosmetic refresh
+    // Without this, price-refreshes and newer postings could permanently
+    // starve older never-fetched listings, leaving them stuck with no photos
+    // or beds/baths forever. Never-fetched (tiers 0 and 1) always outrank a
+    // price-only refresh.
     interface Planned {
       card: ClSearchCard;
       id: string;
       needsDetail: boolean;
+      detailPriority: number;
     }
     const planned: Planned[] = [];
     for (const card of sfCards) {
@@ -486,19 +495,28 @@ export const craigslistAdapter: SourceAdapter = {
       }
       const known = ctx.knownListings.get(id);
       const cardPrice = parsePrice(card.priceRaw);
-      const needsDetail =
-        !known ||
-        !known.detailFetchedAt ||
-        (cardPrice != null && known.priceMonthly !== cardPrice);
-      planned.push({ card, id, needsDetail });
+      const priceMoved = cardPrice != null && known?.priceMonthly !== cardPrice;
+      const neverFetched = !known || !known.detailFetchedAt;
+      const needsDetail = neverFetched || priceMoved;
+      const detailPriority = !known ? 0 : neverFetched ? 1 : 2;
+      planned.push({ card, id, needsDetail, detailPriority });
     }
 
-    const needingDetail = planned.filter((p) => p.needsDetail);
     const detailBudget = ctx.source.maxDetailPagesPerRun;
+    // Stable sort by priority (card order — newest first — is preserved within
+    // each tier), then take the budget off the top.
+    const needingDetail = planned
+      .filter((p) => p.needsDetail)
+      .map((p, i) => ({ p, i }))
+      .sort((a, b) => a.p.detailPriority - b.p.detailPriority || a.i - b.i)
+      .map(({ p }) => p);
     const toFetch = needingDetail.slice(0, detailBudget);
     if (needingDetail.length > toFetch.length) {
+      const droppedBacklog = needingDetail
+        .slice(detailBudget)
+        .filter((p) => p.detailPriority < 2).length;
       result.warnings.push(
-        `detail budget exhausted: ${needingDetail.length} listings need detail pages, cap is ${detailBudget}; the rest saved at card depth this run`,
+        `detail budget exhausted: ${needingDetail.length} listings need detail pages, cap is ${detailBudget}; ${droppedBacklog} still info-less and saved at card depth this run`,
       );
     }
     ctx.log(

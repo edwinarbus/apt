@@ -35,7 +35,16 @@ export const SOURCE_SEEDS: SourceSeed[] = [
     timeoutMs: 25000,
     retryCount: 2,
     maxPagesPerRun: 1,
-    maxDetailPagesPerRun: 50,
+    // The static search page serves ~360 newest SF postings, and EVERY bit of
+    // rich data (photos, beds/baths, address, description) lives only on the
+    // detail page — a listing that misses this budget is saved at "card depth"
+    // with nothing but a title, price, and rough location. At 50, a busy day's
+    // 130+ new postings couldn't all be fetched, and the un-fetched ones were
+    // starved on later runs (newer postings always outrank them), so they were
+    // stuck info-less forever. 300 comfortably covers a normal night plus a
+    // backlog while staying under the page size; detail is still only fetched
+    // for new/changed listings, so a quiet night fetches far fewer.
+    maxDetailPagesPerRun: 300,
     geocodeEnabled: true,
     needsJavaScript: false,
     hasPagination: false,

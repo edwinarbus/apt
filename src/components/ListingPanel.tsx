@@ -303,12 +303,16 @@ export function PorterFab({
     >
       <BellIcon size={20} className={drawAttention ? "animate-bell-wiggle" : undefined} />
       {!!badge && badge > 0 && (
+        // Badge sits proud of the top-right corner (not tucked into the rim)
+        // and is deliberately large so a real count reads at a glance, while
+        // the bell stays centered in the circle. A ring in the button's own
+        // surface color carves a clean gap between the chip and the icon.
         <span
-          className={`absolute -top-1.5 -right-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1 text-[10.5px] font-bold text-paper tabular-nums shadow-[0_1px_6px_rgba(0,0,0,0.6)] ${
+          className={`absolute -top-2.5 -right-2.5 z-10 flex h-6 min-w-6 items-center justify-center rounded-full bg-accent px-1.5 text-[12px] leading-none font-bold text-paper tabular-nums ring-2 ring-panel shadow-[0_2px_8px_rgba(0,0,0,0.7)] ${
             drawAttention ? "animate-badge-pop" : ""
           }`}
         >
-          {badge > 99 ? "99" : badge}
+          {badge > 99 ? "99+" : badge}
         </span>
       )}
     </button>
