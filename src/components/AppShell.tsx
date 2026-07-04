@@ -51,6 +51,12 @@ export function AppShell() {
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [progress, setProgress] = useState<SearchProgressState>(EMPTY_PROGRESS);
+  // Bumped once per search ATTEMPT (not per result). MapView compares this
+  // against what it last framed the camera to, so a new search always
+  // re-frames — even one that repeats the same neighborhood name or lands an
+  // overlapping result set — while a status change (hide/thumbs-down) that
+  // merely shrinks the current results never does (it doesn't bump this).
+  const [searchSeq, setSearchSeq] = useState(0);
   // Hidden/unavailable listings stay filtered out (the toggle was removed as
   // chrome); search still anchors to the browser location when it's granted.
   const showHiddenGone = false;
@@ -174,6 +180,7 @@ export function AppShell() {
     setSearching(true);
     setSearchError(null);
     setSearch(null);
+    setSearchSeq((s) => s + 1);
     const startedAt = Date.now();
     setProgress({ ...EMPTY_PROGRESS, startedAt });
     setDrawerOpen(true); // raise the mobile sheet so the live feed is visible
@@ -410,6 +417,7 @@ export function AppShell() {
           selectedHood={selectedHood}
           onHoodSelect={setSelectedHood}
           highlightHood={searchHood}
+          searchToken={searchSeq}
           scanIds={progress.keptIds}
           radarPoints={radarPoints}
         />
@@ -441,7 +449,7 @@ export function AppShell() {
           interpretation={search?.interpretation ?? null}
           hoodName={selectedHood}
           selectedId={selectedId}
-          onSelect={(id) => select(id)}
+          onSelect={(id) => select(id, false)}
           sort={sort}
           onSortChange={setSort}
           hideSuspicious={hideSuspicious}
@@ -478,7 +486,7 @@ export function AppShell() {
           progress={progress}
           hoodName={selectedHood}
           selectedId={selectedId}
-          onSelect={(id) => select(id)}
+          onSelect={(id) => select(id, false)}
           sort={sort}
           onSortChange={setSort}
         />

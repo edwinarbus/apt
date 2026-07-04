@@ -497,6 +497,7 @@ export function MapView({
   selectedHood,
   onHoodSelect,
   highlightHood,
+  searchToken,
   scanIds,
   radarPoints,
 }: {
@@ -511,6 +512,11 @@ export function MapView({
   onHoodSelect: (name: string | null) => void;
   /** a neighborhood named by the search — highlighted (outline only, no isolate) */
   highlightHood?: string | null;
+  /** bumped once per search ATTEMPT — lets the camera effects tell "a new
+   * search landed" apart from "the current results just got filtered down"
+   * (hide / thumbs-down), even when the new search repeats the same
+   * neighborhood name or an overlapping result set. */
+  searchToken?: number;
   /** the actual shortlisted listing ids streamed mid-search */
   scanIds?: string[] | null;
   /** id → coords for every active listing */
@@ -533,11 +539,13 @@ export function MapView({
   const lockMarkerRef = useRef<maplibregl.Marker | null>(null);
   const thumbsRef = useRef<Map<string, maplibregl.Marker>>(new Map());
   const searchActiveRef = useRef(false);
-  // The result ids the search camera last framed to. A status toggle that only
-  // REMOVES a result (thumbs-down / hide) shrinks the set — we must NOT re-frame
-  // then (that's the "map zooms when I thumbs-down a result" bug); only a new
-  // search, which brings ids we haven't framed, should move the camera.
-  const framedIdsRef = useRef<Set<string>>(new Set());
+  // The searchToken the camera was last framed for. A status toggle (hide /
+  // thumbs-down) only shrinks the current results without bumping the token,
+  // so it never re-frames (that's the "map zooms when I thumbs-down a result"
+  // bug); a genuinely new search always carries a fresh token, so it always
+  // re-frames — even if it repeats the same neighborhood name or lands a
+  // result set that overlaps the previous one.
+  const framedSearchTokenRef = useRef<number | null | undefined>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
   const refreshThumbsRef = useRef<() => void>(() => {});
   const reasonsRef = useRef(reasons);
@@ -1251,7 +1259,11 @@ export function MapView({
     } catch {
       /* layers not ready yet */
     }
-  }, [highlightHood, selectedHood, mapLoaded]);
+    // searchToken forces this to re-apply even when highlightHood repeats the
+    // same neighborhood as the previous search (e.g. two Mission searches in a
+    // row) — otherwise the camera wouldn't return if the user had since panned
+    // away, since none of the other dependencies would have changed.
+  }, [highlightHood, selectedHood, mapLoaded, searchToken]);
 
   /* ---------- Target mode (search results) ---------- */
   useEffect(() => {
@@ -1259,8 +1271,6 @@ export function MapView({
     if (!map || !loadedRef.current) return;
     const wasActive = searchActiveRef.current;
     searchActiveRef.current = !!searchActive;
-    // No active search → forget what we framed, so the next search frames fresh.
-    if (!searchActive) framedIdsRef.current = new Set();
 
     try {
       map.setPaintProperty(
@@ -1283,12 +1293,12 @@ export function MapView({
     // frame the camera here for scattered, citywide results.
     if (searchActive && !selectedHoodRef.current && !highlightHoodRef.current) {
       const pts = listings.filter((l) => l.latitude != null && l.longitude != null);
-      // Only frame when the result set brings ids we haven't framed yet (a new
-      // or growing search). A pure shrink — the user hid or thumbs-downed a
-      // result — is a subset of what's already framed, so the camera holds.
-      const isNewResults = pts.some((l) => !framedIdsRef.current.has(l.id));
-      if (pts.length > 0 && isNewResults) {
-        framedIdsRef.current = new Set(pts.map((l) => l.id));
+      // Only re-frame for a genuinely NEW search (a fresh token) — a status
+      // change that merely shrinks the current results (hide / thumbs-down)
+      // doesn't bump the token, so the camera holds still for those.
+      const isNewSearch = framedSearchTokenRef.current !== searchToken;
+      if (pts.length > 0 && isNewSearch) {
+        framedSearchTokenRef.current = searchToken;
         const bounds = new maplibregl.LngLatBounds();
         for (const l of pts) {
           if (l.latitude! > 37.6 && l.latitude! < 37.85 && l.longitude! > -122.56 && l.longitude! < -122.3) {
@@ -1318,7 +1328,7 @@ export function MapView({
       else map.flyTo({ ...home, duration: 1200, curve: 1.3 });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchActive, searchActive ? listings : null, mapLoaded]);
+  }, [searchActive, searchActive ? listings : null, mapLoaded, searchToken]);
 
   /* ---------- Selection: photo card on the selected listing ---------- */
   useEffect(() => {
