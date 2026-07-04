@@ -309,7 +309,9 @@ export function PorterFab({
       // it a perfect circle regardless of the row height.
       className={`textured group relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-2 border-white/30 bg-panel/98 text-ink shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_18px_45px_-8px_rgba(0,0,0,0.9),0_5px_16px_-3px_rgba(0,0,0,0.8)] backdrop-blur-xl transition-colors hover:bg-elevated ${className}`}
     >
-      <BellIcon size={20} className={wiggling ? "animate-bell-wiggle" : undefined} />
+      {/* porter-fab-bell drives the CSS hover-wiggle (see globals.css); the
+          conditional animate-bell-wiggle drives the one-shot intro sequence. */}
+      <BellIcon size={20} className={`porter-fab-bell ${wiggling ? "animate-bell-wiggle" : ""}`} />
       {badgeShown && !!badge && badge > 0 && (
         // Badge sits proud of the top-right corner (not tucked into the rim)
         // and is deliberately large so a real count reads at a glance, while
