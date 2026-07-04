@@ -31,6 +31,13 @@ export const metadata: Metadata = {
   title: "Apt. — SF apartment finder",
   description:
     "Private San Francisco rental radar. Monitors sources, normalizes and dedupes listings, tracks price and availability. Always verify with the original listing.",
+  // Personal, single-user tool — never meant to be discoverable or indexed.
+  robots: {
+    index: false,
+    follow: false,
+    nocache: true,
+    googleBot: { index: false, follow: false, noimageindex: true },
+  },
 };
 
 export const viewport: Viewport = {
