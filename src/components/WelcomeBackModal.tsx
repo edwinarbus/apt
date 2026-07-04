@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo } from "react";
 import type { ListingSummary, SavedSearchDto } from "@/lib/api-types";
-import { fmtBaths, fmtBeds, fmtMoney } from "@/lib/format";
+import { fmtBaths, fmtBeds, fmtMoney, realAddress } from "@/lib/format";
 import { PhotoImg } from "./PhotoImg";
 import { BellIcon } from "./ListingPanel";
 
@@ -119,7 +119,7 @@ export function WelcomeBackModal({
                           </span>
                         </div>
                         <p className="truncate text-[12px] text-faint">
-                          {[l.addressRaw, l.neighborhood ?? l.sourceNeighborhoodRaw].filter(Boolean).join(" · ")}
+                          {[realAddress(l.addressRaw), l.neighborhood ?? l.sourceNeighborhoodRaw].filter(Boolean).join(" · ")}
                         </p>
                       </div>
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="shrink-0 text-faint">

@@ -57,6 +57,8 @@ export interface MatchableListing {
   longitude: number | null;
   title: string | null;
   description: string | null;
+  /** denormalized vision blob (features + summary + rooms), lowercased */
+  visualSearchText?: string | null;
 }
 
 export interface MatchResult {
@@ -76,6 +78,36 @@ const EXCLUDED_STATUSES: UserListingStatus[] = [
   "not_a_fit",
   "rented_elsewhere",
 ];
+
+// Connective/filler words stripped when turning a saved search's free-text
+// query into keyword requirements — kept short since it only needs to clear
+// prepositions and articles, not do real NLP.
+const QUERY_STOPWORDS = new Set([
+  "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "has", "have",
+  "in", "is", "it", "near", "nearby", "of", "on", "or", "that", "the", "to",
+  "very", "with", "within", "close", "walking", "distance", "some", "any",
+  "just", "really", "also", "please", "want", "looking", "would", "like",
+  "need", "ideally", "maybe",
+]);
+
+/** Turn a saved search's free-text query into required-keyword terms, so a
+ * search actually filters instead of matching every listing (its only other
+ * structured criteria is usually just an optional neighborhood). */
+export function deriveKeywordsFromQuery(query: string): string[] {
+  const words = query
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  const seen = new Set<string>();
+  const keywords: string[] = [];
+  for (const w of words) {
+    if (w.length < 3 || QUERY_STOPWORDS.has(w) || seen.has(w)) continue;
+    seen.add(w);
+    keywords.push(w);
+  }
+  return keywords;
+}
 
 export function haversineKm(
   lat1: number,
@@ -202,8 +234,17 @@ export function evaluateListing(
     }
   }
 
-  const haystack = `${listing.title ?? ""}\n${listing.description ?? ""}`.toLowerCase();
-  for (const kw of criteria.includeKeywords ?? []) {
+  const haystack = `${listing.title ?? ""}\n${listing.description ?? ""}\n${listing.visualSearchText ?? ""}`.toLowerCase();
+  // A saved search's only real signal is often its free-text query — when no
+  // explicit includeKeywords were set, derive them from that query so the
+  // search actually filters instead of passing every eligible listing.
+  const includeKeywords =
+    criteria.includeKeywords && criteria.includeKeywords.length > 0
+      ? criteria.includeKeywords
+      : criteria.query
+        ? deriveKeywordsFromQuery(criteria.query)
+        : [];
+  for (const kw of includeKeywords) {
     if (!haystack.includes(kw.toLowerCase())) failed.push(`missing_keyword:${kw}`);
   }
   for (const kw of criteria.excludeKeywords ?? []) {

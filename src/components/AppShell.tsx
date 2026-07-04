@@ -571,6 +571,7 @@ export function AppShell() {
       {scoutOpen && (
         <PorterPanel
           listings={listings ?? []}
+          initialSearches={savedDtos}
           onClose={() => setScoutOpen(false)}
           onSelect={(id) => select(id)}
           onChanged={refreshSavedSearches}

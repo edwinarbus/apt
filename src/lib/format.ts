@@ -52,6 +52,16 @@ export function fmtDateShort(iso: string | null | undefined): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
+/** Craigslist renders its ".mapaddress" element as a bare "(google map)" link
+ * label when a poster hasn't disclosed a precise address — never a real
+ * address, even though old scrapes stored it as one. Filters that out so
+ * callers fall back to neighborhood instead of showing it. */
+export function realAddress(addressRaw: string | null | undefined): string | null {
+  if (!addressRaw) return null;
+  if (/^\(?google\s*maps?\)?$/i.test(addressRaw.trim())) return null;
+  return addressRaw;
+}
+
 export const PRECISION_LABELS: Record<string, string> = {
   exact_address: "exact address",
   building: "building-level",

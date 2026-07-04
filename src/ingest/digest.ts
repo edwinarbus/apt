@@ -6,6 +6,7 @@ import { newId, nowIso } from "@/db/client";
 import {
   digestRuns,
   listings,
+  listingVision,
   savedSearches,
   savedSearchMatches,
   sources,
@@ -92,6 +93,11 @@ async function loadMatchableListings(db: Db): Promise<ListingForMatch[]> {
   const rows = await db.select().from(listings).all();
   const states = await db.select().from(userListingStates).all();
   const stateByListing = new Map(states.map((s) => [s.listingId, s.status]));
+  const visionRows = await db
+    .select({ listingId: listingVision.listingId, searchText: listingVision.searchText })
+    .from(listingVision)
+    .all();
+  const visualSearchTextByListing = new Map(visionRows.map((v) => [v.listingId, v.searchText]));
   return rows.map((r) => ({
     id: r.id,
     title: r.title,
@@ -112,6 +118,7 @@ async function loadMatchableListings(db: Db): Promise<ListingForMatch[]> {
     latitude: r.latitude,
     longitude: r.longitude,
     description: r.description,
+    visualSearchText: visualSearchTextByListing.get(r.id),
     scamRiskLevel: r.scamRiskLevel,
     staleStatus: r.staleStatus,
     listingStatus: r.listingStatus,

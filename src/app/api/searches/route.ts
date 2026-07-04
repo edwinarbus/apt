@@ -8,6 +8,7 @@ import { characteristicTags, type DislikeFacts } from "@/memory/characteristics"
 import { curateMatches, curationNote, inferAversions } from "@/memory/curate";
 import type { UserListingStatus } from "@/core/types";
 import type { SavedSearchDto, SavedSearchesResponse } from "@/lib/api-types";
+import { realAddress } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +20,7 @@ type ListingRow = typeof listings.$inferSelect;
 function factsFor(row: ListingRow, visualTags: string[]): DislikeFacts {
   return {
     title: row.title,
-    addressRaw: row.addressRaw,
+    addressRaw: realAddress(row.addressRaw),
     bedrooms: row.bedrooms,
     bathrooms: row.bathrooms,
     priceMonthly: row.priceEffectiveMonthly ?? row.priceMonthly,
@@ -35,7 +36,7 @@ function factsFor(row: ListingRow, visualTags: string[]): DislikeFacts {
   };
 }
 
-function toMatchable(row: typeof listings.$inferSelect): MatchableListing {
+function toMatchable(row: typeof listings.$inferSelect, visualSearchText?: string | null): MatchableListing {
   return {
     priceMonthly: row.priceMonthly,
     priceEffectiveMonthly: row.priceEffectiveMonthly,
@@ -53,6 +54,7 @@ function toMatchable(row: typeof listings.$inferSelect): MatchableListing {
     longitude: row.longitude,
     title: row.title,
     description: row.description,
+    visualSearchText,
   };
 }
 
@@ -61,19 +63,22 @@ function toMatchable(row: typeof listings.$inferSelect): MatchableListing {
  * auto-apply searches) a drafted application for the freshest match. */
 export async function GET() {
   const db = await getDb();
-  const searches = await db.select().from(savedSearches).orderBy(desc(savedSearches.createdAt)).all();
-  const rows = await db.select().from(listings).all();
-  const statusById = new Map(
-    (await db.select().from(userListingStates).all()).map((s) => [s.listingId, s.status as UserListingStatus]),
-  );
-  const visualTagsById = new Map(
-    (
-      await db
-        .select({ listingId: listingVision.listingId, features: listingVision.features })
-        .from(listingVision)
-        .all()
-    ).map((v) => [v.listingId, v.features ?? []]),
-  );
+  const [searches, rows, statusRows, visionRows] = await Promise.all([
+    db.select().from(savedSearches).orderBy(desc(savedSearches.createdAt)).all(),
+    db.select().from(listings).all(),
+    db.select().from(userListingStates).all(),
+    db
+      .select({
+        listingId: listingVision.listingId,
+        features: listingVision.features,
+        searchText: listingVision.searchText,
+      })
+      .from(listingVision)
+      .all(),
+  ]);
+  const statusById = new Map(statusRows.map((s) => [s.listingId, s.status as UserListingStatus]));
+  const visualTagsById = new Map(visionRows.map((v) => [v.listingId, v.features ?? []]));
+  const visualSearchTextById = new Map(visionRows.map((v) => [v.listingId, v.searchText]));
   const rowsById = new Map(rows.map((r) => [r.id, r]));
   const now = Date.now();
 
@@ -105,7 +110,11 @@ export async function GET() {
   const dtos: SavedSearchDto[] = searches.map((s) => {
     const criteria = (s.criteria ?? {}) as SavedSearchCriteria;
     const matching = active.filter((r) => {
-      const res = evaluateListing(toMatchable(r), criteria, statusById.get(r.id) ?? null);
+      const res = evaluateListing(
+        toMatchable(r, visualSearchTextById.get(r.id)),
+        criteria,
+        statusById.get(r.id) ?? null,
+      );
       // Count a match only when known criteria pass AND, if the search names a
       // neighborhood, the listing is actually IN it (not merely unknown) — so a
       // "watched: Outer Richmond" count never includes unplaced listings.
@@ -126,7 +135,7 @@ export async function GET() {
       ? (newMatches.length ? newMatches : shortlist).slice(0, 5).map((target) => {
           const d = draftApplication({
             title: target.title,
-            addressRaw: target.addressRaw,
+            addressRaw: realAddress(target.addressRaw),
             neighborhood: target.neighborhood,
             bedrooms: target.bedrooms,
             bathrooms: target.bathrooms,
@@ -140,7 +149,7 @@ export async function GET() {
             listingId: target.id,
             listingTitle: target.title,
             addressLine:
-              [target.addressRaw, target.neighborhood].filter(Boolean).join(" · ") || null,
+              [realAddress(target.addressRaw), target.neighborhood].filter(Boolean).join(" · ") || null,
             priceMonthly: target.priceEffectiveMonthly ?? target.priceMonthly,
             primaryPhotoUrl: target.primaryPhotoUrl,
             to: d.to,

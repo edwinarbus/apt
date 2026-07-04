@@ -25,16 +25,21 @@ function mailtoHref(a: ApplicationDraftDto): string | null {
 
 export function PorterPanel({
   listings,
+  initialSearches,
   onClose,
   onSelect,
   onChanged,
 }: {
   listings: ListingSummary[];
+  /** Already-fetched searches (AppShell fetches these on mount for the Scout
+   * badge) — lets the panel render instantly instead of showing "Loading…"
+   * while it redundantly re-fetches data the app already has. */
+  initialSearches?: SavedSearchDto[] | null;
   onClose: () => void;
   onSelect: (id: string) => void;
   onChanged?: () => void;
 }) {
-  const [searches, setSearches] = useState<SavedSearchDto[] | null>(null);
+  const [searches, setSearches] = useState<SavedSearchDto[] | null>(initialSearches ?? null);
   const [curationNote, setCurationNote] = useState<string | null>(null);
   const [closing, setClosing] = useState(false);
 
@@ -81,7 +86,7 @@ export function PorterPanel({
         setSearches(d.searches);
         setCurationNote(d.curated ? d.curationNote : null);
       })
-      .catch(() => live && setSearches([]));
+      .catch(() => live && setSearches((prev) => prev ?? []));
     return () => {
       live = false;
     };

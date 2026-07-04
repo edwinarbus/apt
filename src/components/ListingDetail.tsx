@@ -11,6 +11,7 @@ import {
   fmtDate,
   fmtDateShort,
   fmtMoney,
+  realAddress,
   relativeTime,
 } from "@/lib/format";
 import { PhotoImg } from "./PhotoImg";
@@ -196,7 +197,7 @@ export function ListingDetail({
         .join(" · ")
     : "";
   const place = l
-    ? [l.addressRaw, l.neighborhood ?? l.sourceNeighborhoodRaw].filter(Boolean).join(" · ")
+    ? [realAddress(l.addressRaw), l.neighborhood ?? l.sourceNeighborhoodRaw].filter(Boolean).join(" · ")
     : "";
 
   // "Send application" — a one-tap mailto with the pre-written application
@@ -207,7 +208,7 @@ export function ListingDetail({
     ? (() => {
         const draft = draftApplication({
           title: l.title,
-          addressRaw: l.addressRaw,
+          addressRaw: realAddress(l.addressRaw),
           neighborhood: l.neighborhood,
           bedrooms: l.bedrooms,
           bathrooms: l.bathrooms,

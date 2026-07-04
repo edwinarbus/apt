@@ -102,6 +102,13 @@ describe("parseClDetailPage", () => {
     );
     expect(removed.listingStatus).toBe("removed_by_source");
   });
+
+  it("does not treat the generic '(google map)' link label as an address", () => {
+    const noAddress = parseClDetailPage(
+      '<html><body><div class="mapaddress"><a href="https://maps.google.com/?q=1">(google map)</a></div></body></html>',
+    );
+    expect(noAddress.addressRaw).toBeNull();
+  });
 });
 
 describe("parseClAvailability", () => {

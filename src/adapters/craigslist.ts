@@ -211,7 +211,10 @@ export function parseClDetailPage(html: string): ClDetail {
   }
 
   const mapAddress = $(".mapaddress").first().text().replace(/\s+/g, " ").trim();
-  if (mapAddress) {
+  // When a poster hasn't disclosed a precise address, Craigslist renders the
+  // ".mapaddress" element as a bare "(google map)" link instead of omitting
+  // it — that link label is not an address and must never be stored as one.
+  if (mapAddress && !/^\(?google\s*maps?\)?$/i.test(mapAddress)) {
     const unitMatch = mapAddress.match(/^(.*?)\s*[-–—]\s*(#?\w{1,8})$/);
     if (unitMatch && /\d/.test(unitMatch[2])) {
       detail.addressRaw = unitMatch[1].trim();

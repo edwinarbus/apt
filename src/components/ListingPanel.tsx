@@ -13,6 +13,7 @@ import {
   fmtBeds,
   fmtMoney,
   PRECISION_LABELS,
+  realAddress,
 } from "@/lib/format";
 import { CompactBadge } from "./Badges";
 import { PhotoImg } from "./PhotoImg";
@@ -399,7 +400,7 @@ function ListingCard({
     l.priceEffectiveMonthly < l.priceMonthly;
   const dimmed = l.userStatus === "hidden" || l.userStatus === "not_a_fit";
   const location =
-    [l.addressRaw, l.neighborhood ?? l.sourceNeighborhoodRaw]
+    [realAddress(l.addressRaw), l.neighborhood ?? l.sourceNeighborhoodRaw]
       .filter(Boolean)
       .join(" · ") || PRECISION_LABELS[l.geocodePrecision];
   const specs = [fmtBeds(l.bedrooms), fmtBaths(l.bathrooms)];
