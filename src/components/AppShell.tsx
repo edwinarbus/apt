@@ -15,7 +15,7 @@ import hoodsData from "@/data/sf-neighborhoods.json";
 import type { UserListingStatus } from "@/core/types";
 import { SearchBar } from "./SearchBar";
 import { EMPTY_PROGRESS, type SearchProgressState } from "./SearchProgress";
-import { PorterButton, ListingPanel, SortSelect, listingCountLabel } from "./ListingPanel";
+import { PorterFab, ListingPanel, SortSelect, listingCountLabel } from "./ListingPanel";
 import { ListingDetail } from "./ListingDetail";
 import { PorterPanel } from "./PorterPanel";
 import { SaveSearchDialog } from "./SaveSearchDialog";
@@ -493,8 +493,10 @@ export function AppShell() {
         </div>
       </div>
 
-      {/* Results rail — tablet + desktop */}
-      <div className="absolute top-3 right-3 bottom-3 z-20 w-[384px] max-md:hidden">
+      {/* Results rail — tablet + desktop. Starts a bit lower than top-3 to
+          leave the Porter FAB (rendered separately, floating above) its own
+          clear strip instead of overlapping the panel's rounded corner. */}
+      <div className="absolute top-16 right-3 bottom-3 z-20 w-[384px] max-md:hidden">
         <ListingPanel
           listings={displayed}
           reasons={reasonById}
@@ -512,10 +514,19 @@ export function AppShell() {
           onToggleSuspicious={() => setHideSuspicious((v) => !v)}
           onSaveSearch={() => setSaveOpen(true)}
           searchSaved={savedQueries.has(query.trim())}
-          onOpenScout={() => setScoutOpen(true)}
-          scoutBadge={scoutNewCount}
         />
       </div>
+
+      {/* Porter — pulled out of the panel/drawer entirely so it's always
+          reachable regardless of panel/drawer state, on any screen size.
+          Desktop: floats in the gap above the results rail. Mobile: floats
+          over the map just below the search header, clear of the drawer
+          (anchored from the top, so it's unaffected by the drawer opening). */}
+      <PorterFab
+        badge={scoutNewCount}
+        onClick={() => setScoutOpen(true)}
+        className="absolute top-20 right-3 z-30 md:top-3"
+      />
 
       {/* Results drawer — mobile / narrow (bottom sheet) */}
       <MobileDrawer
@@ -530,8 +541,6 @@ export function AppShell() {
         onSortChange={setSort}
         hideSuspicious={hideSuspicious}
         onToggleSuspicious={() => setHideSuspicious((v) => !v)}
-        onOpenScout={() => setScoutOpen(true)}
-        scoutBadge={scoutNewCount}
       >
         <ListingPanel
           chromeless
@@ -620,8 +629,6 @@ function MobileDrawer({
   onSortChange,
   hideSuspicious,
   onToggleSuspicious,
-  onOpenScout,
-  scoutBadge,
   children,
 }: {
   open: boolean;
@@ -635,8 +642,6 @@ function MobileDrawer({
   onSortChange: (s: SortKey) => void;
   hideSuspicious?: boolean;
   onToggleSuspicious?: () => void;
-  onOpenScout?: () => void;
-  scoutBadge?: number;
   children: React.ReactNode;
 }) {
   const label = listingCountLabel({ count, searching, loading, searchActive, hoodName });
@@ -690,7 +695,6 @@ function MobileDrawer({
             </button>
           )}
           {open && <SortSelect sort={sort} searchActive={searchActive} onSortChange={onSortChange} />}
-          {open && onOpenScout && <PorterButton badge={scoutBadge} onClick={onOpenScout} />}
           <button
             type="button"
             onClick={onToggle}

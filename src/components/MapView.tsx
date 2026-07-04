@@ -426,11 +426,19 @@ function makeRippleElement(): HTMLDivElement {
   return withRoot(el);
 }
 
-function toGeoJson(listings: ListingSummary[]) {
+// The selected listing gets its own distinct, larger photo-card marker (see
+// the selection effect below) — excluding it here too means the WebGL
+// "points"/"clusters" layer never has a click-hittable feature sitting right
+// behind that card, at the exact spot a user reaches for when trying to click
+// past it to something else (another neighborhood, an empty patch of map).
+// Without this, that stale point silently swallowed the click: the top-level
+// click handler bails out whenever ANY point feature is under the cursor, and
+// the per-layer "points" handler would just re-select the same listing again.
+function toGeoJson(listings: ListingSummary[], excludeId?: string | null) {
   return {
     type: "FeatureCollection" as const,
     features: listings
-      .filter((l) => l.latitude != null && l.longitude != null)
+      .filter((l) => l.latitude != null && l.longitude != null && l.id !== excludeId)
       .map((l) => ({
         type: "Feature" as const,
         geometry: {
@@ -937,7 +945,7 @@ export function MapView({
         // Listings
         map.addSource("listings", {
           type: "geojson",
-          data: toGeoJson(listingsRef.current),
+          data: toGeoJson(listingsRef.current, selectedIdRef.current),
           cluster: true,
           clusterRadius: 50,
           clusterMaxZoom: 13,
@@ -1096,7 +1104,7 @@ export function MapView({
         loadedRef.current = true;
         setMapLoaded(true);
         map.resize();
-        syncData(map, listingsRef.current);
+        syncData(map, listingsRef.current, selectedIdRef.current);
         refreshThumbsRef.current();
 
         const intro = cityCamera(map);
@@ -1153,13 +1161,16 @@ export function MapView({
      
   }, []);
 
-  // Push listing changes into the source + thumbnails.
+  // Push listing changes into the source + thumbnails. Also re-runs on
+  // selectedId change so the selected listing's own point is added back to
+  // the source the moment it's deselected (and removed the moment a new one
+  // is picked) — see the exclusion note on toGeoJson.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
-    syncData(map, listings);
+    syncData(map, listings, selectedId);
     refreshThumbsRef.current();
-  }, [listings, mapLoaded]);
+  }, [listings, mapLoaded, selectedId]);
 
   /* ---------- Search: highlight matching listings on the map ---------- */
   useEffect(() => {
@@ -1437,8 +1448,8 @@ function spawnRipple(map: maplibregl.Map, lngLat: [number, number]) {
   window.setTimeout(() => marker.remove(), 520);
 }
 
-function syncData(map: maplibregl.Map, listings: ListingSummary[]) {
+function syncData(map: maplibregl.Map, listings: ListingSummary[], excludeId?: string | null) {
   const source = map.getSource("listings") as GeoJSONSource | undefined;
   if (!source) return;
-  source.setData(toGeoJson(listings));
+  source.setData(toGeoJson(listings, excludeId));
 }

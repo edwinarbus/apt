@@ -57,8 +57,6 @@ export function ListingPanel({
   onToggleSuspicious,
   onSaveSearch,
   searchSaved,
-  onOpenScout,
-  scoutBadge,
   chromeless,
   hideHeader,
 }: {
@@ -83,10 +81,6 @@ export function ListingPanel({
   /** open the "save & watch this search" dialog (desktop rail only) */
   onSaveSearch?: () => void;
   searchSaved?: boolean;
-  /** open the Apt Scout / watched-searches panel */
-  onOpenScout?: () => void;
-  /** count shown on the Scout entry (new matches / new today) */
-  scoutBadge?: number;
   /** Drawer mode: drop the panel's own border/rounding/shadow. */
   chromeless?: boolean;
   /** Drawer mode: the handle supplies the count + sort, so skip the header. */
@@ -126,7 +120,6 @@ export function ListingPanel({
             )}
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
-            {onOpenScout && <PorterButton badge={scoutBadge} onClick={onOpenScout} />}
             {onToggleSuspicious && (
               <SuspiciousToggle hideSuspicious={hideSuspicious} onToggle={onToggleSuspicious} />
             )}
@@ -244,6 +237,9 @@ export function SuspiciousToggle({
 }
 
 /** Icon entry to Porter / watched searches, with a new-match count. */
+/** Compact icon-only variant — for chrome that's already tight on space
+ * (kept for any future embedded use; the app's main entry point is now
+ * PorterFab, floating outside the panel entirely — see AppShell). */
 export function PorterButton({ badge, onClick }: { badge?: number; onClick: () => void }) {
   return (
     <button
@@ -256,6 +252,38 @@ export function PorterButton({ badge, onClick }: { badge?: number; onClick: () =
       <BellIcon size={15} />
       {!!badge && badge > 0 && (
         <span className="absolute -top-2.5 -right-2.5 z-10 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[9px] font-bold text-paper tabular-nums shadow-[0_1px_4px_rgba(0,0,0,0.5)]">
+          {badge > 99 ? "99" : badge}
+        </span>
+      )}
+    </button>
+  );
+}
+
+/** Porter's own entry point — a floating action button pulled OUT of the
+ * results panel/drawer entirely (see AppShell), so it stays visible and
+ * reachable regardless of panel/drawer state on any screen size. Bigger and
+ * more visually weighted than a chrome icon: this is Porter's front door, not
+ * a utility toggle. */
+export function PorterFab({
+  badge,
+  onClick,
+  className = "",
+}: {
+  badge?: number;
+  onClick: () => void;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label="Porter — watched searches & applications"
+      title="Porter"
+      className={`group flex h-11 w-11 items-center justify-center rounded-full border-2 border-white/30 bg-panel/98 text-ink shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_10px_28px_-6px_rgba(0,0,0,0.85)] backdrop-blur-xl transition-transform hover:scale-105 active:scale-95 ${className}`}
+    >
+      <BellIcon size={20} />
+      {!!badge && badge > 0 && (
+        <span className="absolute -top-1.5 -right-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1 text-[10.5px] font-bold text-paper tabular-nums shadow-[0_1px_6px_rgba(0,0,0,0.6)]">
           {badge > 99 ? "99" : badge}
         </span>
       )}
