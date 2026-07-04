@@ -317,6 +317,33 @@ function removeTerrain(map: maplibregl.Map) {
   }
 }
 
+/**
+ * The "reveal a neighborhood" layer treatment — satellite imagery + a
+ * hole-punched dim mask, a bright highlighted outline, and dimmed browse dots.
+ * Shared by both ways a hood gets shown this way: clicking it directly
+ * (isolate) and a search that names it (highlight) — so a search reveals the
+ * neighborhood exactly like a click does, not just an outline.
+ */
+function applyHoodRevealLayers(map: maplibregl.Map, activeHood: string | null) {
+  const hoodFilter = ["==", ["get", "name"], activeHood ?? "__none__"] as never;
+  map.setFilter("hood-selected-line", hoodFilter);
+  map.setFilter("hood-selected-glow", hoodFilter);
+  map.setPaintProperty("hood-selected-line", "line-opacity", activeHood ? 0.95 : 0);
+  map.setPaintProperty("hood-selected-glow", "line-opacity", activeHood ? 0.6 : 0);
+  (map.getSource("hood-reveal") as GeoJSONSource | undefined)?.setData(hoodRevealMask(activeHood));
+  map.setLayoutProperty("hood-satellite", "visibility", activeHood ? "visible" : "none");
+  map.setLayoutProperty("hood-reveal-mask", "visibility", activeHood ? "visible" : "none");
+  map.setPaintProperty("hoods-line", "line-opacity", activeHood ? 0.22 : 0.45);
+  map.setPaintProperty("hoods-label", "text-opacity", activeHood ? 0.5 : 0.8);
+  // Browse-mode GL dots off while a hood is revealed — irrelevant during an
+  // active search anyway, since search results render as HTML thumb markers
+  // (see refreshThumbs), not this layer.
+  const dotVis = activeHood ? "none" : "visible";
+  for (const id of ["points", "clusters", "cluster-count"]) {
+    map.setLayoutProperty(id, "visibility", dotVis);
+  }
+}
+
 /** Recolor the light Positron style into the navy ops palette before boot.
  * Deliberately NOT monochrome: water reads blue, parks read green, buildings
  * sit warmer than the land, and major roads run brighter than minor ones, so
@@ -788,13 +815,18 @@ export function MapView({
               type: "fill-extrusion",
               source: buildingSource,
               "source-layer": "building",
-              minzoom: 13,
+              // Held off until well past where clusters break into individual
+              // pins (zoom 13) — at that zoom buildings were popping in as a
+              // messy field right as the map was still busy revealing pins.
+              // Now they only extrude once you're properly zoomed into a
+              // neighborhood (isolate/highlight land around 14-14.2).
+              minzoom: 14,
               paint: {
                 "fill-extrusion-color": "#243349",
                 "fill-extrusion-height": [
                   "interpolate", ["linear"], ["zoom"],
-                  13, 0,
-                  13.8, ["coalesce", ["get", "render_height"], 10],
+                  14, 0,
+                  14.6, ["coalesce", ["get", "render_height"], 10],
                 ],
                 "fill-extrusion-base": ["coalesce", ["get", "render_min_height"], 0],
                 "fill-extrusion-opacity": 0.85,
@@ -1147,36 +1179,16 @@ export function MapView({
     const motionOk = !reduced && document.visibilityState !== "hidden";
     const hood = hoodByName(selectedHood);
 
-    // Toggle the hood-mode layer set: satellite reveal + real terrain on, browse
-    // dots off (the hood's listings show as pills), and a bright highlighted
-    // outline tracing the neighborhood.
-    const applyLayers = (activeHood: string | null) => {
-      const hoodFilter = ["==", ["get", "name"], activeHood ?? "__none__"] as never;
-      map.setFilter("hood-selected-line", hoodFilter);
-      map.setFilter("hood-selected-glow", hoodFilter);
-      map.setPaintProperty("hood-selected-line", "line-opacity", activeHood ? 0.95 : 0);
-      map.setPaintProperty("hood-selected-glow", "line-opacity", activeHood ? 0.6 : 0);
-      (map.getSource("hood-reveal") as GeoJSONSource | undefined)?.setData(hoodRevealMask(activeHood));
-      map.setLayoutProperty("hood-satellite", "visibility", activeHood ? "visible" : "none");
-      map.setLayoutProperty("hood-reveal-mask", "visibility", activeHood ? "visible" : "none");
-      map.setPaintProperty("hoods-line", "line-opacity", activeHood ? 0.22 : 0.45);
-      map.setPaintProperty("hoods-label", "text-opacity", activeHood ? 0.5 : 0.8);
-      const dotVis = activeHood ? "none" : "visible";
-      for (const id of ["points", "clusters", "cluster-count"]) {
-        map.setLayoutProperty(id, "visibility", dotVis);
-      }
-    };
-
     try {
       if (selectedHood) {
         // Reveal the neighborhood with its satellite imagery + real terrain
         // relief, and highlight it. No lift — the terrain is genuine elevation.
-        applyLayers(selectedHood);
+        applyHoodRevealLayers(map, selectedHood);
         enableTerrain(map);
         refreshThumbsRef.current();
         if (motionOk) void preloadHoodSatellite(selectedHood);
       } else {
-        applyLayers(null);
+        applyHoodRevealLayers(map, null);
         removeTerrain(map);
         refreshThumbsRef.current();
       }
@@ -1205,34 +1217,35 @@ export function MapView({
     }
   }, [selectedHood, mapLoaded]);
 
-  /* --- Search highlight: a neighborhood named in the query gets centered,
-   * tilted, outlined, and shown with real terrain relief — the same "here's
-   * your neighborhood" gesture as a click, but keeping listing pins visible so
-   * results still read on top. --- */
+  /* --- Search highlight: a neighborhood named in the query gets the FULL
+   * reveal — centered, tilted, outlined, and shown with satellite imagery +
+   * real terrain relief — the same "here's your neighborhood" gesture as
+   * clicking it directly (isolate). Search results still read on top: they
+   * render as HTML thumb markers regardless of this hood reveal, not the
+   * browse-mode GL dots this hides. --- */
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
     const prev = highlightHoodRef.current;
     highlightHoodRef.current = highlightHood ?? null;
-    // A full isolate owns the outline + terrain; don't fight it.
+    // A full isolate owns the reveal + terrain; don't fight it.
     if (selectedHood) return;
     const name = highlightHood ?? null;
     const hood = hoodByName(name);
     const motionOk = !prefersReducedMotion() && document.visibilityState !== "hidden";
     try {
-      const filt = ["==", ["get", "name"], name ?? "__none__"] as never;
-      map.setFilter("hood-selected-line", filt);
-      map.setFilter("hood-selected-glow", filt);
-      // The outline only renders when the named neighborhood is an actual map
-      // polygon (37 of them). Many searchable sub-neighborhoods (Hayes Valley,
-      // Japantown, the Tenderloin…) aren't polygons — those get no outline but
-      // still center + tilt + show terrain via their centroid below.
-      map.setPaintProperty("hood-selected-line", "line-opacity", hood ? 0.95 : 0);
-      map.setPaintProperty("hood-selected-glow", "line-opacity", hood ? 0.6 : 0);
+      // The satellite/dim reveal only makes sense when the name is an actual
+      // map polygon (37 of them) — there's no boundary to cut a satellite hole
+      // around otherwise. Many searchable sub-neighborhoods (Hayes Valley,
+      // Japantown, the Tenderloin…) aren't polygons; those still center + tilt
+      // + show terrain via their centroid below, just without the reveal.
+      applyHoodRevealLayers(map, hood ? name : null);
       map.setPaintProperty("hoods-label", "text-opacity", name ? 0.9 : 0.8);
 
       if (name) {
         enableTerrain(map);
+        refreshThumbsRef.current();
+        if (motionOk) void preloadHoodSatellite(name);
         const applyCam = (t: maplibregl.CameraOptions) => {
           if (!motionOk) map.jumpTo(t);
           else map.flyTo({ ...t, duration: 1600, curve: 1.5 });
@@ -1255,6 +1268,7 @@ export function MapView({
       } else if (prev) {
         // Cleared the highlight: drop terrain (camera home is handled on search clear).
         removeTerrain(map);
+        refreshThumbsRef.current();
       }
     } catch {
       /* layers not ready yet */
