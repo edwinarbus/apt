@@ -850,10 +850,19 @@ export function MapView({
               minzoom: 13.6,
               paint: {
                 "fill-extrusion-color": "#243349",
+                // OpenFreeMap's building layer reports real (accurate) meters
+                // for well-tagged landmarks — Salesforce Tower comes through
+                // at render_height: 326 — but most ordinary SF houses have no
+                // height/levels tag in OSM at all, and the tileset fills those
+                // in with implausibly small placeholders (1-5m, i.e. shorter
+                // than a single story). Clamping to a floor keeps genuinely
+                // tall buildings untouched while guaranteeing every ordinary
+                // building still reads as a real, visibly-extruded volume
+                // instead of a flat footprint once the ramp completes.
                 "fill-extrusion-height": [
                   "interpolate", ["linear"], ["zoom"],
                   13.6, 0,
-                  14, ["coalesce", ["get", "render_height"], 10],
+                  14, ["max", ["coalesce", ["get", "render_height"], 9], 9],
                 ],
                 "fill-extrusion-base": ["coalesce", ["get", "render_min_height"], 0],
                 "fill-extrusion-opacity": 0.85,
