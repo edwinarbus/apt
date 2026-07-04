@@ -118,6 +118,16 @@ export function ListingDetail({
   const toggleDislike = async () => {
     if (!data || savingStatus) return;
     const disliked = data.listing.userStatus !== "not_a_fit";
+    // Fire the "Remembered" feedback instantly on click — don't wait for the
+    // network write; the float lingers, then fades on its own.
+    if (disliked) {
+      setRemembered((r) => ({ on: true, tick: r.tick + 1 }));
+      if (rememberTimer.current) window.clearTimeout(rememberTimer.current);
+      rememberTimer.current = window.setTimeout(
+        () => setRemembered((r) => ({ ...r, on: false })),
+        2400,
+      );
+    }
     setSavingStatus(true);
     try {
       const res = await fetch(`/api/listings/${listingId}/dislike`, {
@@ -138,14 +148,6 @@ export function ListingDetail({
         });
         setData({ ...data, listing: { ...data.listing, userStatus: next, badges } });
         onStatusChange(listingId, next);
-        if (disliked) {
-          setRemembered((r) => ({ on: true, tick: r.tick + 1 }));
-          if (rememberTimer.current) window.clearTimeout(rememberTimer.current);
-          rememberTimer.current = window.setTimeout(
-            () => setRemembered((r) => ({ ...r, on: false })),
-            1700,
-          );
-        }
       }
     } finally {
       setSavingStatus(false);
