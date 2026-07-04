@@ -83,6 +83,8 @@ export interface ListingSummary {
 export interface ListingsResponse {
   listings: ListingSummary[];
   generatedAt: string;
+  /** boundary the "New" badge is computed against — see BadgeInput.newSinceAt */
+  newSinceAt: string | null;
 }
 
 /** AI natural-language search (POST /api/search). */
@@ -256,6 +258,8 @@ export interface ListingDetailResponse {
   priceHistory: PriceHistoryEntry[];
   enrichment: EnrichmentPayload | null;
   vision: VisionPayload | null;
+  /** boundary the "New" badge is computed against — see BadgeInput.newSinceAt */
+  newSinceAt: string | null;
 }
 
 export interface SourceRunPayload {

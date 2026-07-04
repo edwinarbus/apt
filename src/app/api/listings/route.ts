@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { desc, eq } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import {
+  digestRuns,
   listingEvents,
   listings,
   sourceRuns,
@@ -61,7 +62,7 @@ export async function GET() {
 
   // Fetch everything the payload needs in one round-trip's worth of latency
   // (these are independent) instead of six sequential Turso round-trips.
-  const [rows, states, sourceRows, runs, priceEvents] = await Promise.all([
+  const [rows, states, sourceRows, runs, priceEvents, recentDigestRuns] = await Promise.all([
     db.select(listingCols).from(listings).all(),
     db.select().from(userListingStates).all(),
     db.select().from(sources).all(),
@@ -85,7 +86,18 @@ export async function GET() {
       .where(eq(listingEvents.eventType, "price_change"))
       .orderBy(desc(listingEvents.createdAt))
       .all(),
+    db
+      .select({ createdAt: digestRuns.createdAt })
+      .from(digestRuns)
+      .orderBy(desc(digestRuns.createdAt))
+      .limit(2)
+      .all(),
   ]);
+
+  // The "New" badge tracks Porter/daily runs, not a rolling 24h clock: it's
+  // the boundary of the run BEFORE the most recent one, so it clears the
+  // instant another run completes rather than after a fixed duration.
+  const newSinceAt = recentDigestRuns[1]?.createdAt ?? null;
 
   const stateByListing = new Map(states.map((s) => [s.listingId, s]));
   const sourceById = new Map(sourceRows.map((s) => [s.id, s]));
@@ -126,6 +138,7 @@ export async function GET() {
       userStatus: (state?.status as never) ?? null,
       lastPriceChange: priceChange,
       sourceLastRunStatus: lastRun?.status ?? null,
+      newSinceAt,
     });
     return {
       id: row.id,
@@ -181,6 +194,7 @@ export async function GET() {
   const body: ListingsResponse = {
     listings: payload,
     generatedAt: new Date().toISOString(),
+    newSinceAt,
   };
   // Cache at Vercel's edge so return visits are served instantly from the CDN
   // instead of paying a serverless cold start + DB round-trip every time.

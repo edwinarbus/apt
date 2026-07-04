@@ -59,6 +59,10 @@ export interface MatchInfo {
 export function AppShell() {
   const [listings, setListings] = useState<ListingSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The "New" badge's run boundary (see BadgeInput.newSinceAt) — cached from
+  // the /api/listings fetch so client-side badge recomputes (status changes)
+  // stay consistent with what the server computed, without a re-fetch.
+  const newSinceAtRef = useRef<string | null>(null);
   const [sort, setSort] = useState<SortKey>("newest");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -153,7 +157,10 @@ export function AppShell() {
         if (!r.ok) throw new Error(`API error ${r.status}`);
         return r.json() as Promise<ListingsResponse>;
       })
-      .then((data) => setListings(data.listings))
+      .then((data) => {
+        newSinceAtRef.current = data.newSinceAt;
+        setListings(data.listings);
+      })
       .catch((e) => setError(e.message));
   }, []);
 
@@ -442,6 +449,7 @@ export function AppShell() {
                 userStatus: status,
                 lastPriceChange: l.lastPriceChange,
                 sourceLastRunStatus: l.sourceLastRunStatus,
+                newSinceAt: newSinceAtRef.current,
               });
               return { ...l, userStatus: status, badges };
             })

@@ -105,6 +105,7 @@ export function ListingDetail({
           userStatus: next,
           lastPriceChange: data.listing.lastPriceChange,
           sourceLastRunStatus: data.listing.sourceLastRunStatus,
+          newSinceAt: data.newSinceAt,
         });
         setData({ ...data, listing: { ...data.listing, userStatus: next, badges } });
         onStatusChange(listingId, next);
@@ -147,6 +148,7 @@ export function ListingDetail({
           userStatus: next,
           lastPriceChange: data.listing.lastPriceChange,
           sourceLastRunStatus: data.listing.sourceLastRunStatus,
+          newSinceAt: data.newSinceAt,
         });
         setData({ ...data, listing: { ...data.listing, userStatus: next, badges } });
         onStatusChange(listingId, next);

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { and, desc, eq, ne } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import {
+  digestRuns,
   duplicateGroups,
   listingEnrichment,
   listingEvents,
@@ -43,44 +44,62 @@ export async function GET(
   // Everything below depends only on `row` (its id / sourceId / duplicateGroupId),
   // not on each other — so fetch it all in one parallel batch instead of ~8
   // sequential Turso round-trips (the difference between ~2s and ~0.3s here).
-  const [allSources, state, events, lastRun, history, enrichRow, visionRow, peers] =
-    await Promise.all([
-      db.select().from(sources).all(),
-      db.select().from(userListingStates).where(eq(userListingStates.listingId, id)).get(),
-      db
-        .select()
-        .from(listingEvents)
-        .where(eq(listingEvents.listingId, id))
-        .orderBy(desc(listingEvents.createdAt))
-        .all(),
-      db
-        .select()
-        .from(sourceRuns)
-        .where(eq(sourceRuns.sourceId, row.sourceId))
-        .orderBy(desc(sourceRuns.startedAt))
-        .limit(1)
-        .get(),
-      db
-        .select()
-        .from(priceHistory)
-        .where(eq(priceHistory.listingId, id))
-        .orderBy(desc(priceHistory.observedAt))
-        .all(),
-      db.select().from(listingEnrichment).where(eq(listingEnrichment.listingId, id)).get(),
-      db.select().from(listingVision).where(eq(listingVision.listingId, id)).get(),
-      row.duplicateGroupId
-        ? db
-            .select()
-            .from(listings)
-            .where(
-              and(
-                eq(listings.duplicateGroupId, row.duplicateGroupId),
-                ne(listings.id, row.id),
-              ),
-            )
-            .all()
-        : Promise.resolve([]),
-    ]);
+  const [
+    allSources,
+    state,
+    events,
+    lastRun,
+    history,
+    enrichRow,
+    visionRow,
+    peers,
+    recentDigestRuns,
+  ] = await Promise.all([
+    db.select().from(sources).all(),
+    db.select().from(userListingStates).where(eq(userListingStates.listingId, id)).get(),
+    db
+      .select()
+      .from(listingEvents)
+      .where(eq(listingEvents.listingId, id))
+      .orderBy(desc(listingEvents.createdAt))
+      .all(),
+    db
+      .select()
+      .from(sourceRuns)
+      .where(eq(sourceRuns.sourceId, row.sourceId))
+      .orderBy(desc(sourceRuns.startedAt))
+      .limit(1)
+      .get(),
+    db
+      .select()
+      .from(priceHistory)
+      .where(eq(priceHistory.listingId, id))
+      .orderBy(desc(priceHistory.observedAt))
+      .all(),
+    db.select().from(listingEnrichment).where(eq(listingEnrichment.listingId, id)).get(),
+    db.select().from(listingVision).where(eq(listingVision.listingId, id)).get(),
+    row.duplicateGroupId
+      ? db
+          .select()
+          .from(listings)
+          .where(
+            and(
+              eq(listings.duplicateGroupId, row.duplicateGroupId),
+              ne(listings.id, row.id),
+            ),
+          )
+          .all()
+      : Promise.resolve([]),
+    db
+      .select({ createdAt: digestRuns.createdAt })
+      .from(digestRuns)
+      .orderBy(desc(digestRuns.createdAt))
+      .limit(2)
+      .all(),
+  ]);
+
+  // Same run-boundary rule as /api/listings — see BadgeInput.newSinceAt.
+  const newSinceAt = recentDigestRuns[1]?.createdAt ?? null;
 
   const source = allSources.find((s) => s.id === row.sourceId) ?? null;
   const sourceNameById = new Map(allSources.map((s) => [s.id, s.name]));
@@ -181,6 +200,7 @@ export async function GET(
     userStatus: (state?.status as never) ?? null,
     lastPriceChange,
     sourceLastRunStatus: (lastRun?.status as RunStatus) ?? null,
+    newSinceAt,
   });
 
   const body: ListingDetailResponse = {
@@ -284,6 +304,7 @@ export async function GET(
     })),
     enrichment,
     vision,
+    newSinceAt,
   };
   // Cache at Vercel's edge so reopening the same listing is instant instead of
   // paying a fresh serverless invocation + ~9-query DB round-trip every time

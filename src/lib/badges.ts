@@ -14,6 +14,15 @@ export interface BadgeInput {
   userStatus: UserListingStatus | null;
   lastPriceChange: PriceChangeInfo | null;
   sourceLastRunStatus: RunStatus | null;
+  /**
+   * The createdAt of the digest run BEFORE the most recent one — i.e. the
+   * start of the current "new" window. A listing is new if it was first seen
+   * after this boundary, so the badge tracks Porter/daily runs rather than a
+   * rolling 24h clock: it clears the moment another run completes, not after
+   * a fixed duration. null means fewer than two runs exist yet (nothing to
+   * compare against), so everything ingested so far counts as new.
+   */
+  newSinceAt: string | null;
   now?: Date;
 }
 
@@ -52,7 +61,10 @@ export function computeBadges(input: BadgeInput): BadgeKind[] {
     );
   }
 
-  if (now.getTime() - Date.parse(input.firstSeenAt) < DAY_MS) {
+  if (
+    input.newSinceAt === null ||
+    Date.parse(input.firstSeenAt) > Date.parse(input.newSinceAt)
+  ) {
     badges.push("new_today");
   }
 
@@ -69,7 +81,7 @@ export function computeBadges(input: BadgeInput): BadgeKind[] {
 }
 
 export const BADGE_LABELS: Record<BadgeKind, string> = {
-  new_today: "New today",
+  new_today: "New",
   price_drop: "Price drop",
   price_increase: "Price increase",
   stale: "Missing from source",
