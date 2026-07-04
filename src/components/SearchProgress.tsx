@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 /**
  * The live search activity: nothing but Claude's REAL summarized thinking,
@@ -41,6 +41,63 @@ function fmtSeconds(ms: number): string {
   return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
 }
 
+/**
+ * Before the server sends its first progress event (or any real thinking),
+ * there's genuinely nothing to report yet — but a static "Reading your
+ * search…" for that whole dead-air window reads as stuck. Cycle through a
+ * handful of phrases tied to what the query actually asked for instead, so it
+ * reads as real (if lightweight) activity. Purely local pattern matching —
+ * no API call, so it can start instantly and doesn't compete with the actual
+ * search for latency.
+ */
+const QUERY_PHRASE_RULES: Array<{ pattern: RegExp; phrase: string }> = [
+  { pattern: /\bsun(ny|light|-?filled)?\b/i, phrase: "Analyzing sun's trajectory…" },
+  { pattern: /\bhardwood|wood floor/i, phrase: "Looking at floor materials…" },
+  { pattern: /\bdog(s)?\b/i, phrase: "Identifying dog parks…" },
+  { pattern: /\bcat(s)?\b/i, phrase: "Checking pet policies…" },
+  { pattern: /\bpet-?friendly\b/i, phrase: "Checking pet policies…" },
+  { pattern: /\bpark(ing)?\b/i, phrase: "Mapping parking options…" },
+  { pattern: /\bquiet|peaceful|calm\b/i, phrase: "Estimating noise levels…" },
+  { pattern: /\bview\b/i, phrase: "Scouting for skyline views…" },
+  { pattern: /\blaundry|washer|dryer|w\/d\b/i, phrase: "Checking laundry setups…" },
+  { pattern: /\bkitchen|renovated|updated|modern\b/i, phrase: "Inspecting kitchen finishes…" },
+  { pattern: /\btransit|bart|muni|\bbus\b/i, phrase: "Mapping transit access…" },
+  { pattern: /\bgym|fitness\b/i, phrase: "Scanning for fitness amenities…" },
+  { pattern: /\bsafe|safety\b/i, phrase: "Reading neighborhood signals…" },
+  { pattern: /\bcheap|afford|budget|under \$?\d/i, phrase: "Comparing prices citywide…" },
+  { pattern: /\bstudio\b/i, phrase: "Sizing up studio layouts…" },
+  { pattern: /\bbed(room)?s?\b/i, phrase: "Counting bedrooms…" },
+  { pattern: /\bbay window/i, phrase: "Spotting bay windows…" },
+  { pattern: /\bgarden|yard|patio|backyard|outdoor/i, phrase: "Looking for outdoor space…" },
+  { pattern: /\belevator\b/i, phrase: "Checking building access…" },
+  { pattern: /\bnear|close to|walk(ing)? distance|walkable/i, phrase: "Measuring walk times…" },
+  { pattern: /\bfurnished\b/i, phrase: "Checking furnished listings…" },
+  { pattern: /\broommate|shared\b/i, phrase: "Reviewing shared-living setups…" },
+  { pattern: /\bnew(ly)?|remodel/i, phrase: "Spotting recent renovations…" },
+  { pattern: /\bbright|natural light/i, phrase: "Gauging natural light…" },
+];
+const GENERIC_QUERY_PHRASES = [
+  "Scanning fresh listings…",
+  "Cross-referencing photos and descriptions…",
+  "Weighing what matters most to you…",
+  "Narrowing down the shortlist…",
+];
+const PHRASE_CYCLE_MS = 1500;
+
+function phrasesForQuery(query: string): string[] {
+  const matched: string[] = [];
+  for (const { pattern, phrase } of QUERY_PHRASE_RULES) {
+    if (pattern.test(query) && !matched.includes(phrase)) matched.push(phrase);
+  }
+  if (matched.length === 0) return GENERIC_QUERY_PHRASES;
+  const pool = [...matched];
+  for (const g of GENERIC_QUERY_PHRASES) {
+    if (pool.length >= 4) break;
+    pool.push(g);
+  }
+  return pool;
+}
+
 /** Quiet ring spinner in the app palette — a faint track with an accent arc. */
 function Spinner() {
   return (
@@ -51,8 +108,36 @@ function Spinner() {
   );
 }
 
-export function SearchProgress({ progress }: { progress: SearchProgressState }) {
+export function SearchProgress({
+  progress,
+  query,
+}: {
+  progress: SearchProgressState;
+  /** the raw query text, used only to pick relevant filler phrases below */
+  query?: string;
+}) {
   const { thinking, chars, startedAt, candidates, kept, model } = progress;
+
+  // Only relevant before the first real progress event — cycle a phrase every
+  // beat; reset (and re-derive the phrase set) whenever the query changes.
+  const queryPhrases = useMemo(() => phrasesForQuery(query ?? ""), [query]);
+  const [phraseIndex, setPhraseIndex] = useState(0);
+  // Reset the index when the query changes, following React's documented
+  // "adjust state during render" pattern (comparing against state, not a ref)
+  // rather than an effect — an effect would setState synchronously in its
+  // body, which is flagged as a cascading-render risk.
+  const [prevQuery, setPrevQuery] = useState(query);
+  if (prevQuery !== query) {
+    setPrevQuery(query);
+    if (phraseIndex !== 0) setPhraseIndex(0);
+  }
+  useEffect(() => {
+    if (candidates != null) return; // real progress has arrived — stop cycling
+    const id = window.setInterval(() => {
+      setPhraseIndex((i) => (i + 1) % queryPhrases.length);
+    }, PHRASE_CYCLE_MS);
+    return () => window.clearInterval(id);
+  }, [candidates, queryPhrases]);
 
   // Anthropic streams thinking_delta events in bursty, multi-word chunks —
   // per their own streaming docs, this "chunky" delivery (larger chunks
@@ -141,14 +226,17 @@ export function SearchProgress({ progress }: { progress: SearchProgressState }) 
             })}
           </div>
         ) : (
-          <p className="shimmer-text text-[12.5px] leading-relaxed">
+          <p
+            key={model || kept != null || candidates != null ? "progress" : phraseIndex}
+            className="shimmer-text animate-fade-in text-[12.5px] leading-relaxed"
+          >
             {model && kept != null
               ? `Reading the ${kept} closest listings…`
               : kept != null
                 ? `Shortlisted ${kept}${candidates ? ` of ${candidates}` : ""} listings…`
                 : candidates != null
                   ? `Scanning ${candidates} listings…`
-                  : "Reading your search…"}
+                  : queryPhrases[phraseIndex % queryPhrases.length]}
           </p>
         )}
       </div>

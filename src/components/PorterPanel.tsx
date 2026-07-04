@@ -42,6 +42,12 @@ export function PorterPanel({
   const [searches, setSearches] = useState<SavedSearchDto[] | null>(initialSearches ?? null);
   const [curationNote, setCurationNote] = useState<string | null>(null);
   const [closing, setClosing] = useState(false);
+  // A fetch failure used to be swallowed into an empty `searches: []` — visually
+  // identical to "no matches yet", so a real error (a timeout, a bad response)
+  // silently looked like Porter genuinely had nothing for you. Track it
+  // separately so a failure gets its own retryable state instead.
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [retryTick, setRetryTick] = useState(0);
 
   // Auto-send: when on, Porter sends each email itself the moment it finds a
   // match, so the drafts below read as already sent. Persisted across opens.
@@ -80,17 +86,23 @@ export function PorterPanel({
   useEffect(() => {
     let live = true;
     fetch("/api/searches")
-      .then((r) => (r.ok ? r.json() : { searches: [], curated: false, curationNote: null }))
-      .then((d: SavedSearchesResponse) => {
+      .then((r) => {
+        if (!r.ok) throw new Error(`Porter couldn't load your searches (${r.status})`);
+        return r.json() as Promise<SavedSearchesResponse>;
+      })
+      .then((d) => {
         if (!live) return;
         setSearches(d.searches);
         setCurationNote(d.curated ? d.curationNote : null);
       })
-      .catch(() => live && setSearches((prev) => prev ?? []));
+      .catch((e: unknown) => {
+        if (!live) return;
+        setFetchError(e instanceof Error ? e.message : "Porter couldn't load your searches");
+      });
     return () => {
       live = false;
     };
-  }, []);
+  }, [retryTick]);
 
   const applications = useMemo(
     () => (searches ?? []).flatMap((s) => s.applications),
@@ -200,7 +212,25 @@ export function PorterPanel({
             </div>
           )}
 
-          {searches === null ? (
+          {fetchError ? (
+            // Distinct from "no matches yet" — a failed fetch used to silently
+            // render as an empty list, which read as Porter genuinely having
+            // nothing, when really it just couldn't load.
+            <div className="flex flex-col items-center gap-2.5 rounded-lg border border-alert/30 bg-alert/8 px-3 py-8 text-center">
+              <p className="text-[12.5px] text-alert">{fetchError}</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setSearches(null);
+                  setFetchError(null);
+                  setRetryTick((t) => t + 1);
+                }}
+                className="rounded-md border border-line px-3 py-1.5 text-[12px] font-medium text-muted transition-colors hover:border-line-strong hover:text-ink"
+              >
+                Retry
+              </button>
+            </div>
+          ) : searches === null ? (
             // A dedicated loading screen, not a stale list — see
             // scoutForceLoading in AppShell for why this matters: right after
             // saving a search, the app's own cached search list is guaranteed

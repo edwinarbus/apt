@@ -131,6 +131,7 @@ export function ListingPanel({
   searching,
   loading,
   progress,
+  query,
   interpretation,
   hoodName,
   selectedId,
@@ -153,6 +154,9 @@ export function ListingPanel({
    * be indistinguishable from a genuinely empty result. */
   loading?: boolean;
   progress?: SearchProgressState;
+  /** the raw query text — only used to pick relevant filler phrases while
+   * searching, before any real progress has streamed in */
+  query?: string;
   /** the model's one-line restatement of what the search asked for */
   interpretation?: string | null;
   hoodName?: string | null;
@@ -257,7 +261,7 @@ export function ListingPanel({
 
       <div className="panel-scroll min-h-0 flex-1 overflow-y-auto">
         {searching ? (
-          <SearchProgress progress={progress ?? EMPTY_PROGRESS} />
+          <SearchProgress progress={progress ?? EMPTY_PROGRESS} query={query} />
         ) : loading ? (
           <LoadingState />
         ) : listings.length === 0 && animatedListings.length === 0 ? (

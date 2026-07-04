@@ -537,6 +537,7 @@ export function AppShell() {
           searching={searching}
           loading={listings === null}
           progress={progress}
+          query={query}
           interpretation={search?.interpretation ?? null}
           hoodName={selectedHood}
           selectedId={selectedId}
@@ -573,6 +574,7 @@ export function AppShell() {
           searching={searching}
           loading={listings === null}
           progress={progress}
+          query={query}
           hoodName={selectedHood}
           selectedId={selectedId}
           onSelect={(id) => select(id, false)}
