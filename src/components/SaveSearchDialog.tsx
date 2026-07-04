@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { BellIcon } from "./ListingPanel";
 
 /**
  * Save the current search so the overnight Apt Scout watches for new matches.
@@ -59,14 +60,13 @@ export function SaveSearchDialog({
       >
         <div className="flex items-start gap-3 border-b border-line bg-gradient-to-b from-accent-soft/40 to-transparent px-5 py-4">
           <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/15 text-accent">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M5 3h14a1 1 0 0 1 1 1v16l-8-5-8 5V4a1 1 0 0 1 1-1Z" />
-            </svg>
+            <BellIcon size={20} />
           </span>
           <div className="min-w-0 flex-1">
-            <h2 className="text-[16px] font-semibold text-ink">Put this search on Porter</h2>
-            <p className="text-[12.5px] text-muted">
-              Porter checks every night and applies to new matches for you.
+            <h2 className="text-[16px] font-semibold text-ink">Porter</h2>
+            <p className="text-[12.5px] leading-relaxed text-muted">
+              Watches overnight for new apartments and curates matches to the
+              preferences it remembers about you.
             </p>
           </div>
           <button
@@ -91,11 +91,6 @@ export function SaveSearchDialog({
               placeholder="e.g. Sunny 1BR near the park"
               className="rounded-md border border-line bg-elevated px-3 py-2 text-[13.5px] text-ink outline-none placeholder:text-faint focus:border-line-strong"
             />
-            {query && (
-              <span className="truncate text-[11.5px] text-faint">
-                From your search: “{query}”
-              </span>
-            )}
           </label>
 
           {/* Auto-apply */}
