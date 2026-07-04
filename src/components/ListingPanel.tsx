@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ListingSummary } from "@/lib/api-types";
 import type { MatchInfo, SortKey } from "./AppShell";
 import {
@@ -276,17 +276,38 @@ export function PorterFab({
   onClick: () => void;
   className?: string;
 }) {
+  // Draw the eye the first time there's something to see: when the badge goes
+  // from nothing to a real count (typically right after the saved-searches
+  // fetch resolves on page load), wiggle the bell and pop the badge in once,
+  // instead of the count just silently appearing.
+  const [drawAttention, setDrawAttention] = useState(false);
+  const prevBadgeRef = useRef(badge ?? 0);
+  useEffect(() => {
+    const prev = prevBadgeRef.current;
+    const cur = badge ?? 0;
+    prevBadgeRef.current = cur;
+    if (cur > 0 && cur !== prev) {
+      setDrawAttention(true);
+      const t = window.setTimeout(() => setDrawAttention(false), 700);
+      return () => window.clearTimeout(t);
+    }
+  }, [badge]);
+
   return (
     <button
       type="button"
       onClick={onClick}
       aria-label="Porter — watched searches & applications"
       title="Porter"
-      className={`textured group relative flex aspect-square min-h-12 shrink-0 items-center justify-center rounded-xl border-2 border-white/30 bg-panel/98 text-ink shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_18px_45px_-8px_rgba(0,0,0,0.9),0_5px_16px_-3px_rgba(0,0,0,0.8)] backdrop-blur-xl transition-colors hover:bg-elevated ${className}`}
+      className={`textured group relative flex aspect-square min-h-12 shrink-0 items-center justify-center rounded-full border-2 border-white/30 bg-panel/98 text-ink shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_18px_45px_-8px_rgba(0,0,0,0.9),0_5px_16px_-3px_rgba(0,0,0,0.8)] backdrop-blur-xl transition-colors hover:bg-elevated ${className}`}
     >
-      <BellIcon size={20} />
+      <BellIcon size={20} className={drawAttention ? "animate-bell-wiggle" : undefined} />
       {!!badge && badge > 0 && (
-        <span className="absolute -top-1.5 -right-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1 text-[10.5px] font-bold text-paper tabular-nums shadow-[0_1px_6px_rgba(0,0,0,0.6)]">
+        <span
+          className={`absolute -top-1.5 -right-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1 text-[10.5px] font-bold text-paper tabular-nums shadow-[0_1px_6px_rgba(0,0,0,0.6)] ${
+            drawAttention ? "animate-badge-pop" : ""
+          }`}
+        >
           {badge > 99 ? "99" : badge}
         </span>
       )}
@@ -295,9 +316,9 @@ export function PorterFab({
 }
 
 /** Concierge / desk bell — Porter's mark. */
-export function BellIcon({ size = 16 }: { size?: number }) {
+export function BellIcon({ size = 16, className }: { size?: number; className?: string }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden className={className}>
       <path d="M3.5 18.5h17" />
       <path d="M5.5 18.5a6.5 6.5 0 0 1 13 0" />
       <path d="M12 8.5v3.5" />

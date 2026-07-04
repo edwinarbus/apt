@@ -487,8 +487,14 @@ export function AppShell() {
           (including a wrapped multi-line query or an error banner); if the
           window is too narrow for both side by side, flex-wrap drops it to
           its own row underneath instead of squeezing the search bar unusably
-          thin. */}
-      <div className="pointer-events-none absolute top-3 right-3 left-3 z-20 md:right-auto md:w-[620px] md:max-w-[calc(100%-408px)]">
+          thin. The subtracted value must clear the rail's own reserved width
+          (384px + its 12px right-3 margin) PLUS the header's own 12px left-3
+          offset before any real gap opens up — 408px (384+12+12) landed the
+          header's right edge EXACTLY on the rail's left edge, zero gap, which
+          read as the two touching/overlapping once their drop shadows were in
+          play. 432px leaves a real 24px gap between them at every desktop
+          width, not just wide ones. */}
+      <div className="pointer-events-none absolute top-3 right-3 left-3 z-20 md:right-auto md:w-[620px] md:max-w-[calc(100%-432px)]">
         <div className="pointer-events-auto flex flex-wrap items-stretch gap-2">
           <div className="min-w-[220px] flex-1">
             <SearchBar
