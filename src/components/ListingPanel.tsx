@@ -18,6 +18,90 @@ import {
 import { CompactBadge } from "./Badges";
 import { PhotoImg } from "./PhotoImg";
 
+interface AnimatedEntry {
+  listing: ListingSummary;
+  leaving: boolean;
+}
+
+// Must match the CSS transition duration on ListingCard's collapse wrapper.
+const LIST_EXIT_MS = 280;
+
+/**
+ * Keeps a removed listing rendered (flagged `leaving`) for one exit-transition
+ * beat instead of yanking it out of the DOM the instant it's filtered — e.g.
+ * toggling "hide suspicious" then reads as those cards fading out and
+ * collapsing, with the rest sliding up to fill the gap, rather than an
+ * instant snap.
+ *
+ * Only animates when the update is a pure add/remove: if the relative order
+ * of listings present in BOTH the previous and next list is unchanged, it's
+ * safe to keep survivors in place and fade the missing ones out where they
+ * sat. If the order of survivors themselves changed (a sort switch, a new
+ * search, a neighborhood change, …), animating in place would look wrong —
+ * that case resyncs instantly instead.
+ */
+function useAnimatedListings(listings: ListingSummary[]): AnimatedEntry[] {
+  const [entries, setEntries] = useState<AnimatedEntry[]>(() =>
+    listings.map((listing) => ({ listing, leaving: false })),
+  );
+  const timersRef = useRef<Map<string, number>>(new Map());
+
+  useEffect(() => {
+    setEntries((prev) => {
+      const prevIds = prev.map((e) => e.listing.id);
+      const prevIdSet = new Set(prevIds);
+      const newIds = listings.map((l) => l.id);
+      const newIdSet = new Set(newIds);
+
+      const survivorsPrevOrder = prevIds.filter((id) => newIdSet.has(id));
+      const survivorsNewOrder = newIds.filter((id) => prevIdSet.has(id));
+      const orderPreserved =
+        survivorsPrevOrder.length === survivorsNewOrder.length &&
+        survivorsPrevOrder.every((id, i) => id === survivorsNewOrder[i]);
+
+      if (!orderPreserved) {
+        for (const t of timersRef.current.values()) window.clearTimeout(t);
+        timersRef.current.clear();
+        return listings.map((listing) => ({ listing, leaving: false }));
+      }
+
+      const byId = new Map(listings.map((l) => [l.id, l]));
+      const next: AnimatedEntry[] = [];
+      for (const entry of prev) {
+        const fresh = byId.get(entry.listing.id);
+        if (fresh) {
+          next.push({ listing: fresh, leaving: false });
+        } else if (entry.leaving) {
+          next.push(entry); // already animating out — its timer is already set
+        } else {
+          next.push({ listing: entry.listing, leaving: true });
+          const id = entry.listing.id;
+          const t = window.setTimeout(() => {
+            setEntries((cur) => cur.filter((e) => e.listing.id !== id));
+            timersRef.current.delete(id);
+          }, LIST_EXIT_MS);
+          timersRef.current.set(id, t);
+        }
+      }
+      for (const l of listings) {
+        if (!prevIdSet.has(l.id)) next.push({ listing: l, leaving: false });
+      }
+      return next;
+    });
+  }, [listings]);
+
+  // Unmount cleanup only — clearing on every dep change would cancel timers
+  // for entries still legitimately mid-exit.
+  useEffect(
+    () => () => {
+      for (const t of timersRef.current.values()) window.clearTimeout(t);
+    },
+    [],
+  );
+
+  return entries;
+}
+
 /** Shared readout so the panel header and the mobile drawer handle agree. */
 export function listingCountLabel({
   count,
@@ -92,6 +176,7 @@ export function ListingPanel({
     searchActive,
     hoodName,
   });
+  const animatedListings = useAnimatedListings(listings);
 
   return (
     <aside
@@ -175,16 +260,17 @@ export function ListingPanel({
           <SearchProgress progress={progress ?? EMPTY_PROGRESS} />
         ) : loading ? (
           <LoadingState />
-        ) : listings.length === 0 ? (
+        ) : listings.length === 0 && animatedListings.length === 0 ? (
           <EmptyState searchActive={searchActive} hoodName={hoodName} />
         ) : (
           <ul className="flex flex-col">
-            {listings.map((l, i) => (
+            {animatedListings.map(({ listing: l, leaving }, i) => (
               <ListingCard
                 key={l.id}
                 listing={l}
                 match={reasons?.get(l.id)}
                 animateIn={searchActive}
+                leaving={leaving}
                 index={i}
                 selected={l.id === selectedId}
                 onSelect={() => onSelect(l.id)}
@@ -446,6 +532,7 @@ function ListingCard({
   listing: l,
   match,
   animateIn,
+  leaving,
   index,
   selected,
   onSelect,
@@ -453,6 +540,9 @@ function ListingCard({
   listing: ListingSummary;
   match?: MatchInfo;
   animateIn?: boolean;
+  /** Filtered out (e.g. by "hide suspicious") but still rendered for one exit
+   * transition beat — fades and collapses in place instead of vanishing. */
+  leaving?: boolean;
   index: number;
   selected: boolean;
   onSelect: () => void;
@@ -478,19 +568,32 @@ function ListingCard({
   if (l.squareFeet) specs.push(`${l.squareFeet.toLocaleString()} sqft`);
 
   return (
+    // Grid-row collapse trick: the <li> is a single-row grid container that
+    // transitions grid-template-rows between 1fr (natural height) and 0fr
+    // (collapsed) — that's what lets height animate to/from "auto" with pure
+    // CSS. The inner wrapper needs min-h-0 (grid items default to
+    // min-height:auto, which would floor the row at its content height and
+    // block the collapse) and overflow-hidden (so content doesn't show through
+    // once the row is shorter than it). Fading opacity at the same time reads
+    // as the card dissolving away rather than being squashed.
     <li
       ref={ref}
-      className={animateIn ? "animate-fade-up" : undefined}
+      className={`grid transition-[grid-template-rows] duration-[280ms] ease-in-out ${leaving ? "grid-rows-[0fr]" : "grid-rows-[1fr]"} ${animateIn ? "animate-fade-up" : ""}`}
       style={animateIn ? { animationDelay: `${Math.min(index, 10) * 40}ms` } : undefined}
+      aria-hidden={leaving || undefined}
     >
-      <button
-        type="button"
-        onClick={onSelect}
-        aria-pressed={selected}
-        className={`group flex w-full flex-col gap-2 border-b border-line/70 px-3 py-2.5 text-left transition-colors ${
-          selected ? "bg-accent/20" : "hover:bg-white/[0.06]"
-        } ${dimmed ? "opacity-55" : ""}`}
+      <div
+        className={`min-h-0 overflow-hidden transition-opacity duration-[280ms] ease-in-out ${leaving ? "opacity-0" : "opacity-100"}`}
       >
+        <button
+          type="button"
+          onClick={onSelect}
+          disabled={leaving}
+          aria-pressed={selected}
+          className={`group flex w-full flex-col gap-2 border-b border-line/70 px-3 py-2.5 text-left transition-colors ${
+            selected ? "bg-accent/20" : "hover:bg-white/[0.06]"
+          } ${dimmed ? "opacity-55" : ""}`}
+        >
         <div className="flex w-full gap-3">
           <PhotoImg
             src={l.primaryPhotoUrl}
@@ -541,7 +644,8 @@ function ListingCard({
             <p className="px-2 py-1 text-[11px] leading-snug text-accent">{match.reason}</p>
           </div>
         )}
-      </button>
+        </button>
+      </div>
     </li>
   );
 }

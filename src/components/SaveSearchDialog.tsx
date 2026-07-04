@@ -24,7 +24,7 @@ export function SaveSearchDialog({
   // Prefer the user's own phrasing as the name; fall back to the model's
   // interpretation only when there's no query text.
   const [name, setName] = useState(() => query.trim() || interpretation?.trim() || "");
-  const [autoApply, setAutoApply] = useState(true);
+  const [autoApply, setAutoApply] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const nameRef = useRef<HTMLInputElement | null>(null);
