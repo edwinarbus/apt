@@ -95,6 +95,14 @@ export function AppShell() {
   const [saveOpen, setSaveOpen] = useState(false);
   const [savedQueries, setSavedQueries] = useState<Set<string>>(new Set());
   const [savedDtos, setSavedDtos] = useState<SavedSearchDto[] | null>(null);
+  // True for the one Porter open that immediately follows saving a search:
+  // savedDtos is guaranteed stale then (it was fetched before the new search
+  // existed, so it can't yet show its matches or, for auto-apply, its drafted
+  // email), and seeding the panel with it produced the exact bug reported —
+  // the old list flashes on screen, then gets swapped for the real one once
+  // Porter's own re-fetch resolves. Passing null instead makes the panel open
+  // straight into its loading state and skip the stale paint entirely.
+  const [scoutForceLoading, setScoutForceLoading] = useState(false);
   const [welcomeOpen, setWelcomeOpen] = useState(false);
   const welcomeCheckedRef = useRef(false);
 
@@ -282,6 +290,7 @@ export function AppShell() {
       }
       setSavedQueries((s) => new Set(s).add(q));
       setSaveOpen(false);
+      setScoutForceLoading(true); // this open's savedDtos seed would be stale
       refreshSavedSearches(); // update the Scout badge + panel
       setScoutOpen(true); // reveal the watched search + what Scout will do
     },
@@ -609,8 +618,11 @@ export function AppShell() {
       {scoutOpen && (
         <PorterPanel
           listings={listings ?? []}
-          initialSearches={savedDtos}
-          onClose={() => setScoutOpen(false)}
+          initialSearches={scoutForceLoading ? null : savedDtos}
+          onClose={() => {
+            setScoutOpen(false);
+            setScoutForceLoading(false);
+          }}
           onSelect={(id) => select(id)}
           onChanged={refreshSavedSearches}
         />

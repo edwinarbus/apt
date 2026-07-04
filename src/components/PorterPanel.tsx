@@ -200,50 +200,67 @@ export function PorterPanel({
             </div>
           )}
 
-          {/* Emails Porter drafted (or sent, when auto-send is on) */}
-          <div className="mb-2 flex items-baseline justify-between">
-            <h3 className="text-[13px] font-semibold text-ink">
-              {autoSend ? "Emails Porter sent" : "Emails Porter drafted"}
-            </h3>
-            {applications.length > 0 && (
-              <span className="text-[12px] text-faint">
-                {applications.length} {autoSend ? "sent" : "ready"}
-              </span>
-            )}
-          </div>
-
-          {/* Tiny signal that dislikes shaped this shortlist. */}
-          {curationNote && (
-            <p className="mb-2 flex items-center gap-1 text-[11px] text-faint">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3Z" />
-              </svg>
-              {curationNote}
-            </p>
-          )}
-
           {searches === null ? (
-            <p className="rounded-lg border border-line bg-elevated/40 px-3 py-5 text-center text-[12.5px] text-faint">
-              Loading…
-            </p>
-          ) : applications.length === 0 ? (
-            <p className="rounded-lg border border-line bg-elevated/40 px-3 py-5 text-center text-[12.5px] leading-relaxed text-faint">
-              Turn on <span className="font-medium text-muted">Auto-apply</span> when you save a
-              search, and Porter drafts an email to each matching property — ready here to review
-              and send.
-            </p>
+            // A dedicated loading screen, not a stale list — see
+            // scoutForceLoading in AppShell for why this matters: right after
+            // saving a search, the app's own cached search list is guaranteed
+            // stale (it can't yet include the search just created, or its
+            // drafted email), so painting it and then swapping to the real
+            // data a moment later read as an old-list-then-flash. Landing here
+            // first and going straight to the final content instead.
+            <div className="flex flex-col items-center gap-3 rounded-lg border border-line bg-elevated/40 px-3 py-10 text-center">
+              <span
+                aria-hidden
+                className="h-6 w-6 animate-spin rounded-full border-2 border-line-strong border-t-accent motion-reduce:animate-none"
+              />
+              <p className="text-[12.5px] text-faint">
+                Porter is checking your watched searches…
+              </p>
+            </div>
           ) : (
-            <ul className="flex flex-col gap-2">
-              {applications.map((a) => (
-                <ApplicationCard
-                  key={a.listingId}
-                  app={a}
-                  sent={autoSend}
-                  onSelect={onSelect}
-                  onClose={requestClose}
-                />
-              ))}
-            </ul>
+            <>
+              {/* Emails Porter drafted (or sent, when auto-send is on) */}
+              <div className="mb-2 flex items-baseline justify-between">
+                <h3 className="text-[13px] font-semibold text-ink">
+                  {autoSend ? "Emails Porter sent" : "Emails Porter drafted"}
+                </h3>
+                {applications.length > 0 && (
+                  <span className="text-[12px] text-faint">
+                    {applications.length} {autoSend ? "sent" : "ready"}
+                  </span>
+                )}
+              </div>
+
+              {/* Tiny signal that dislikes shaped this shortlist. */}
+              {curationNote && (
+                <p className="mb-2 flex items-center gap-1 text-[11px] text-faint">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3Z" />
+                  </svg>
+                  {curationNote}
+                </p>
+              )}
+
+              {applications.length === 0 ? (
+                <p className="rounded-lg border border-line bg-elevated/40 px-3 py-5 text-center text-[12.5px] leading-relaxed text-faint">
+                  Turn on <span className="font-medium text-muted">Auto-apply</span> when you save a
+                  search, and Porter drafts an email to each matching property — ready here to review
+                  and send.
+                </p>
+              ) : (
+                <ul className="flex flex-col gap-2">
+                  {applications.map((a) => (
+                    <ApplicationCard
+                      key={a.listingId}
+                      app={a}
+                      sent={autoSend}
+                      onSelect={onSelect}
+                      onClose={requestClose}
+                    />
+                  ))}
+                </ul>
+              )}
+            </>
           )}
 
           {/* Watched searches — with unfollow */}
