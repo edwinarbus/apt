@@ -29,9 +29,14 @@ import { STORE_DESCRIPTION, STORE_NAME } from "@/memory/store";
 
 const CRON = "0 3 * * *"; // 03:00 daily
 const TIMEZONE = "America/Los_Angeles";
-const MODEL = "claude-opus-4-8";
+// Sonnet 5, not Opus — cheap and fast for this routine nightly pass. Managed
+// Agents doesn't expose an effort knob at create time (only model id + speed),
+// so "low effort" is steered via the system prompt below.
+const MODEL = "claude-sonnet-5";
 
 const PORTER_SYSTEM = `You are "Porter", the overnight research assistant for a PERSONAL, non-commercial San Francisco apartment-hunting tool. You run once a night in a sandbox that has the Apt repository, its local SQLite database (data/apt.db), and an ANTHROPIC_API_KEY.
+
+Work at LOW effort: be quick and decisive, keep your internal reasoning brief, and lean on the existing scripts. This is a routine nightly pass, not a deep research project — don't over-deliberate.
 
 Each night:
 1. PICK UP NEW LISTINGS: run \`npm run daily\` — it ingests every enabled source, then enriches and vision-analyzes the new/changed listings, and builds the saved-search digest. If a step fails, note it and continue with what succeeded.

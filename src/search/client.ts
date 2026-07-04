@@ -181,10 +181,10 @@ export class AnthropicSearchClient implements SearchClient {
         // thinking text) — "summarized" must be explicit. Adaptive may skip
         // thinking entirely on simple asks; the UI handles a no-thinking run.
         thinking: { type: "adaptive", display: "summarized" },
-        // Medium effort so adaptive actually reasons (and streams summarized
-        // thinking to the activity feed) instead of skipping straight to the
-        // answer — at "low" it often produced no visible thinking at all.
-        output_config: { effort: "medium" },
+        // Low effort — fast and cheap. The reasoning-forward system prompt still
+        // gets adaptive thinking to stream a bit of visible reasoning; if it ever
+        // goes quiet on a trivial query, the activity feed shows its fallback.
+        output_config: { effort: "low" },
         system: [
           { type: "text", text: SEARCH_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
         ],
