@@ -39,43 +39,55 @@ export async function GET(
   if (!row) {
     return NextResponse.json({ error: "listing not found" }, { status: 404 });
   }
-  const source = await db.select().from(sources).where(eq(sources.id, row.sourceId)).get();
-  const state = await db
-    .select()
-    .from(userListingStates)
-    .where(eq(userListingStates.listingId, id))
-    .get();
-  const events = await db
-    .select()
-    .from(listingEvents)
-    .where(eq(listingEvents.listingId, id))
-    .orderBy(desc(listingEvents.createdAt))
-    .all();
-  const lastRun = await db
-    .select()
-    .from(sourceRuns)
-    .where(eq(sourceRuns.sourceId, row.sourceId))
-    .orderBy(desc(sourceRuns.startedAt))
-    .limit(1)
-    .get();
 
-  const sourceNameById = new Map(
-    (await db.select({ id: sources.id, name: sources.name }).from(sources).all())
-      .map((s) => [s.id, s.name]),
-  );
+  // Everything below depends only on `row` (its id / sourceId / duplicateGroupId),
+  // not on each other — so fetch it all in one parallel batch instead of ~8
+  // sequential Turso round-trips (the difference between ~2s and ~0.3s here).
+  const [allSources, state, events, lastRun, history, enrichRow, visionRow, peers] =
+    await Promise.all([
+      db.select().from(sources).all(),
+      db.select().from(userListingStates).where(eq(userListingStates.listingId, id)).get(),
+      db
+        .select()
+        .from(listingEvents)
+        .where(eq(listingEvents.listingId, id))
+        .orderBy(desc(listingEvents.createdAt))
+        .all(),
+      db
+        .select()
+        .from(sourceRuns)
+        .where(eq(sourceRuns.sourceId, row.sourceId))
+        .orderBy(desc(sourceRuns.startedAt))
+        .limit(1)
+        .get(),
+      db
+        .select()
+        .from(priceHistory)
+        .where(eq(priceHistory.listingId, id))
+        .orderBy(desc(priceHistory.observedAt))
+        .all(),
+      db.select().from(listingEnrichment).where(eq(listingEnrichment.listingId, id)).get(),
+      db.select().from(listingVision).where(eq(listingVision.listingId, id)).get(),
+      row.duplicateGroupId
+        ? db
+            .select()
+            .from(listings)
+            .where(
+              and(
+                eq(listings.duplicateGroupId, row.duplicateGroupId),
+                ne(listings.id, row.id),
+              ),
+            )
+            .all()
+        : Promise.resolve([]),
+    ]);
+
+  const source = allSources.find((s) => s.id === row.sourceId) ?? null;
+  const sourceNameById = new Map(allSources.map((s) => [s.id, s.name]));
+
   let duplicates: DuplicatePeer[] = [];
   let duplicateGroup: DuplicateGroupInfo | null = null;
   if (row.duplicateGroupId) {
-    const peers = await db
-      .select()
-      .from(listings)
-      .where(
-        and(
-          eq(listings.duplicateGroupId, row.duplicateGroupId),
-          ne(listings.id, row.id),
-        ),
-      )
-      .all();
     duplicates = peers.map((p) => ({
       id: p.id,
       title: p.title,
@@ -101,18 +113,6 @@ export async function GET(
     }
   }
 
-  const history = await db
-    .select()
-    .from(priceHistory)
-    .where(eq(priceHistory.listingId, id))
-    .orderBy(desc(priceHistory.observedAt))
-    .all();
-
-  const enrichRow = await db
-    .select()
-    .from(listingEnrichment)
-    .where(eq(listingEnrichment.listingId, id))
-    .get();
   let enrichment: EnrichmentPayload | null = null;
   if (enrichRow && enrichRow.data) {
     const d = enrichRow.data as Enrichment;
@@ -131,11 +131,6 @@ export async function GET(
     };
   }
 
-  const visionRow = await db
-    .select()
-    .from(listingVision)
-    .where(eq(listingVision.listingId, id))
-    .get();
   let vision: VisionPayload | null = null;
   if (visionRow && visionRow.data) {
     const v = visionRow.data as Vision;

@@ -40,8 +40,6 @@ const PAPER = "#070d18";
 const ACCENT = "#47aede"; // interaction: selection, search targets, scan
 const HOOD = "#4a90b8"; // neighborhood geometry — controlled steel-cyan
 const HALO = "#06090f"; // marker stroke = background, for a crisp cut-out edge
-/** Real-terrain relief exaggeration while a neighborhood is shown in 3D. */
-const TERRAIN_EXAGGERATION = 1.4;
 /** Resting tilt of the browse map — a dramatic three-quarter view of the city,
  * clearly a 3D scene rather than a top-down plan. */
 const BROWSE_PITCH = 47;
@@ -205,136 +203,22 @@ function hoodRevealMask(name: string | null): GeoJSON.Feature {
   };
 }
 
-/* ---------- Terrain: real relief under a selected neighborhood ----------
- * The browse map is flat; selecting a hood shows it in 3D with the REAL terrain
- * (public terrarium elevation, proxied same-origin) — no lift, no boost. The
- * hood is revealed with satellite imagery and a highlighted outline. */
-const DEM_TILE_URL = "/api/dem/{z}/{x}/{y}.png";
-
-function lat2tileY(lat: number, z: number): number {
-  const rad = (lat * Math.PI) / 180;
-  return Math.floor(
-    ((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * 2 ** z,
-  );
-}
-
-const SAT_TILE_URL = (z: number, x: number, y: number) =>
-  `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`;
-
-/** Tile x/y range covering a hood's bbox at a zoom, clamped to the world. */
-function hoodTileRange(
-  hood: HoodFeature,
-  zoom: number,
-): Array<[number, number, number]> {
-  const [[bw, bs], [be, bn]] = multiPolygonBounds(hood.geometry.coordinates);
-  const n = 2 ** zoom;
-  const xMin = Math.max(0, Math.floor(((bw + 180) / 360) * n));
-  const xMax = Math.min(n - 1, Math.floor(((be + 180) / 360) * n));
-  const yMin = Math.max(0, lat2tileY(bn, zoom));
-  const yMax = Math.min(n - 1, lat2tileY(bs, zoom));
-  const out: Array<[number, number, number]> = [];
-  for (let x = xMin; x <= xMax; x++) {
-    for (let y = yMin; y <= yMax; y++) out.push([zoom, x, y]);
-  }
-  return out;
-}
-
-function warmImage(url: string): Promise<void> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => resolve();
-    img.onerror = () => resolve();
-    img.referrerPolicy = "no-referrer";
-    img.src = url;
-  });
-}
-
-/** Run best-effort jobs with a concurrency cap; never rejects. */
-async function runLimited(jobs: Array<() => Promise<unknown>>, limit: number) {
-  let i = 0;
-  const worker = async () => {
-    while (i < jobs.length) {
-      const job = jobs[i++];
-      try {
-        await job();
-      } catch {
-        /* preload is best-effort */
-      }
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(limit, jobs.length) }, worker));
-}
+// The satellite + terrain "reveal" treatment for a selected neighborhood was
+// retired: it blacked out the rest of the city (an opaque hole-punched mask is
+// the only thing that can constrain the single global satellite raster to one
+// hood), which read as "the whole map disappeared". Selecting a hood now keeps
+// the entire city visible and just highlights the hood — so no satellite tile
+// preload, DEM/terrain, or hillshade is needed. The hood-satellite /
+// hood-reveal-mask layers are still defined (kept hidden) so the layer-ordering
+// setup in the load handler stays intact.
 
 /**
- * Warm the Esri satellite tiles a selected neighborhood reveals, so the imagery
- * doesn't pop in after the camera settles. Best-effort and bounded.
- */
-async function preloadHoodSatellite(hoodName: string): Promise<void> {
-  const hood = hoodByName(hoodName);
-  if (!hood) return;
-  const jobs: Array<() => Promise<unknown>> = [];
-  for (const z of [13, 14]) {
-    for (const [zz, x, y] of hoodTileRange(hood, z)) {
-      jobs.push(() => warmImage(SAT_TILE_URL(zz, x, y)));
-    }
-  }
-  if (jobs.length > 120) return;
-  await runLimited(jobs, 8);
-}
-
-const HILLSHADE_PAINT: Record<string, unknown> = {
-  "hillshade-shadow-color": "#020710",
-  "hillshade-highlight-color": "#4a6d94",
-  "hillshade-accent-color": "#0b1c30",
-  "hillshade-exaggeration": 0.55,
-};
-
-/**
- * Turn on the real (unboosted) terrain + hillshade so the selected hood shows
- * genuine relief. The browse map stays flat — terrain only exists while a hood
- * is isolated, so the idle map never carries a DEM.
- */
-function enableTerrain(map: maplibregl.Map, exaggeration = TERRAIN_EXAGGERATION) {
-  try {
-    if (!map.getSource("dem")) {
-      map.addSource("dem", {
-        type: "raster-dem",
-        tiles: [DEM_TILE_URL],
-        encoding: "terrarium",
-        tileSize: 256,
-        maxzoom: 12,
-        attribution: "Terrain: Mapzen/AWS",
-      });
-    }
-    if (!map.getLayer("hillshade-base")) {
-      map.addLayer(
-        { id: "hillshade-base", type: "hillshade", source: "dem", paint: HILLSHADE_PAINT as never },
-        "hood-reveal-mask",
-      );
-    }
-    map.setTerrain({ source: "dem", exaggeration });
-  } catch (err) {
-    console.warn("[apt map] enable terrain failed", err);
-  }
-}
-
-/** Tear terrain back down to the flat browse map. */
-function removeTerrain(map: maplibregl.Map) {
-  try {
-    map.setTerrain(null);
-    if (map.getLayer("hillshade-base")) map.removeLayer("hillshade-base");
-    if (map.getSource("dem")) map.removeSource("dem");
-  } catch (err) {
-    console.warn("[apt map] terrain teardown failed", err);
-  }
-}
-
-/**
- * The "reveal a neighborhood" layer treatment — satellite imagery + a
- * hole-punched dim mask, a bright highlighted outline, and dimmed browse dots.
- * Shared by both ways a hood gets shown this way: clicking it directly
- * (isolate) and a search that names it (highlight) — so a search reveals the
- * neighborhood exactly like a click does, not just an outline.
+ * Highlight a selected neighborhood WITHOUT hiding the rest of the city: a
+ * brighter fill tint on the hood plus a bright outline/glow, while every other
+ * neighborhood, its streets, and its labels stay fully visible. Shared by both
+ * ways a hood gets shown — clicking it directly (isolate) and a search that
+ * names it (highlight). The old satellite + hole-punched blackout mask was
+ * removed (see the note above the retired terrain helpers).
  */
 function applyHoodRevealLayers(map: maplibregl.Map, activeHood: string | null) {
   const hoodFilter = ["==", ["get", "name"], activeHood ?? "__none__"] as never;
@@ -342,26 +226,27 @@ function applyHoodRevealLayers(map: maplibregl.Map, activeHood: string | null) {
   map.setFilter("hood-selected-glow", hoodFilter);
   map.setPaintProperty("hood-selected-line", "line-opacity", activeHood ? 0.95 : 0);
   map.setPaintProperty("hood-selected-glow", "line-opacity", activeHood ? 0.6 : 0);
-  // Mask data + visibility MUST land before the satellite layer becomes
-  // visible, never after — otherwise there's a frame where the satellite
-  // raster (which covers the WHOLE map; only this mask constrains it to one
-  // neighborhood) is visible with no hole cut yet, reading as a city-wide flash.
-  (map.getSource("hood-reveal") as GeoJSONSource | undefined)?.setData(hoodRevealMask(activeHood));
-  map.setLayoutProperty("hood-reveal-mask", "visibility", activeHood ? "visible" : "none");
-  map.setLayoutProperty("hood-satellite", "visibility", activeHood ? "visible" : "none");
-  map.setPaintProperty("hoods-line", "line-opacity", activeHood ? 0.22 : 0.45);
-  map.setPaintProperty("hoods-label", "text-opacity", activeHood ? 0.5 : 0.8);
-  // Browse-mode GL dots off while a hood is revealed — irrelevant during an
-  // active search anyway, since search results render as HTML thumb markers
-  // (see refreshThumbs), not this layer.
-  const dotVis = activeHood ? "none" : "visible";
+  // The satellite raster + blackout mask stay hidden at all times now — the
+  // rest of the city must remain visible when a hood is selected.
+  map.setLayoutProperty("hood-reveal-mask", "visibility", "none");
+  map.setLayoutProperty("hood-satellite", "visibility", "none");
+  // Tint the selected hood's fill so it reads as chosen, while the whole city's
+  // outlines/labels stay at their normal browse strength (not dimmed).
+  map.setPaintProperty("hoods-fill", "fill-opacity", [
+    "case",
+    ["==", ["get", "name"], activeHood ?? "__none__"], 0.16,
+    ["boolean", ["feature-state", "hover"], false], 0.12,
+    0.035,
+  ] as never);
+  map.setPaintProperty("hoods-line", "line-opacity", 0.45);
+  map.setPaintProperty("hoods-label", "text-opacity", 0.8);
+  // Keep the browse dots/clusters visible across the whole city; the selected
+  // hood's listings additionally get HTML price pills via refreshThumbs.
   for (const id of ["points", "clusters", "cluster-count"]) {
-    map.setLayoutProperty(id, "visibility", dotVis);
+    map.setLayoutProperty(id, "visibility", "visible");
   }
-  // Constrain 3D buildings to the revealed neighborhood's own footprint.
-  // Without this, buildings extrude for the WHOLE viewport at this zoom —
-  // so a revealed hood's tilted camera also lit up buildings in neighboring,
-  // non-highlighted neighborhoods (e.g. SoMa behind a highlighted Downtown).
+  // Constrain 3D buildings to the selected neighborhood's own footprint so a
+  // tilted camera doesn't extrude buildings across the whole viewport.
   if (map.getLayer("apt-3d-buildings")) {
     const hood = activeHood ? hoodByName(activeHood) : undefined;
     map.setFilter(
@@ -1288,25 +1173,18 @@ export function MapView({
     const hood = hoodByName(selectedHood);
 
     try {
-      if (selectedHood) {
-        // Reveal the neighborhood with its satellite imagery + real terrain
-        // relief, and highlight it. No lift — the terrain is genuine elevation.
-        applyHoodRevealLayers(map, selectedHood);
-        enableTerrain(map);
-        refreshThumbsRef.current();
-        if (motionOk) void preloadHoodSatellite(selectedHood);
-      } else {
-        applyHoodRevealLayers(map, null);
-        removeTerrain(map);
-        refreshThumbsRef.current();
-      }
+      // Highlight the neighborhood while keeping the whole city visible.
+      applyHoodRevealLayers(map, selectedHood);
+      refreshThumbsRef.current();
     } catch {
       return;
     }
 
-    // Camera: swoop into the hood at a three-quarter angle, or back to the flat city.
+    // Camera: frame the hood at the browse tilt (the rest of the city stays
+    // visible around it), or return to the whole-city home view.
     if (selectedHood && hood) {
       const [[w, s], [e, n]] = multiPolygonBounds(hood.geometry.coordinates);
+      const pitch = browsePitch(map.getContainer().clientWidth);
       const cam = map.cameraForBounds(
         [
           [w, s],
@@ -1315,8 +1193,8 @@ export function MapView({
         { padding: { top: 240, left: 120, right: 120, bottom: 160 }, bearing: -20, maxZoom: 14.2 },
       );
       if (cam) {
-        if (!motionOk) map.jumpTo({ ...cam, pitch: 62 });
-        else map.flyTo({ ...cam, pitch: 62, duration: 2000, curve: 1.4 });
+        if (!motionOk) map.jumpTo({ ...cam, pitch });
+        else map.flyTo({ ...cam, pitch, duration: 1400, curve: 1.3 });
       }
     } else if (!selectedHood && !searchActiveRef.current && !highlightHoodRef.current) {
       const home = cityCamera(map);
@@ -1336,27 +1214,25 @@ export function MapView({
     if (!map || !loadedRef.current) return;
     const prev = highlightHoodRef.current;
     highlightHoodRef.current = highlightHood ?? null;
-    // A full isolate owns the reveal + terrain; don't fight it.
+    // A full isolate owns the highlight; don't fight it.
     if (selectedHood) return;
     const name = highlightHood ?? null;
     const hood = hoodByName(name);
     const motionOk = !prefersReducedMotion() && document.visibilityState !== "hidden";
     try {
-      // The satellite/dim reveal only makes sense when the name is an actual
-      // map polygon (37 of them) — there's no boundary to cut a satellite hole
-      // around otherwise. Many searchable sub-neighborhoods (Hayes Valley,
-      // Japantown, the Tenderloin…) aren't polygons; those still center + tilt
-      // + show terrain via their centroid below, just without the reveal.
+      // Highlight the named hood's outline/fill when it's an actual map polygon
+      // (37 of them); sub-neighborhoods that aren't polygons (Hayes Valley,
+      // Japantown, the Tenderloin…) still center + frame via their centroid
+      // below, just without the fill highlight. Either way the whole city stays
+      // visible around it.
       applyHoodRevealLayers(map, hood ? name : null);
-      map.setPaintProperty("hoods-label", "text-opacity", name ? 0.9 : 0.8);
 
       if (name) {
-        enableTerrain(map);
         refreshThumbsRef.current();
-        if (motionOk) void preloadHoodSatellite(name);
+        const pitch = browsePitch(map.getContainer().clientWidth);
         const applyCam = (t: maplibregl.CameraOptions) => {
           if (!motionOk) map.jumpTo(t);
-          else map.flyTo({ ...t, duration: 1600, curve: 1.5 });
+          else map.flyTo({ ...t, duration: 1400, curve: 1.4 });
         };
         // Prefer the polygon's bounds; fall back to the neighborhood centroid.
         if (hood) {
@@ -1368,14 +1244,12 @@ export function MapView({
             ],
             { padding: { top: 150, left: 120, right: 120, bottom: 130 }, bearing: 0, maxZoom: 14 },
           );
-          if (cam) applyCam({ ...cam, pitch: 54 });
+          if (cam) applyCam({ ...cam, pitch });
         } else {
           const c = neighborhoodCentroid(name);
-          if (c) applyCam({ center: [c.lng, c.lat], zoom: 14, pitch: 54, bearing: 0 });
+          if (c) applyCam({ center: [c.lng, c.lat], zoom: 14, pitch, bearing: 0 });
         }
       } else if (prev) {
-        // Cleared the highlight: drop terrain (camera home is handled on search clear).
-        removeTerrain(map);
         refreshThumbsRef.current();
       }
     } catch {
