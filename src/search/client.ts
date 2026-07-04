@@ -202,7 +202,20 @@ export class AnthropicSearchClient implements SearchClient {
         });
         // Thinking summaries stream as thinking_delta events (the
         // signature_delta that precedes content_block_stop is ignored).
+        // Summarized reasoning arrives as SEVERAL distinct thinking blocks;
+        // their deltas carry no separator between them, so without inserting a
+        // paragraph break at each new block boundary they'd concatenate into
+        // one wall of text (the UI splits thoughts on blank lines).
+        let thinkingBlocks = 0;
         stream.on("streamEvent", (event) => {
+          if (
+            event.type === "content_block_start" &&
+            event.content_block.type === "thinking"
+          ) {
+            if (thinkingBlocks > 0) onProgress({ type: "thinking", delta: "\n\n" });
+            thinkingBlocks += 1;
+            return;
+          }
           if (
             event.type === "content_block_delta" &&
             event.delta.type === "thinking_delta" &&
