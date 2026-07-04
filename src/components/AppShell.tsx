@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import type {
   BadgeKind,
   ListingSummary,
@@ -14,13 +15,30 @@ import hoodsData from "@/data/sf-neighborhoods.json";
 import type { UserListingStatus } from "@/core/types";
 import { SearchBar } from "./SearchBar";
 import { EMPTY_PROGRESS, type SearchProgressState } from "./SearchProgress";
-import { MapView } from "./MapView";
 import { PorterButton, ListingPanel, SortSelect, listingCountLabel } from "./ListingPanel";
 import { ListingDetail } from "./ListingDetail";
 import { PorterPanel } from "./PorterPanel";
 import { SaveSearchDialog } from "./SaveSearchDialog";
 import { WelcomeBackModal } from "./WelcomeBackModal";
 import type { SavedSearchDto } from "@/lib/api-types";
+
+// MapView pulls in maplibre-gl (a large client-only library). Split it into
+// its own chunk so the search bar and results panel can paint and hydrate
+// immediately instead of waiting on the map bundle to download and parse.
+const MapView = dynamic(() => import("./MapView").then((m) => m.MapView), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-full w-full items-center justify-center bg-paper">
+      <span className="flex items-center gap-2 text-[13px] text-muted">
+        <span
+          aria-hidden
+          className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-line-strong border-t-accent"
+        />
+        Loading map…
+      </span>
+    </div>
+  ),
+});
 
 /** One NDJSON line from /api/search. */
 type SearchStreamEvent =

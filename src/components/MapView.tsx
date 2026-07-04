@@ -1143,17 +1143,20 @@ export function MapView({
         } catch (err) {
           console.warn("[apt map] hood-reveal-mask reorder failed", err);
         }
-        // Lift the base style's roads/labels back above that mask (in their
-        // original relative order) so the rest of the city — streets, transit,
-        // place names — stays legible while a neighborhood is isolated,
-        // instead of going fully black outside the highlighted hood. Anchored
-        // on "hood-selected-glow" (the same target hood-reveal-mask was just
-        // reasserted against, directly above) — anchoring on "hoods-fill"
-        // instead would land these BELOW hood-reveal-mask, which sits above
-        // hoods-fill, so they'd stay hidden under it.
+        // Lift the base style's roads/labels back above the hood-reveal mask
+        // (in their original relative order) so the rest of the city —
+        // streets, transit, place names — stays legible while a neighborhood
+        // is isolated, instead of going fully black outside the highlighted
+        // hood. Anchored on "outside-sf-mask" (NOT "hood-selected-glow"):
+        // outside-sf-mask sits below hoods-fill/hood-selected-glow but above
+        // hood-reveal-mask, so "just below outside-sf-mask" clears
+        // hood-reveal-mask while staying under the always-on SF-boundary
+        // mask — anchoring on hood-selected-glow instead would put these
+        // roads/labels ABOVE outside-sf-mask too, unmasking the whole Bay
+        // Area outside SF permanently, not just outside the isolated hood.
         for (const id of contextLayerIds) {
           try {
-            map.moveLayer(id, "hood-selected-glow");
+            map.moveLayer(id, "outside-sf-mask");
           } catch {
             /* layer absent in this style revision — skip */
           }

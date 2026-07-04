@@ -322,18 +322,27 @@ function EmptyState({
 
 function LoadingState() {
   return (
-    <ul className="flex flex-col" aria-busy="true" aria-label="Loading listings">
-      {Array.from({ length: 6 }, (_, i) => (
-        <li key={i} className="flex gap-3 border-b border-line px-3 py-3">
-          <div className="h-16 w-16 shrink-0 animate-pulse rounded-lg bg-elevated" />
-          <div className="flex min-w-0 flex-1 flex-col justify-center gap-2">
-            <div className="h-3 w-2/3 animate-pulse rounded bg-elevated" />
-            <div className="h-2.5 w-1/2 animate-pulse rounded bg-elevated" />
-            <div className="h-2.5 w-1/3 animate-pulse rounded bg-elevated" />
-          </div>
-        </li>
-      ))}
-    </ul>
+    <div aria-busy="true" aria-label="Loading listings">
+      <div className="flex items-center gap-2 px-3 py-3">
+        <span
+          aria-hidden
+          className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-line-strong border-t-accent"
+        />
+        <span className="text-[13px] font-medium text-ink">Loading listings…</span>
+      </div>
+      <ul className="flex flex-col">
+        {Array.from({ length: 6 }, (_, i) => (
+          <li key={i} className="flex gap-3 border-b border-line px-3 py-3">
+            <div className="h-16 w-16 shrink-0 animate-pulse rounded-lg bg-elevated" />
+            <div className="flex min-w-0 flex-1 flex-col justify-center gap-2">
+              <div className="h-3 w-2/3 animate-pulse rounded bg-elevated" />
+              <div className="h-2.5 w-1/2 animate-pulse rounded bg-elevated" />
+              <div className="h-2.5 w-1/3 animate-pulse rounded bg-elevated" />
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
