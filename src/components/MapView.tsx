@@ -111,20 +111,21 @@ function cityCamera(map: maplibregl.Map) {
   return { center: cam.center, zoom: cam.zoom - 0.1, pitch, bearing: 0 };
 }
 
-type FramePad = { top: number; bottom: number; left: number; right: number };
+type Padding = { top: number; bottom: number; left: number; right: number };
 
-/** cameraForBounds padding that accounts for the mobile results sheet
- * overlaying the bottom of the map. Desktop (rail sits beside the map, never
- * over it) uses the given padding as-is; on a narrow viewport with the sheet
- * expanded, content is framed into the visible strip ABOVE the sheet instead of
- * being centered in the phone and hidden behind it. */
-function framePadding(map: maplibregl.Map, drawerOpen: boolean, desktop: FramePad): FramePad {
+/** The map's viewport padding — the box the camera treats as "the map". On a
+ * narrow viewport the mobile results sheet overlays the bottom, so reserve its
+ * height (and the header at top): every camera move then centers content into
+ * the strip ABOVE the sheet, rather than in the phone's middle behind it. This
+ * only offsets the CENTER — it doesn't shrink content the way per-fit padding
+ * does. Desktop keeps a zero box (the rail sits beside the map, never over it). */
+function mapPadding(map: maplibregl.Map, drawerOpen: boolean): Padding {
   const c = map.getContainer();
-  if (c.clientWidth >= 768) return desktop; // the mobile sheet only exists below md
-  // Reserve the sheet's height (min(52dvh, 440px) when open) plus a little
-  // breathing room; collapsed, only its ~52px handle sits over the map.
-  const sheet = drawerOpen ? Math.min(Math.round(c.clientHeight * 0.52), 440) : 60;
-  return { top: 72, bottom: sheet + 16, left: 32, right: 32 };
+  if (c.clientWidth >= 768) return { top: 0, bottom: 0, left: 0, right: 0 };
+  // Sheet height mirrors AppShell's MobileDrawer: min(52dvh, 440px) open, ~52px
+  // (the grip handle) collapsed. Top reserves the floating search header.
+  const sheet = drawerOpen ? Math.min(Math.round(c.clientHeight * 0.52), 440) : 52;
+  return { top: 76, bottom: sheet, left: 0, right: 0 };
 }
 
 const WORLD_RING: [number, number][] = [
@@ -632,6 +633,23 @@ export function MapView({
     drawerOpenRef.current = drawerOpen ?? false;
   });
 
+  /* ---------- Mobile viewport padding ----------
+   * Reserve the results sheet's area at the bottom (and the header at top) so
+   * the camera treats the visible strip above the sheet as "the map" — every
+   * move (search framing, listing select, resting view) centers there instead
+   * of the phone's middle behind the sheet. Runs before the camera effects
+   * below, so a search that opens the sheet frames with the right center. */
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current) return;
+    const pad = mapPadding(map, drawerOpen ?? false);
+    if (prefersReducedMotion() || document.visibilityState === "hidden") {
+      map.setPadding(pad);
+    } else {
+      map.easeTo({ padding: pad, duration: 300 });
+    }
+  }, [drawerOpen, mapLoaded]);
+
   /* ---------- Map boot ---------- */
   useEffect(() => {
     if (!containerRef.current) return;
@@ -1103,7 +1121,12 @@ export function MapView({
         }
       });
 
-      const ro = new ResizeObserver(() => map.resize());
+      const ro = new ResizeObserver(() => {
+        map.resize();
+        // Keep the viewport padding correct across orientation / size changes
+        // (the reserved sheet height is a fraction of the container height).
+        map.setPadding(mapPadding(map, drawerOpenRef.current));
+      });
       ro.observe(container);
       cleanupRef.current = () => {
         ro.disconnect();
@@ -1182,7 +1205,7 @@ export function MapView({
       for (const c of coords) bounds.extend(c);
       if (!bounds.isEmpty()) {
         const cam = map.cameraForBounds(bounds, {
-          padding: framePadding(map, drawerOpenRef.current, { top: 110, left: 90, right: 90, bottom: 120 }),
+          padding: { top: 110, left: 90, right: 90, bottom: 120 },
           maxZoom: 13.4,
         });
         if (cam) map.easeTo({ ...cam, duration: 1300 });
@@ -1218,11 +1241,7 @@ export function MapView({
           [w, s],
           [e, n],
         ],
-        {
-          padding: framePadding(map, drawerOpenRef.current, { top: 240, left: 120, right: 120, bottom: 160 }),
-          bearing: -20,
-          maxZoom: 14.2,
-        },
+        { padding: { top: 240, left: 120, right: 120, bottom: 160 }, bearing: -20, maxZoom: 14.2 },
       );
       if (cam) {
         if (!motionOk) map.jumpTo({ ...cam, pitch });
@@ -1274,11 +1293,7 @@ export function MapView({
               [w, s],
               [e, n],
             ],
-            {
-              padding: framePadding(map, drawerOpenRef.current, { top: 150, left: 120, right: 120, bottom: 130 }),
-              bearing: 0,
-              maxZoom: 14,
-            },
+            { padding: { top: 150, left: 120, right: 120, bottom: 130 }, bearing: 0, maxZoom: 14 },
           );
           if (cam) applyCam({ ...cam, pitch });
         } else {
@@ -1339,7 +1354,7 @@ export function MapView({
         }
         if (!bounds.isEmpty()) {
           const cam = map.cameraForBounds(bounds, {
-            padding: framePadding(map, drawerOpenRef.current, { top: 150, left: 90, right: 90, bottom: 90 }),
+            padding: { top: 150, left: 90, right: 90, bottom: 90 },
             maxZoom: pts.length === 1 ? 15.6 : 14.4,
           });
           if (cam) {
