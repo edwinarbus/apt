@@ -533,6 +533,11 @@ export function MapView({
   const lockMarkerRef = useRef<maplibregl.Marker | null>(null);
   const thumbsRef = useRef<Map<string, maplibregl.Marker>>(new Map());
   const searchActiveRef = useRef(false);
+  // The result ids the search camera last framed to. A status toggle that only
+  // REMOVES a result (thumbs-down / hide) shrinks the set — we must NOT re-frame
+  // then (that's the "map zooms when I thumbs-down a result" bug); only a new
+  // search, which brings ids we haven't framed, should move the camera.
+  const framedIdsRef = useRef<Set<string>>(new Set());
   const cleanupRef = useRef<(() => void) | null>(null);
   const refreshThumbsRef = useRef<() => void>(() => {});
   const reasonsRef = useRef(reasons);
@@ -1254,6 +1259,8 @@ export function MapView({
     if (!map || !loadedRef.current) return;
     const wasActive = searchActiveRef.current;
     searchActiveRef.current = !!searchActive;
+    // No active search → forget what we framed, so the next search frames fresh.
+    if (!searchActive) framedIdsRef.current = new Set();
 
     try {
       map.setPaintProperty(
@@ -1276,7 +1283,12 @@ export function MapView({
     // frame the camera here for scattered, citywide results.
     if (searchActive && !selectedHoodRef.current && !highlightHoodRef.current) {
       const pts = listings.filter((l) => l.latitude != null && l.longitude != null);
-      if (pts.length > 0) {
+      // Only frame when the result set brings ids we haven't framed yet (a new
+      // or growing search). A pure shrink — the user hid or thumbs-downed a
+      // result — is a subset of what's already framed, so the camera holds.
+      const isNewResults = pts.some((l) => !framedIdsRef.current.has(l.id));
+      if (pts.length > 0 && isNewResults) {
+        framedIdsRef.current = new Set(pts.map((l) => l.id));
         const bounds = new maplibregl.LngLatBounds();
         for (const l of pts) {
           if (l.latitude! > 37.6 && l.latitude! < 37.85 && l.longitude! > -122.56 && l.longitude! < -122.3) {
