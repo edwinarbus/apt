@@ -391,12 +391,15 @@ export function AppShell() {
   );
 
   const selected = listings?.find((l) => l.id === selectedId) ?? null;
+  // A full-screen modal is up → make the map inert so no click, drag, or scroll
+  // ever leaks through to it underneath.
+  const anyModalOpen = detailOpen || scoutOpen || saveOpen || welcomeOpen;
 
   return (
     <div className="relative h-full min-h-0 flex-1 overflow-hidden">
       {/* 3D stage — its own viewport, LEFT of the results rail on desktop so the
           city is never framed behind the panel; full-bleed on mobile. */}
-      <div className="absolute inset-0 md:right-[396px]">
+      <div className={`absolute inset-0 md:right-[396px] ${anyModalOpen ? "pointer-events-none" : ""}`}>
         <MapView
           listings={displayed}
           selectedId={selectedId}

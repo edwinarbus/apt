@@ -35,6 +35,8 @@ export function ListingDetail({
   const [data, setData] = useState<ListingDetailResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [photoIndex, setPhotoIndex] = useState(0);
+  // Pause the photo autoplay while the pointer is over the gallery.
+  const [galleryPaused, setGalleryPaused] = useState(false);
   const [savingStatus, setSavingStatus] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const [closing, setClosing] = useState(false);
@@ -45,6 +47,18 @@ export function ListingDetail({
   useEffect(() => () => {
     if (rememberTimer.current) window.clearTimeout(rememberTimer.current);
   }, []);
+
+  // Auto-advance the photo carousel — paused on hover and under reduced motion.
+  const photoCount = Math.min(data?.listing.photos?.length ?? 0, 10);
+  useEffect(() => {
+    if (photoCount <= 1 || galleryPaused) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const id = window.setInterval(
+      () => setPhotoIndex((i) => (i + 1) % photoCount),
+      4200,
+    );
+    return () => window.clearInterval(id);
+  }, [photoCount, galleryPaused]);
 
   // Play a quick fade-out before unmounting so close is animated too.
   const requestClose = useCallback(() => {
@@ -129,7 +143,7 @@ export function ListingDetail({
           if (rememberTimer.current) window.clearTimeout(rememberTimer.current);
           rememberTimer.current = window.setTimeout(
             () => setRemembered((r) => ({ ...r, on: false })),
-            1000,
+            1700,
           );
         }
       }
@@ -140,6 +154,12 @@ export function ListingDetail({
 
   const l = data?.listing;
   const photos = l?.photos ?? [];
+  // Carousel slides: real photos (capped so a huge set doesn't all preload for
+  // the crossfade), else the single primary photo.
+  const slides = (photos.length > 0 ? photos : l?.primaryPhotoUrl ? [l.primaryPhotoUrl] : []).slice(0, 10);
+  const multiPhoto = slides.length > 1;
+  const goPhoto = (dir: number) =>
+    setPhotoIndex((i) => (i + dir + slides.length) % slides.length);
 
   // A few essential facts — only the ones actually known.
   const facts: Array<{ label: string; value: string }> = [];
@@ -194,36 +214,77 @@ export function ListingDetail({
           {!data && !error && <p className="p-10 text-center text-sm text-faint">Loading…</p>}
           {l && (
             <>
-              {/* Gallery */}
-              <div className="relative">
-                <PhotoImg
-                  src={photos[photoIndex] ?? l.primaryPhotoUrl}
-                  alt={l.title}
-                  className="h-[240px] w-full object-cover"
-                />
+              {/* Gallery — autoplaying crossfade carousel with arrow nav. */}
+              <div
+                className="group relative h-[240px] w-full overflow-hidden bg-elevated"
+                onMouseEnter={() => setGalleryPaused(true)}
+                onMouseLeave={() => setGalleryPaused(false)}
+              >
+                {slides.length > 0 ? (
+                  slides.map((p, i) => (
+                    <PhotoImg
+                      key={p + i}
+                      src={p}
+                      alt={i === photoIndex ? l.title : ""}
+                      className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-[900ms] ease-out ${
+                        i === photoIndex ? "opacity-100" : "opacity-0"
+                      }`}
+                    />
+                  ))
+                ) : (
+                  <PhotoImg src={null} alt={l.title} className="h-full w-full object-cover" />
+                )}
+
+                {multiPhoto && (
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/45 to-transparent" />
+                )}
+
                 <button
                   type="button"
                   onClick={requestClose}
-                  className="absolute top-3 right-3 flex h-8 w-8 items-center justify-center rounded-full bg-paper/70 text-[14px] text-muted backdrop-blur transition-colors hover:text-ink"
+                  className="absolute top-3 right-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-paper/70 text-[14px] text-muted backdrop-blur transition-colors hover:text-ink"
                   aria-label="Close"
                 >
                   ✕
                 </button>
-                {photos.length > 1 && (
-                  <div className="absolute right-0 bottom-0 left-0 flex gap-1.5 overflow-x-auto bg-gradient-to-t from-black/60 to-transparent p-2.5">
-                    {photos.slice(0, 12).map((p, i) => (
-                      <button
-                        key={p}
-                        type="button"
-                        onClick={() => setPhotoIndex(i)}
-                        className={`h-11 w-14 shrink-0 overflow-hidden rounded border-2 ${
-                          i === photoIndex ? "border-white" : "border-transparent opacity-70"
-                        }`}
-                      >
-                        <PhotoImg src={p} alt="" className="h-full w-full object-cover" />
-                      </button>
-                    ))}
-                  </div>
+
+                {multiPhoto && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => goPhoto(-1)}
+                      aria-label="Previous photo"
+                      className="absolute top-1/2 left-2.5 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-paper/60 text-ink backdrop-blur transition-colors hover:bg-paper/90"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                        <path d="M15 18l-6-6 6-6" />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => goPhoto(1)}
+                      aria-label="Next photo"
+                      className="absolute top-1/2 right-2.5 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-paper/60 text-ink backdrop-blur transition-colors hover:bg-paper/90"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                        <path d="M9 18l6-6-6-6" />
+                      </svg>
+                    </button>
+                    <div className="absolute bottom-2.5 left-1/2 flex -translate-x-1/2 items-center gap-1.5">
+                      {slides.map((_, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => setPhotoIndex(i)}
+                          aria-label={`Photo ${i + 1}`}
+                          aria-current={i === photoIndex}
+                          className={`h-1.5 rounded-full transition-all ${
+                            i === photoIndex ? "w-4 bg-white" : "w-1.5 bg-white/50 hover:bg-white/80"
+                          }`}
+                        />
+                      ))}
+                    </div>
+                  </>
                 )}
               </div>
 
@@ -277,11 +338,13 @@ export function ListingDetail({
                       aria-pressed={l.userStatus === "saved"}
                       className={`flex flex-1 items-center justify-center gap-1.5 rounded-md border px-4 py-2.5 text-[13.5px] font-semibold transition-colors disabled:opacity-50 ${
                         l.userStatus === "saved"
-                          ? "border-saved bg-saved/15 text-saved"
-                          : "border-line-strong bg-elevated/60 text-ink hover:border-saved/50 hover:text-saved"
+                          ? "border-faint bg-elevated text-ink"
+                          : "border-line-strong bg-elevated/60 text-muted hover:border-faint hover:text-ink"
                       }`}
                     >
-                      <span aria-hidden>{l.userStatus === "saved" ? "★" : "☆"}</span>
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                        <path d="M12 17.3l-6.16 3.7 1.64-7.03L2 9.24l7.19-.61L12 2l2.81 6.63 7.19.61-5.48 4.73 1.64 7.03z" />
+                      </svg>
                       {l.userStatus === "saved" ? "Saved" : "Save"}
                     </button>
                     <div className="relative flex flex-1">
@@ -293,11 +356,11 @@ export function ListingDetail({
                         aria-label={disliked ? "Remove not-a-fit" : "Not a fit — remember to skip these"}
                         className={`flex w-full items-center justify-center gap-1.5 rounded-md border px-4 py-2.5 text-[13.5px] font-semibold transition-colors disabled:opacity-50 ${
                           disliked
-                            ? "border-warn/50 bg-warn/10 text-warn"
-                            : "border-line-strong bg-elevated/60 text-muted hover:border-warn/50 hover:text-warn"
+                            ? "border-faint bg-elevated text-ink"
+                            : "border-line-strong bg-elevated/60 text-muted hover:border-faint hover:text-ink"
                         }`}
                       >
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill={disliked ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                           <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3H10Z" />
                           <path d="M17 2h2.67A1.33 1.33 0 0 1 21 3.33v8.34A1.33 1.33 0 0 1 19.67 13H17" />
                         </svg>
@@ -306,8 +369,14 @@ export function ListingDetail({
                       {remembered.on && (
                         <span
                           key={remembered.tick}
-                          className="animate-remember pointer-events-none absolute bottom-full left-1/2 mb-1 whitespace-nowrap rounded-md bg-ink px-2 py-1 text-[11px] font-semibold text-paper shadow-[0_6px_18px_rgba(0,0,0,0.5)]"
+                          className="animate-remember pointer-events-none absolute bottom-full left-1/2 mb-1 flex items-center gap-1 whitespace-nowrap rounded-md bg-ink px-2 py-1 text-[11px] font-semibold text-paper shadow-[0_6px_18px_rgba(0,0,0,0.5)]"
                         >
+                          {/* head profile (facing right) with a clock = "committed to memory" */}
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                            <path d="M8.5 20.5v-3.2C6.4 16 5 13.6 5 11 5 6.9 8.4 3.5 12.6 3.5c4 0 7.3 3 7.3 6.9 0 1.6-.6 2.6-1.9 2.9-.7.2-1 .6-1 1.3v.6c0 1-.8 1.8-1.8 1.8h-1.4" />
+                            <circle cx="11" cy="10.2" r="3.1" />
+                            <path d="M11 8.6v1.6l1.3.9" />
+                          </svg>
                           Remembered
                         </span>
                       )}
