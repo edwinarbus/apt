@@ -65,26 +65,54 @@ function useAnimatedListings(listings: ListingSummary[]): AnimatedEntry[] {
         return listings.map((listing) => ({ listing, leaving: false }));
       }
 
-      const byId = new Map(listings.map((l) => [l.id, l]));
+      // Two-pointer merge over prev/listings (both correctly ordered, and
+      // order-preserving for their shared items per the check above) — this is
+      // what makes a re-shown listing (toggling "hide suspicious" back off)
+      // land back at its ORIGINAL position instead of at the end: rather than
+      // appending every not-yet-seen item after all survivors, each one is
+      // inserted exactly where it falls in `listings`, interleaved with
+      // whichever survivor comes right before/after it.
       const next: AnimatedEntry[] = [];
-      for (const entry of prev) {
-        const fresh = byId.get(entry.listing.id);
-        if (fresh) {
-          next.push({ listing: fresh, leaving: false });
-        } else if (entry.leaving) {
-          next.push(entry); // already animating out — its timer is already set
-        } else {
-          next.push({ listing: entry.listing, leaving: true });
-          const id = entry.listing.id;
-          const t = window.setTimeout(() => {
-            setEntries((cur) => cur.filter((e) => e.listing.id !== id));
-            timersRef.current.delete(id);
-          }, LIST_EXIT_MS);
-          timersRef.current.set(id, t);
+      let pi = 0;
+      let ni = 0;
+      while (pi < prev.length || ni < listings.length) {
+        const prevEntry: AnimatedEntry | undefined = prev[pi];
+        const newListing: ListingSummary | undefined = listings[ni];
+
+        if (prevEntry && !newIdSet.has(prevEntry.listing.id)) {
+          // No longer in the target list — keep it right here, fading out.
+          if (prevEntry.leaving) {
+            next.push(prevEntry); // already animating — timer already set
+          } else {
+            next.push({ listing: prevEntry.listing, leaving: true });
+            const id = prevEntry.listing.id;
+            const t = window.setTimeout(() => {
+              setEntries((cur) => cur.filter((e) => e.listing.id !== id));
+              timersRef.current.delete(id);
+            }, LIST_EXIT_MS);
+            timersRef.current.set(id, t);
+          }
+          pi++;
+          continue;
         }
-      }
-      for (const l of listings) {
-        if (!prevIdSet.has(l.id)) next.push({ listing: l, leaving: false });
+
+        if (newListing && !prevIdSet.has(newListing.id)) {
+          // Brand new, or reappearing after being hidden — its correct slot
+          // IS this position, since `listings` already reflects the app's one
+          // true sort order.
+          next.push({ listing: newListing, leaving: false });
+          ni++;
+          continue;
+        }
+
+        // Both point at the same surviving item (guaranteed by orderPreserved).
+        if (newListing) {
+          next.push({ listing: newListing, leaving: false });
+          ni++;
+          if (prevEntry) pi++;
+        } else if (prevEntry) {
+          pi++; // defensive: shouldn't happen given orderPreserved
+        }
       }
       return next;
     });
