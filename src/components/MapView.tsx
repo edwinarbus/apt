@@ -123,10 +123,33 @@ function mapPadding(map: maplibregl.Map, drawerOpen: boolean): Padding {
   const c = map.getContainer();
   if (c.clientWidth >= 768) return { top: 0, bottom: 0, left: 0, right: 0 };
   // Sheet height mirrors AppShell's MobileDrawer: min(52dvh, 440px) open, ~52px
-  // (the grip handle) collapsed. Top reserves the floating search header.
+  // (the collapsed bar) collapsed. Top reserves the floating search header.
   const sheet = drawerOpen ? Math.min(Math.round(c.clientHeight * 0.52), 440) : 52;
   return { top: 76, bottom: sheet, left: 0, right: 0 };
 }
+
+/**
+ * Per-fit padding for framing a single neighborhood so it fills ~90% of the
+ * VISIBLE map. Keep these margins tight: this stacks on top of the global
+ * viewport padding (see mapPadding) — which already reserves the mobile
+ * header + results sheet — so large values here shrink the hood, and on a
+ * short phone the two paddings combined can exceed the viewport and make
+ * cameraForBounds bail entirely (that was the old 240/160 padding's bug). On
+ * desktop the results rail floats over the right of the map, so reserve its
+ * width there and the hood centers in the visible area beside it instead of
+ * sitting partly behind it.
+ */
+function hoodFramePadding(map: maplibregl.Map): Padding {
+  const c = map.getContainer();
+  if (c.clientWidth < 768) return { top: 24, bottom: 24, left: 20, right: 20 };
+  // Rail: 384px wide + its own 12px right offset ≈ 396px; add a small gap.
+  return { top: 48, bottom: 48, left: 56, right: 420 };
+}
+
+/** Zoom cap when framing a neighborhood — high enough that a small hood fills
+ * the frame instead of stopping short; a medium/large hood is limited by its
+ * own bounds well before this. */
+const HOOD_FRAME_MAX_ZOOM = 15.5;
 
 const WORLD_RING: [number, number][] = [
   [-180, -85],
@@ -1273,7 +1296,7 @@ export function MapView({
           [w, s],
           [e, n],
         ],
-        { padding: { top: 240, left: 120, right: 120, bottom: 160 }, bearing: -20, maxZoom: 14.2 },
+        { padding: hoodFramePadding(map), bearing: -20, maxZoom: HOOD_FRAME_MAX_ZOOM },
       );
       if (cam) {
         if (!motionOk) map.jumpTo({ ...cam, pitch });
@@ -1325,12 +1348,12 @@ export function MapView({
               [w, s],
               [e, n],
             ],
-            { padding: { top: 150, left: 120, right: 120, bottom: 130 }, bearing: 0, maxZoom: 14 },
+            { padding: hoodFramePadding(map), bearing: 0, maxZoom: HOOD_FRAME_MAX_ZOOM },
           );
           if (cam) applyCam({ ...cam, pitch });
         } else {
           const c = neighborhoodCentroid(name);
-          if (c) applyCam({ center: [c.lng, c.lat], zoom: 14, pitch, bearing: 0 });
+          if (c) applyCam({ center: [c.lng, c.lat], zoom: 14.8, pitch, bearing: 0 });
         }
       } else if (prev) {
         refreshThumbsRef.current();
@@ -1437,12 +1460,19 @@ export function MapView({
         })
           .setLngLat([listing.longitude, listing.latitude])
           .addTo(map);
-        // Clicking a listing swoops in: more tilt, a slight rotation, closer zoom.
+        // Clicking a listing swoops in. On desktop that's a dramatic gesture —
+        // more tilt, a slight rotation, closer zoom. On a phone the same values
+        // read as "way too much": the steep tilt blows the 3D buildings up huge
+        // and shoves the pin (and its photo card, which sits ABOVE the pin) off
+        // the top of the screen. So mobile gets a calmer framing — gentler tilt,
+        // no rotation, a modest zoom — plus a downward offset that seats the pin
+        // in the lower third so the card always has room above it.
+        const mobile = map.getContainer().clientWidth < 768;
         const target = {
           center: [listing.longitude, listing.latitude] as [number, number],
-          zoom: Math.max(map.getZoom() + 0.8, 15.4),
-          pitch: 58,
-          bearing: -13,
+          zoom: mobile ? Math.max(map.getZoom(), 14.6) : Math.max(map.getZoom() + 0.8, 15.4),
+          pitch: mobile ? 28 : 58,
+          bearing: mobile ? 0 : -13,
         };
         // The detail modal is about to cover the whole screen — animating the
         // camera underneath it burns CPU/GPU on frames nobody sees (worst on
@@ -1450,7 +1480,7 @@ export function MapView({
         if (prefersReducedMotion() || document.visibilityState === "hidden" || detailOpen) {
           map.jumpTo(target);
         } else {
-          map.easeTo({ ...target, duration: 720 });
+          map.easeTo({ ...target, offset: mobile ? [0, 48] : [0, 0], duration: 720 });
         }
       }
     }

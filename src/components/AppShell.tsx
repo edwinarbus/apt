@@ -679,11 +679,6 @@ function MobileDrawer({
           paddingBottom: "env(safe-area-inset-bottom)",
         }}
       >
-        {/* Grip affordance */}
-        <span
-          aria-hidden
-          className="pointer-events-none absolute inset-x-0 top-1.5 mx-auto h-1 w-9 rounded-full bg-line-strong"
-        />
         <div className="flex items-center gap-2 border-b border-line px-3 pt-3 pb-2">
           <button
             type="button"
