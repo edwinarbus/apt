@@ -83,14 +83,31 @@ function fmtCandidate(c: CandidateProfile): string {
   return `[${c.id}] ${beds}/${baths}${sqft} | ${price} | ${area}${addr}${dist} | laundry:${c.laundry ?? "?"} parking:${c.parking ?? "?"} ${pets}${amen}${vis}${visSum}${desc}`;
 }
 
-export function buildSearchPrompt(query: string, candidates: CandidateProfile[]): string {
+/**
+ * The candidate listings, formatted as their own stable block — deliberately
+ * SEPARATE from the query (see buildUserQuery) and placed BEFORE it in the
+ * request, so it can be marked as a cache_control breakpoint. Prompt caching
+ * only ever helps a PREFIX: this block runs a few thousand tokens (comfortably
+ * over Sonnet 5's 1024-token cache minimum, unlike the ~700-token system
+ * prompt alone), and prerankAndCap is deterministic, so re-running the exact
+ * same query again — a repeated search, "search again", a demo re-run — sends
+ * this identical block again and reads it from cache instead of reprocessing
+ * it. A genuinely different query still reprocesses it fresh (prerank chooses
+ * a different top set), so this is a repeat-query optimization, not a
+ * cross-query one.
+ */
+export function buildCandidatesContext(candidates: CandidateProfile[]): string {
+  return `${candidates.length} candidate listings. Fields per line: [id] beds/baths sqft | price | neighborhood @ address [distance] | laundry/parking/pets | amenities | vision features (summary) | description snippet
+${candidates.map(fmtCandidate).join("\n")}`;
+}
+
+/** The variable part of the request — small, and always different per search,
+ * so it never carries a cache_control marker. */
+export function buildUserQuery(query: string): string {
   return `User's search:
 """
 ${query}
 """
-
-${candidates.length} candidate listings. Fields per line: [id] beds/baths sqft | price | neighborhood @ address [distance] | laundry/parking/pets | amenities | vision features (summary) | description snippet
-${candidates.map(fmtCandidate).join("\n")}
 
 Return the JSON now.`;
 }
@@ -188,10 +205,21 @@ export class AnthropicSearchClient implements SearchClient {
         // part of the product, so reliability here matters more than the
         // marginal cost/latency saved by "low". Still Sonnet 5, not Opus.
         output_config: { effort: "medium" },
+        // The candidates block (not the ~700-token system prompt alone) is
+        // what's actually big enough to cross Sonnet 5's 1024-token cache
+        // minimum, so the breakpoint goes on IT — that caches everything
+        // before and including it (the system prompt comes along for free).
+        // Only the query goes in the user message, so a repeated search
+        // reuses the cached prefix instead of reprocessing every candidate.
         system: [
-          { type: "text", text: SEARCH_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
+          { type: "text", text: SEARCH_SYSTEM_PROMPT },
+          {
+            type: "text",
+            text: buildCandidatesContext(candidates),
+            cache_control: { type: "ephemeral" },
+          },
         ],
-        messages: [{ role: "user", content: buildSearchPrompt(query, candidates) }],
+        messages: [{ role: "user", content: buildUserQuery(query) }],
       });
       onProgress?.({ type: "stage", stage: "model_start", model: this.model });
       if (onProgress) {
