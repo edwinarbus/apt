@@ -60,8 +60,7 @@ autoplaying photo carousel, save/not-a-fit verdicts, and risk signals.
 - **MapLibre GL** with OpenFreeMap tiles (no map API key needed) + a terrain/satellite proxy
 - **cheerio** for HTML parsing; a polite HTTP fetcher plus a Playwright fetcher (headless
   Chromium) behind one shared interface, for JS-rendered sources
-- **`@anthropic-ai/sdk`** — every Claude feature below is optional and lazily imported, so
-  the core pipeline runs with zero API key
+- **`@anthropic-ai/sdk`** — powers search, enrichment, vision, Porter, and preference memory
 - **Vitest** for tests (all offline, no network/API calls), **tsx** for CLI scripts
 
 ## Claude API surface
@@ -106,7 +105,7 @@ npm run porter:worker             # keep running so Porter's nightly session has
 
 | Variable | Required for | Notes |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | Search, enrichment, vision, Porter | Everything else works without it |
+| `ANTHROPIC_API_KEY` | Search, enrichment, vision, Porter | Required — set in your deployment environment (e.g. Vercel project env vars) |
 | `APT_SEARCH_MODEL` | — | Override the search model (default `claude-sonnet-5`) |
 | `APT_ENRICH_MODEL` | — | Override the enrichment model (default `claude-haiku-4-5`) |
 | `APT_VISION_MODEL` | — | Override the vision model (default `claude-haiku-4-5`) |
