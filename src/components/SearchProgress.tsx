@@ -52,7 +52,7 @@ function Spinner() {
 }
 
 export function SearchProgress({ progress }: { progress: SearchProgressState }) {
-  const { thinking, chars, startedAt } = progress;
+  const { thinking, chars, startedAt, candidates, kept, model } = progress;
   // Summarized thinking arrives in paragraph-sized chunks — present each as
   // its own thought instead of one accumulated wall.
   const paras = thinking.trim() ? thinking.trim().split(/\n{2,}/) : [];
@@ -105,7 +105,13 @@ export function SearchProgress({ progress }: { progress: SearchProgressState }) 
           </div>
         ) : (
           <p className="shimmer-text text-[12.5px] leading-relaxed">
-            Reading your search and the listings…
+            {model && kept != null
+              ? `Reading the ${kept} closest listings…`
+              : kept != null
+                ? `Shortlisted ${kept}${candidates ? ` of ${candidates}` : ""} listings…`
+                : candidates != null
+                  ? `Scanning ${candidates} listings…`
+                  : "Reading your search…"}
           </p>
         )}
       </div>
