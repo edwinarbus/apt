@@ -1170,26 +1170,42 @@ export function MapView({
         syncData(map, listingsRef.current, selectedIdRef.current);
         refreshThumbsRef.current();
 
-        const intro = cityCamera(map);
-        if (reduced || document.visibilityState === "hidden") {
-          map.jumpTo(intro);
-        } else {
-          map.flyTo({ ...intro, duration: 1500, curve: 1.2 });
-          window.setTimeout(() => {
-            // Only rescue a stuck intro — never yank the camera back if a
-            // search, highlight, or isolate has since taken it somewhere.
-            if (
-              mapRef.current === map &&
-              map.isMoving() &&
-              !searchActiveRef.current &&
-              !highlightHoodRef.current &&
-              !selectedHoodRef.current
-            ) {
-              map.stop();
+        // cityCamera reads the container's clientWidth/clientHeight directly
+        // (not MapLibre's own internal size), and right as 'load' fires that
+        // layout isn't reliably settled yet — Chrome and Safari don't finish
+        // the surrounding flex/absolute layout on the same tick, so the same
+        // code could measure a different container size in each and compute
+        // a visibly different initial zoom (seen: Chrome landing noticeably
+        // more zoomed-out than Safari on the exact same page). A double rAF
+        // guarantees at least one full layout+paint cycle has completed
+        // before the very first fit reads the container, so both browsers
+        // measure the same, final size.
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            if (mapRef.current !== map) return;
+            map.resize();
+            const intro = cityCamera(map);
+            if (reduced || document.visibilityState === "hidden") {
               map.jumpTo(intro);
+            } else {
+              map.flyTo({ ...intro, duration: 1500, curve: 1.2 });
+              window.setTimeout(() => {
+                // Only rescue a stuck intro — never yank the camera back if a
+                // search, highlight, or isolate has since taken it somewhere.
+                if (
+                  mapRef.current === map &&
+                  map.isMoving() &&
+                  !searchActiveRef.current &&
+                  !highlightHoodRef.current &&
+                  !selectedHoodRef.current
+                ) {
+                  map.stop();
+                  map.jumpTo(intro);
+                }
+              }, 4200);
             }
-          }, 4200);
-        }
+          });
+        });
       });
 
       const ro = new ResizeObserver(() => {
