@@ -41,7 +41,13 @@ async function main() {
   const hasKey = Boolean(process.env.ANTHROPIC_API_KEY);
   const doEnrich = !args.includes("--no-enrich") && hasKey;
   const doVision = !args.includes("--no-vision") && hasKey;
-  const enrichCap = numFlag(args, "--enrich-cap", 1.0);
+  // Enrichment used to default to a $1.00 cap — half of vision's — despite
+  // running on the exact same new/changed set. A single busy Craigslist night
+  // (240 new listings observed) costs ~$0.005/listing to enrich, so $1.00 cut
+  // off partway through and left ~22% of that night's listings with no AI
+  // summary, while vision's more generous cap covered nearly all of them.
+  // Matching vision's $2.00 comfortably covers a busy night with headroom.
+  const enrichCap = numFlag(args, "--enrich-cap", 2.0);
   const visionCap = numFlag(args, "--vision-cap", 2.0);
   const db = await createDb();
   const log = (m: string) => console.log(`  ${m}`);
