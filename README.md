@@ -16,30 +16,27 @@ Listings render as clustered price pins; clicking a neighborhood — or naming o
 ("apartments in the Mission") — reveals it with real satellite imagery, live terrain relief,
 and a highlighted boundary, with 3D buildings extruding once you're zoomed in close.
 
-**Natural-language search (Claude Sonnet 5).** One text box. Type "sunny 1BR near a park in
+**Natural-language search (Claude Sonnet 5).** Type "sunny 1BR near a park in
 the Marina with in-unit laundry and hardwood floors" and Claude ranks every candidate,
 combining its own SF geography knowledge with each listing's structured fields, description,
-and vision-extracted photo features. Reasoning streams live via adaptive thinking so you see
-*why* a match scored the way it did, not just a spinner.
+and vision-extracted photo features. Reasoning streams live via adaptive thinking.
 
 **Structured enrichment & risk scoring (Claude Haiku).** Turns each listing's scraped text
 into clean facts — amenities, laundry/parking type, pet policy, lease terms — and a neutral
 risk read: concrete, observable signals (rent far below what the listing itself implies,
-a request to wire a deposit before viewing, no address given) surfaced as "verify carefully,"
-never as a fraud accusation. Also produces a few renter-useful notes: what to verify before
-contacting and questions worth asking the landlord. Grounded strictly in what the listing
-itself says; nothing is invented.
+a request to wire a deposit before viewing, no address given). Also produces a few renter-useful 
+notes: what to verify before contacting and questions worth asking the landlord. Grounded 
+strictly in what the listing itself says; nothing is invented.
 
 **Photo vision (Claude Haiku).** Reads each listing's photos into searchable visual features
 ("hardwood floors," "bay windows," "renovated kitchen") and a condition read, so search can
 match on what a listing *looks like*, not just what it claims.
 
-**Porter — a managed agent (Claude Managed Agents).** An overnight agent, not a cron job with
-a prompt bolted on: it runs nightly in its own sandboxed environment, pulls new listings
-across every saved search, ranks them, and drafts a complete rental application for every new
-match. An auto-send feature can be toggled on so the agent automatically submits the
-application, or toggled off so the user can manually review each match and email a copy
-themselves.
+**Porter — a managed agent (Claude Managed Agents).** An overnight agent that runs nightly in 
+its own sandboxed environment, pulls new listings across every saved search, ranks them, and 
+drafts a complete rental application for every new match. An auto-send feature can be toggled on so the
+agent automatically submits the application, or toggled off so the user can manually review each match
+and email a copy themselves.
 
 **Preference memory (Claude Memory Store).** Thumbs-down a listing and Apt writes its
 basic characteristics — price band, bedrooms, neighborhood, parking, laundry, flooring, pets —
