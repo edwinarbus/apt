@@ -28,6 +28,7 @@
     "test:adapters": "vitest run tests/adapters-craigslist.test.ts tests/adapters-rentsfnow.test.ts tests/adapters-rentbt.test.ts tests/adapters-mosser.test.ts",
     "backfill:contacts": "tsx scripts/backfill-contacts.ts",
     "backfill:junk-addresses": "tsx scripts/backfill-junk-addresses.ts",
+    "backfill:bad-geocodes": "tsx scripts/backfill-bad-geocodes.ts",
     "porter:deploy": "tsx scripts/porter-agent.ts",
     "porter:worker": "tsx scripts/porter-worker.ts",
     "porter:sessions": "tsx scripts/porter-sessions.ts",

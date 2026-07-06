@@ -24,6 +24,7 @@ import { neighborhoodForPoint } from "@/core/neighborhood-geo";
 import { assessListing, computeBaselines } from "@/core/scam";
 import {
   geocodeAddress,
+  isWithinSf,
   neighborhoodFallback,
   type GeocodeProvider,
 } from "@/core/geocode";
@@ -607,8 +608,19 @@ export async function runSource(
           opts.geocodeProvider,
         );
         if (outcome) {
-          hit = outcome;
-          fromCache = outcome.fromCache;
+          // A "hit" that lands outside the city is more likely a wrong or
+          // ambiguous match (a bare cross-street with no house number, a
+          // stale cache entry from before this check existed) than a real SF
+          // listing at that spot — discard it and fall through to the
+          // neighborhood centroid below rather than plot it in the wrong city.
+          if (
+            outcome.latitude != null &&
+            outcome.longitude != null &&
+            isWithinSf(outcome.latitude, outcome.longitude)
+          ) {
+            hit = outcome;
+            fromCache = outcome.fromCache;
+          }
           if (!outcome.fromCache) networkBudget--;
         } else {
           networkBudget--; // a failed provider call still consumed a request

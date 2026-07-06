@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import { listings } from "@/db/schema";
+import { listings, sources } from "@/db/schema";
 import { runSource } from "@/ingest/runner";
 import type { Db } from "@/db/client";
 import {
   geocodeAddress,
+  isWithinSf,
   neighborhoodFallback,
   normalizeStreetOrdinals,
   type GeocodeProvider,
@@ -73,6 +74,15 @@ describe("neighborhoodFallback", () => {
   });
 });
 
+describe("isWithinSf", () => {
+  it("accepts real SF coordinates and rejects points outside the city", () => {
+    expect(isWithinSf(37.7749, -122.4194)).toBe(true); // downtown SF
+    // Reported bug: "Dolores near 26th street" geocoded to Daly City/Colma.
+    expect(isWithinSf(37.633266, -122.414846)).toBe(false);
+    expect(isWithinSf(37.6787, -122.478)).toBe(false); // south of the city line
+  });
+});
+
 describe("runner geocoding behavior", () => {
   it("falls back to neighborhood centroids and records precision", async () => {
     const db = await testDb();
@@ -112,5 +122,45 @@ describe("runner geocoding behavior", () => {
       .get();
     expect(hasCoords?.latitude).toBe(37.8);
     expect(hasCoords?.geocodePrecision).toBe("exact_address");
+  });
+
+  it("discards a live geocode that lands outside SF and falls back to the neighborhood centroid", async () => {
+    const db = await testDb();
+    await seedStubSource(db);
+    await db.update(sources).set({ geocodeEnabled: true }).where(eq(sources.id, "stub_src")).run();
+    stubSuccess([
+      makeListing({
+        sourceListingId: "bad-geocode",
+        neighborhood: "Noe Valley",
+        addressRaw: "Dolores near 26th street",
+        latitude: null,
+        longitude: null,
+      }),
+    ]);
+    // Mirrors the reported bug: a vague cross-street address geocodes
+    // "confidently" to Daly City/Colma, well outside the SF bounding box.
+    const badProvider: GeocodeProvider = async () => ({
+      latitude: 37.633266,
+      longitude: -122.414846,
+      precision: "exact_address",
+      formattedAddress: "Dolores St, Colma, CA",
+    });
+    const summary = await runSource(db, "stub_src", {
+      skipRobotsCheck: true,
+      geocodeProvider: badProvider,
+    });
+    expect(summary.geocoded.fallback).toBe(1);
+
+    const row = await db
+      .select()
+      .from(listings)
+      .where(eq(listings.sourceListingId, "bad-geocode"))
+      .get();
+    // Never the bad out-of-bounds point...
+    expect(row?.latitude).not.toBeCloseTo(37.633266, 2);
+    // ...lands on the Noe Valley centroid instead, correctly marked as a
+    // neighborhood-level (not exact-address) fallback.
+    expect(row?.geocodePrecision).toBe("neighborhood");
+    expect(row?.latitude != null && isWithinSf(row.latitude, row.longitude!)).toBe(true);
   });
 });

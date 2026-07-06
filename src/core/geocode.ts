@@ -25,8 +25,25 @@ export type GeocodeProvider = (address: string) => Promise<GeocodeHit | null>;
 
 const NOMINATIM_UA =
   "apt-personal-apartment-scout/0.1 (personal non-commercial apartment search)";
-// Rough SF bounding box keeps results inside the city.
-const SF_VIEWBOX = "-122.55,37.85,-122.33,37.69";
+// Rough SF bounding box. Biases the Nominatim query toward the city AND is the
+// hard gate (isWithinSf) applied to every hit before it's trusted — live,
+// cached, or otherwise. `bounded=1` below only ever biases Nominatim's search;
+// it does not guarantee the result actually lands inside the box, and a
+// vague/ambiguous query (a cross-street description with no house number, a
+// listing title mistaken for an address) can still return a confident-looking
+// match somewhere else in the Bay Area. Without this gate, that bad result
+// gets cached "permanently" (see geocodeAddress) and trusted forever.
+const SF_BBOX = { west: -122.55, north: 37.85, east: -122.33, south: 37.69 };
+const SF_VIEWBOX = `${SF_BBOX.west},${SF_BBOX.north},${SF_BBOX.east},${SF_BBOX.south}`;
+
+export function isWithinSf(latitude: number, longitude: number): boolean {
+  return (
+    latitude >= SF_BBOX.south &&
+    latitude <= SF_BBOX.north &&
+    longitude >= SF_BBOX.west &&
+    longitude <= SF_BBOX.east
+  );
+}
 
 let lastNominatimCall = 0;
 
