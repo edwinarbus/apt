@@ -9,6 +9,7 @@ import type {
   SearchResponse,
 } from "@/lib/api-types";
 import { computeBadges } from "@/lib/badges";
+import { hasPrice } from "@/core/normalize";
 import { matchNeighborhood } from "@/core/neighborhoods";
 import { pointInMultiPolygon, type MultiPolygonCoords } from "@/lib/geo";
 import hoodsData from "@/data/sf-neighborhoods.json";
@@ -314,7 +315,8 @@ export function AppShell() {
             l.latitude != null &&
             l.longitude != null &&
             l.listingStatus === "active" &&
-            l.staleStatus !== "likely_unavailable",
+            l.staleStatus !== "likely_unavailable" &&
+            hasPrice(l.priceMonthly, l.priceEffectiveMonthly),
         )
         .map((l) => ({ id: l.id, lat: l.latitude!, lng: l.longitude! })),
     [listings],
@@ -355,6 +357,7 @@ export function AppShell() {
         if (!showHiddenGone && (l.staleStatus === "likely_unavailable" || l.listingStatus !== "active")) {
           return false;
         }
+        if (!hasPrice(l.priceMonthly, l.priceEffectiveMonthly)) return false;
         return true;
       });
     }

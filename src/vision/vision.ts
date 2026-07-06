@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import { nowIso } from "@/db/client";
 import { listings, listingVision } from "@/db/schema";
+import { hasPrice } from "@/core/normalize";
 import { estimateCostUsd, type VisionClient } from "./client";
 import {
   buildVisionSearchText,
@@ -105,6 +106,7 @@ export async function selectVisionCandidates(
         continue;
       }
     }
+    if (!hasPrice(row.priceMonthly, row.priceEffectiveMonthly)) continue;
     const imageUrls = selectImageUrls(row.primaryPhotoUrl, row.photos, maxImages);
     if (imageUrls.length === 0) {
       skippedNoPhotos++;

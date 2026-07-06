@@ -3,6 +3,7 @@ import { desc } from "drizzle-orm";
 import { getDb, newId, nowIso } from "@/db/client";
 import { listings, listingVision, savedSearches, userListingStates } from "@/db/schema";
 import { evaluateListing, type MatchableListing, type SavedSearchCriteria } from "@/core/match";
+import { hasPrice } from "@/core/normalize";
 import { draftApplication } from "@/core/application-draft";
 import { characteristicTags, type DislikeFacts } from "@/memory/characteristics";
 import { curateMatches, curationNote, inferAversions } from "@/memory/curate";
@@ -83,7 +84,10 @@ export async function GET() {
   const now = Date.now();
 
   const active = rows.filter(
-    (r) => r.listingStatus === "active" && r.staleStatus !== "likely_unavailable",
+    (r) =>
+      r.listingStatus === "active" &&
+      r.staleStatus !== "likely_unavailable" &&
+      hasPrice(r.priceMonthly, r.priceEffectiveMonthly),
   );
 
   // Learn what the user keeps passing on. The disliked set is every listing the

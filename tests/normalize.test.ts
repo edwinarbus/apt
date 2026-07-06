@@ -4,6 +4,7 @@ import {
   extractUnitFromTitle,
   computePricePerSquareFoot,
   extractConcessions,
+  hasPrice,
   htmlToText,
   normalizeAddressKey,
   normalizeLaundry,
@@ -27,6 +28,19 @@ describe("parsePrice", () => {
     expect(parsePrice(null)).toBeNull();
     expect(parsePrice("call for price")).toBeNull();
     expect(parsePrice("$5")).toBeNull();
+  });
+});
+
+describe("hasPrice", () => {
+  it("is true when either the advertised or effective price is known", () => {
+    expect(hasPrice(2995, null)).toBe(true);
+    expect(hasPrice(null, 2800)).toBe(true);
+    expect(hasPrice(2995, 2800)).toBe(true);
+  });
+  it("is false when neither price is known", () => {
+    expect(hasPrice(null, null)).toBe(false);
+    expect(hasPrice(null, undefined)).toBe(false);
+    expect(hasPrice(undefined, undefined)).toBe(false);
   });
 });
 

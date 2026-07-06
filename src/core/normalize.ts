@@ -14,6 +14,18 @@ export function parsePrice(raw: string | null | undefined): number | null {
   return value;
 }
 
+/** A listing with no price at all (neither the advertised nor the
+ * concessions-adjusted figure) is generic amenity-blurb clutter, not a real
+ * candidate — filtered out everywhere "active" listings are decided: search
+ * candidates, Porter matches, the digest, AI enrichment/vision eligibility,
+ * and the browse view. */
+export function hasPrice(
+  priceMonthly: number | null | undefined,
+  priceEffectiveMonthly?: number | null | undefined,
+): boolean {
+  return priceMonthly != null || priceEffectiveMonthly != null;
+}
+
 export function parseBedrooms(raw: string | null | undefined): number | null {
   if (!raw) return null;
   const text = raw.toLowerCase();

@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import { nowIso } from "@/db/client";
 import { listingEnrichment, listings, sources } from "@/db/schema";
+import { hasPrice } from "@/core/normalize";
 import type { EnrichmentClient } from "./client";
 import { estimateCostUsd } from "./client";
 import { SCHEMA_VERSION, type EnrichmentInput } from "./schema";
@@ -77,6 +78,7 @@ export async function selectCandidates(
         continue;
       }
     }
+    if (!hasPrice(row.priceMonthly, row.priceEffectiveMonthly)) continue;
     const prior = existing.get(row.id);
     const needs =
       opts.force ||

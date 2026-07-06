@@ -17,6 +17,7 @@ import {
   type MatchableListing,
   type SavedSearchCriteria,
 } from "@/core/match";
+import { hasPrice } from "@/core/normalize";
 import type { UserListingStatus } from "@/core/types";
 
 /**
@@ -149,7 +150,8 @@ export async function computeDigest(db: Db, opts: { dryRun?: boolean } = {}): Pr
       l.staleStatus !== "likely_unavailable" &&
       l.userStatus !== "hidden" &&
       l.userStatus !== "not_a_fit" &&
-      l.userStatus !== "rented_elsewhere",
+      l.userStatus !== "rented_elsewhere" &&
+      hasPrice(l.priceMonthly, l.priceEffectiveMonthly),
   );
 
   const perSearch: SavedSearchDigest[] = [];

@@ -1,5 +1,6 @@
 import type { Db } from "@/db/client";
 import { listings, listingVision, userListingStates } from "@/db/schema";
+import { hasPrice } from "@/core/normalize";
 import {
   estimateCostUsd,
   type SearchClient,
@@ -155,6 +156,7 @@ export async function assembleCandidates(db: Db, opts: SearchOptions): Promise<C
       if (status === "hidden" || status === "not_a_fit" || status === "rented_elsewhere") continue;
       if (row.listingStatus !== "active" || row.staleStatus === "likely_unavailable") continue;
     }
+    if (!hasPrice(row.priceMonthly, row.priceEffectiveMonthly)) continue;
     let distanceMi: number | null = null;
     if (opts.location && row.latitude != null && row.longitude != null) {
       distanceMi = haversineMi(opts.location, { lat: row.latitude, lng: row.longitude });
