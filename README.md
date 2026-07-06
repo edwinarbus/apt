@@ -50,16 +50,6 @@ stale/removed-listing tracking, a saved-search digest, a source-health dashboard
 compliance, verification status, crawl cadence), and a listing detail view with an
 autoplaying photo carousel, save/not-a-fit verdicts, and risk signals.
 
-## Stack
-
-- **Next.js 16** (App Router) + React 19 + TypeScript + Tailwind CSS v4
-- **SQLite** (better-sqlite3) + **Drizzle ORM** — one portable file at `data/apt.db`
-- **MapLibre GL** with OpenFreeMap tiles (no map API key needed) + a terrain/satellite proxy
-- **cheerio** for HTML parsing; a polite HTTP fetcher plus a Playwright fetcher (headless
-  Chromium) behind one shared interface, for JS-rendered sources
-- **`@anthropic-ai/sdk`** — powers search, enrichment, vision, Porter, and preference memory
-- **Vitest** for tests (all offline, no network/API calls), **tsx** for CLI scripts
-
 ## Claude API surface
 
 Claude shows up in five different shapes across the app, each picked for what the task needs:
@@ -76,6 +66,16 @@ Every model call handles `stop_reason: "refusal"` explicitly and never silently 
 malformed response: enrichment and vision each retry once with a firmer instruction before
 giving up, and search distinguishes a truncated reply (`stop_reason: "max_tokens"`) from an
 unparseable one so the UI can say which actually happened, instead of a generic failure.
+
+## Stack
+
+- **Next.js 16** (App Router) + React 19 + TypeScript + Tailwind CSS v4
+- **SQLite** (better-sqlite3) + **Drizzle ORM** — one portable file at `data/apt.db`
+- **MapLibre GL** with OpenFreeMap tiles (no map API key needed) + a terrain/satellite proxy
+- **cheerio** for HTML parsing; a polite HTTP fetcher plus a Playwright fetcher (headless
+  Chromium) behind one shared interface, for JS-rendered sources
+- **`@anthropic-ai/sdk`** — powers search, enrichment, vision, Porter, and preference memory
+- **Vitest** for tests (all offline, no network/API calls), **tsx** for CLI scripts
 
 ## Quick start
 
