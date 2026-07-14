@@ -131,5 +131,26 @@ queries the DB for what's new since yesterday, ranks it against saved criteria,
 writes a report under `data/reports/`, and **stages** (never sends) outreach
 drafts for listings you've marked interested.
 
+## Pausing & resuming the nightly deployment
+
+The schedule has a lifecycle you control without tearing anything down — pausing
+a deployment stops its cron from firing; unpausing resumes it from the **next**
+occurrence (missed nights are not backfilled). Both act on the deployment
+resolved from a `depl_…` argument or `APT_PORTER_DEPLOYMENT_ID`, else the first
+deployment for `APT_PORTER_AGENT_ID`:
+
+```
+npm run porter:pause                # stop the nightly cron (e.g. while away)
+npm run porter:resume               # re-enable it; prints status + next runs
+npm run porter:resume -- --now      # re-enable AND harvest immediately
+```
+
+`porter:pause`/`porter:resume` map to the Managed Agents deployment
+`pause`/`unpause` endpoints; `--now` additionally fires `deployments.run` (the
+same trigger as `npm run porter:run`) so you don't have to wait for 3am. After
+resuming, keep a worker up (`npm run porter:worker`) — Porter's environment is
+self-hosted, so a resumed session has nowhere to execute its tools without one
+and will otherwise sit idle.
+
 Still worth building next: the in-app "overnight inbox" + draft-review surface
 so the staged reports and drafts show up in the UI.
