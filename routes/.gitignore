@@ -1,0 +1,32 @@
+# Large regenerable inputs and intermediates
+data/sf_osm.json
+data/sf_osm_tiles.json
+data/sf_graph.pkl
+data/dens_pts.npy
+data/keep.pkl
+data/tiles/
+out/cand/
+out/diag/
+out/web/
+# scratch comparison renders
+out/cmp_*.png
+out/cc_*.png
+out/cd_*.png
+out/cr*.png
+out/cm_*.png
+out/sp*.png
+out/t2_*.png
+out/t3_*.png
+out/fin_*.png
+out/pick_*.png
+out/pv_*.png
+out/contact*.png
+out/test_*.png
+out/tmp_*.pkl
+out/chosen.pkl
+out/outline_simplify.png
+out/all_six.jpg
+
+# compiled python
+__pycache__/
+*.pyc
